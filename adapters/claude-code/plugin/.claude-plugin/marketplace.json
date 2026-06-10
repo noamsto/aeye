@@ -1,0 +1,11 @@
+{
+  "name": "agent-carousel",
+  "owner": {"name": "noamsto"},
+  "plugins": [
+    {
+      "name": "agent-carousel",
+      "source": "./",
+      "description": "Image carousel for coding agents (Claude Code capture adapter)."
+    }
+  ]
+}

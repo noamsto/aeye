@@ -22,7 +22,13 @@ STUB
 #!/usr/bin/env bash
 printf 'PNG' >"$2"
 STUB
-	chmod +x "$STUB_BIN/d2" "$STUB_BIN/resvg"
+	cat >"$STUB_BIN/tmux-claude-images" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >>"$TOGGLE_LOG"
+STUB
+	chmod +x "$STUB_BIN/d2" "$STUB_BIN/resvg" "$STUB_BIN/tmux-claude-images"
+	export TOGGLE_LOG="$BATS_TEST_TMPDIR/toggle.log"
+	: >"$TOGGLE_LOG"
 	export PATH="$STUB_BIN:$PATH"
 }
 
@@ -107,4 +113,19 @@ STUB
 	[ "$status" -eq 0 ]
 	[ ! -f "$MANIFEST" ]
 	[ -f "$DIAGRAMS/render-errors.log" ]
+}
+
+@test "first diagram of a session opens the carousel once" {
+	run_app hook-write-d2.json
+	run grep -c -- '--ensure-open' "$TOGGLE_LOG"
+	[ "$output" -eq 1 ]
+	[ -f "$CLAUDE_STATUS_DIR/images/7.opened" ]
+}
+
+@test "second (new) diagram does NOT reopen the carousel" {
+	run_app hook-write-d2.json
+	printf 'a -> b -> c\n' >"$DOTD2"
+	run_app hook-edit-d2.json
+	run grep -c -- '--ensure-open' "$TOGGLE_LOG"
+	[ "$output" -eq 1 ]
 }

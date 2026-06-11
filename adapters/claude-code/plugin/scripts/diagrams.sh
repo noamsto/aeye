@@ -68,3 +68,11 @@ mtime="$(stat -c %Y "$png" 2>/dev/null || echo 0)"
 printf -v now '%(%FT%T%z)T' -1
 jq -nc --arg path "$png" --arg source "d2" --arg ts "$now" --argjson mtime "$mtime" \
 	'{type:"image", path:$path, source:$source, ts:$ts, mtime:$mtime}' >>"$manifest"
+
+# Auto-open once per session: the first new diagram surfaces the carousel; after
+# that, leave open/closed state under user control (--ensure-open never kills).
+marker="$IMAGES_DIR/$pane_file.opened"
+if [[ ! -f $marker ]]; then
+	"${AGENT_CAROUSEL_TOGGLE:-tmux-claude-images}" --ensure-open >/dev/null 2>&1 || true
+	: >"$marker"
+fi

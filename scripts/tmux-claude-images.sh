@@ -11,6 +11,7 @@ set -euo pipefail
 
 STATE_DIR="${AGENT_CAROUSEL_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}"
 IMAGES_DIR="$STATE_DIR/images"
+ENSURE_OPEN=""
 
 # resolve_target sets MODE/KEY/MANIFEST from the environment.
 #   MODE=tmux  + KEY=<pane id>         inside tmux
@@ -35,6 +36,7 @@ launch_tmux() {
 	existing="$(tmux list-panes -F '#{pane_id} #{@claude_img_src}' |
 		awk -v s="$KEY" '$2 == s {print $1; exit}')"
 	if [[ -n $existing ]]; then
+		[[ -n $ENSURE_OPEN ]] && return # already open; ensure-open is a no-op
 		tmux kill-pane -t "$existing"
 		return
 	fi
@@ -47,6 +49,7 @@ launch_kitty() {
 	# Toggle: a viewer window is tagged with user_var claude_img_src=$KEY.
 	# `kitty @ ls --match` exits non-zero when nothing matches.
 	if kitty @ ls --match "var:claude_img_src=$KEY" >/dev/null 2>&1; then
+		[[ -n $ENSURE_OPEN ]] && return # already open; ensure-open is a no-op
 		kitty @ close-window --match "var:claude_img_src=$KEY"
 		return
 	fi
@@ -58,6 +61,7 @@ launch_kitty() {
 
 main() {
 	resolve_target
+	[[ ${1:-} == --ensure-open ]] && ENSURE_OPEN=1
 	if [[ ${1:-} == --resolve ]]; then # test seam: print resolution, no launch
 		printf '%s\t%s\t%s\n' "$MODE" "${KEY:-}" "${MANIFEST:-}"
 		return

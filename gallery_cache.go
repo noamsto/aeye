@@ -26,7 +26,7 @@ const (
 	cellPxH = 20
 )
 
-var imgCacheDir = filepath.Join(os.TempDir(), "lazytmux-imgcache")
+var imgCacheDir = filepath.Join(os.TempDir(), "agent-carousel-imgcache")
 
 // cachedPNG returns a path safe to hand to kitty's f=100 (PNG-only) transmit.
 // It decodes srcPath (png/jpeg/gif/webp), downscales it to fit cols×rows cells

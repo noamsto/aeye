@@ -298,7 +298,7 @@ func (m galleryModel) thmColor(opt, dark, light string) imgcolor.Color {
 	return lipgloss.Color(dark)
 }
 
-// runGallery is the entry point dispatched from main for `--gallery <pane>`.
+// runGallery is the entry point called by main with the key/pane positional arg.
 func runGallery(pane string) error {
 	tty, _ := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
 	m := galleryModel{

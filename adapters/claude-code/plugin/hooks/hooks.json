@@ -5,6 +5,18 @@
         "hooks": [
           {"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/images.sh"}
         ]
+      },
+      {
+        "hooks": [
+          {"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/diagrams.sh"}
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/diagram-guidance.sh"}
+        ]
       }
     ]
   }

@@ -51,3 +51,60 @@ run_app() { # $1 = fixture name
 	run jq -r '.source' "$MANIFEST"
 	[ "$output" = "d2" ]
 }
+
+@test "duplicate write of identical .d2 -> one manifest line" {
+	run_app hook-write-d2.json
+	run_app hook-write-d2.json
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 1 ]
+}
+
+@test "editing the .d2 (new content) -> a second manifest line" {
+	run_app hook-write-d2.json
+	printf 'a -> b -> c\n' >"$DOTD2"
+	run_app hook-edit-d2.json
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 2 ]
+}
+
+@test "a non-.d2 file_path is ignored (fast-bail)" {
+	# reuse the image fixture: file_path is a .png, not a .d2
+	IMG="$BATS_TEST_TMPDIR/pic.png"
+	printf 'x' >"$IMG"
+	sed "s#IMGPATH#$IMG#g" "$BATS_TEST_DIRNAME/fixtures/hook-write-image.json" | bash "$APP"
+	[ ! -f "$MANIFEST" ]
+}
+
+@test "malformed d2 -> skip, log to render-errors.log, no manifest line" {
+	# d2 stub that fails
+	cat >"$STUB_BIN/d2" <<'STUB'
+#!/usr/bin/env bash
+echo "parse error" >&2
+exit 1
+STUB
+	chmod +x "$STUB_BIN/d2"
+	run run_app hook-write-d2.json
+	[ "$status" -eq 0 ]
+	[ ! -f "$MANIFEST" ]
+	[ -f "$DIAGRAMS/render-errors.log" ]
+}
+
+@test "d2 not on PATH -> clean no-op" {
+	rm -f "$STUB_BIN/d2"
+	run run_app hook-write-d2.json
+	[ "$status" -eq 0 ]
+	[ ! -f "$MANIFEST" ]
+}
+
+@test "resvg failure -> skip, log to render-errors.log, no manifest line" {
+	cat >"$STUB_BIN/resvg" <<'STUB'
+#!/usr/bin/env bash
+echo "resvg boom" >&2
+exit 1
+STUB
+	chmod +x "$STUB_BIN/resvg"
+	run run_app hook-write-d2.json
+	[ "$status" -eq 0 ]
+	[ ! -f "$MANIFEST" ]
+	[ -f "$DIAGRAMS/render-errors.log" ]
+}

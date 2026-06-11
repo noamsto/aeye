@@ -31,16 +31,40 @@ fi
 mkdir -p "$DIAGRAMS_DIR"
 hash="$(sha256sum "$candidate" | cut -c1-16)"
 png="$DIAGRAMS_DIR/$hash.png"
+manifest="$IMAGES_DIR/$pane_file.jsonl"
 
-# Render browser-free (d2 -> svg -> resvg -> png). Never `d2 ... .png` (Chromium).
-svg="$DIAGRAMS_DIR/$hash.svg"
-d2 "$candidate" "$svg"
-resvg "$svg" "$png"
-rm -f "$svg"
+# Render only when the PNG is absent (identical source is a no-op; an edited
+# diagram hashes differently). Renderers absent -> silent no-op.
+if [[ ! -f $png ]]; then
+	command -v d2 >/dev/null 2>&1 || exit 0
+	command -v resvg >/dev/null 2>&1 || exit 0
+	svg="$DIAGRAMS_DIR/$hash.svg"
+	err="$DIAGRAMS_DIR/$hash.err"
+	if ! d2 "$candidate" "$svg" 2>"$err"; then
+		printf -v now '%(%FT%T%z)T' -1
+		printf '%s\t%s\t%s\n' "$now" "$hash" "$(tr '\n' ' ' <"$err")" \
+			>>"$DIAGRAMS_DIR/render-errors.log"
+		rm -f "$svg" "$err"
+		exit 0
+	fi
+	if ! resvg "$svg" "$png" 2>>"$err"; then
+		printf -v now '%(%FT%T%z)T' -1
+		printf '%s\t%s\t%s\n' "$now" "$hash" "$(tr '\n' ' ' <"$err")" \
+			>>"$DIAGRAMS_DIR/render-errors.log"
+		rm -f "$svg" "$err" "$png"
+		exit 0
+	fi
+	rm -f "$svg" "$err"
+fi
+
+# Append guarded by a path-dedup check (independent of the render step, so a
+# diagram missing from the manifest is re-added even when its PNG is cached).
+if [[ -f $manifest ]] &&
+	jq -e --arg p "$png" 'select(.path == $p)' "$manifest" >/dev/null 2>&1; then
+	exit 0
+fi
 
 mtime="$(stat -c %Y "$png" 2>/dev/null || echo 0)"
 printf -v now '%(%FT%T%z)T' -1
-
-manifest="$IMAGES_DIR/$pane_file.jsonl"
 jq -nc --arg path "$png" --arg source "d2" --arg ts "$now" --argjson mtime "$mtime" \
 	'{type:"image", path:$path, source:$source, ts:$ts, mtime:$mtime}' >>"$manifest"

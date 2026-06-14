@@ -44,7 +44,7 @@
           AEYE_D2_FONT_DIR = "${pkgs.source-sans}/share/fonts/truetype";
           packages =
             config.pre-commit.settings.enabledPackages
-            ++ [pkgs.go pkgs.gopls pkgs.gotools pkgs.golangci-lint pkgs.chafa pkgs.bats pkgs.goreleaser pkgs.gh pkgs.d2 pkgs.resvg pkgs.source-sans pkgs.source-code-pro];
+            ++ [pkgs.go pkgs.gopls pkgs.gotools pkgs.golangci-lint pkgs.chafa pkgs.bats pkgs.goreleaser pkgs.gh pkgs.d2 pkgs.resvg pkgs.source-sans pkgs.source-code-pro pkgs.just];
         };
 
         packages = {

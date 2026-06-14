@@ -46,20 +46,30 @@ resolve (`d2-<n>-font-bold`, etc.). Fix: rewrite the synthetic family names in
 d2's SVG to an installed family before resvg runs.
 
 ```sh
-sed -E 's/d2-[0-9]+-font-[a-z]+/DejaVu Sans/g' "$svg" > "$svg.fixed"
+sed -E 's/d2-[0-9]+-font-[a-z]+/Noto Sans/g' "$svg" > "$svg.fixed"
 ```
 
-Verified live: PNG output grows ~70% (the glyphs). `DejaVu Sans` is present via
-fontconfig (1400+ faces available); the family is configurable via
-`AGENT_CAROUSEL_D2_FONT` for hosts that prefer another sans.
+Verified live: this drops resvg's `No match for font-family` warnings from 15
+to **0** — all text resolves. The regex is anchored to the `-font-<style>`
+suffix, so it rewrites only the 6 font references and leaves the ~116 other
+`d2-<id>` class references (the diagram-id class) untouched. Default family is
+`Noto Sans` (present via fontconfig, and — unlike DejaVu Sans here — it ships
+bold/italic faces, see below); configurable via `AGENT_CAROUSEL_D2_FONT`.
 
 ### Bold / italic fidelity
 
-d2 distinguishes weight by font *file*, not `font-weight`. After the remap,
-bold/italic labels fall back to regular weight. Preserve emphasis by injecting
-`font-weight:bold` / `font-style:italic` into the corresponding CSS rules (or
-mapping the bold/italic family names to a bold/italic installed face). Decision
-deferred to the plan; both are small.
+d2 distinguishes weight by font *file*, not `font-weight`, and **the blanket
+remap renders all labels at regular weight** — emphasis is lost. This is *not* a
+one-line fix: the family name is quoted in the SVG (`font-family:
+"d2-<n>-font-bold"`), so appending `font-weight: bold` by string replacement
+lands *inside the quotes* and breaks resolution (verified: 14 dropped labels).
+
+Real fidelity requires rewriting d2's CSS *rules* (`.text-bold`, `.text-italic`)
+to add `font-weight`/`font-style` as separate declarations, against a family
+that actually ships those faces — `Noto Sans` qualifies (bold + italic faces
+present; DejaVu Sans here does not). This is a contained but non-trivial CSS
+transform, planned as its own step. If it proves fiddly, regular-weight-only is
+an acceptable Phase 0 ship (text is legible); bold/italic is the polish pass.
 
 ### Theme by light/dark mode
 
@@ -78,9 +88,10 @@ default, overridable.
 ### Testing
 
 `tests/diagrams.bats` gains a regression test that renders a labelled diagram
-and asserts the PNG actually contains text (output size above a textless
-baseline, or a pixel/coverage heuristic) — so a silent regression to boxes
-can never ship again.
+and asserts **resvg emits zero `No match for font-family` warnings** (capture
+stderr). This is deterministic — it directly proves every label's font
+resolved — and far more robust than a PNG byte-size or pixel heuristic. So a
+silent regression to textless boxes can never ship again.
 
 ## Phase 1 — Rich, beautiful authoring skill
 
@@ -115,15 +126,22 @@ agent is actually drawing). Structure:
 
 ## Phase 2 — Carousel display upgrades
 
-Builds on `docs/plans/2026-06-10-zoom-pan.md`. Diagrams get first-class care via
-the `source:"d2"` tag the manifest already carries.
+The base zoom/pan work is already specced in `docs/plans/2026-06-10-zoom-pan.md`
+(bitmap crop-magnify of the decoded source; "never upscale past source
+resolution"). Land that plan first. The items below are **diagram-specific
+extensions** that build on it — and two of them *revisit* its decisions, so
+they must be reconciled with that plan, not assumed compatible:
 
-- **Zoom + panning** — per the existing zoom-pan plan. For `source:"d2"`
-  entries, zoom re-renders crisp from the vector source/SVG rather than
-  bitmap-scaling (diagrams are the densest images and benefit most).
+- **Zoom + panning** — ship the existing zoom-pan plan as-is (bitmap crop).
+- **Crisp vector zoom for diagrams (extension, revisits "bitmap-only")** — for
+  `source:"d2"` entries, re-render from the vector source at the zoom level
+  instead of magnifying pixels. Diagrams are the densest images and benefit
+  most; requires keeping the `.d2`/SVG source reachable from the manifest.
+- **Upscale small diagrams (extension, revisits "never upscale")** — at rest,
+  let a small diagram fill the preview box (currently `scale >= 1` returns the
+  source unchanged → tiny diagrams). Scope to `source:"d2"` to avoid blurring
+  upscaled screenshots.
 - **Maximize / fill preview** — a key to hide chrome and use the whole pane.
-- **Upscale small diagrams** — let a small diagram fill the preview box
-  (currently `scale >= 1` returns the source unchanged → tiny diagrams).
 - **Viewer-side dedup** — `loadManifest` shows every decodable entry; dedup by
   path so a twice-referenced image appears once.
 - **Nav wraparound** — optional; `l` at last → first.
@@ -141,7 +159,8 @@ theme. Picked in the Phase 1 plan; flagged here so it isn't discovered late.
 
 - Renderers absent → hook no-ops silently (unchanged).
 - Font family unavailable → configurable `AGENT_CAROUSEL_D2_FONT`; default
-  `DejaVu Sans` is near-universal.
+  `Noto Sans` is near-universal (DejaVu Sans is a fallback that resolves but
+  lacks bold/italic faces here).
 - Unknown/garbled mode signal → fall back to light defaults; never crash.
 
 ## Files

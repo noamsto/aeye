@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Real d2 + resvg. Proves text fonts resolve (zero "No match for font-family").
-# Skips when binaries or a usable font are unavailable.
+# Skips when d2 or resvg is unavailable.
 
 setup() {
 	FIX="$(dirname "$BATS_TEST_DIRNAME")/adapters/claude-code/plugin/scripts/d2-fix-fonts.sh"
@@ -21,6 +21,10 @@ setup() {
 	if [[ -n ${AGENT_CAROUSEL_D2_FONT_DIR:-} ]]; then
 		args=(--skip-system-fonts --use-fonts-dir "$AGENT_CAROUSEL_D2_FONT_DIR")
 	fi
-	run bash -c 'resvg "$@" "'"$SVG"'" "'"$BATS_TEST_TMPDIR"'/out.png" 2>&1' _ "${args[@]}"
+	run bash -c 'resvg "$@" 2>&1' _ "${args[@]}" "$SVG" "$BATS_TEST_TMPDIR/out.png"
+	[ "$status" -eq 0 ] || {
+		echo "resvg failed (status=$status): $output" >&2
+		return 1
+	}
 	[[ $output != *"No match for font-family"* ]]
 }

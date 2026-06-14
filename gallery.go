@@ -119,7 +119,13 @@ func (m *galleryModel) transmitView() {
 		return
 	}
 	fmt.Fprint(m.tty, deleteAll())
-	fmt.Fprint(m.tty, transmitVirtual(previewID, cachedPNG(m.images[m.cursor].Path, m.l.previewW, m.l.previewH), m.l.previewW, m.l.previewH))
+	src := m.images[m.cursor].Path
+	if m.curImg != nil && !m.crop.isFull() {
+		src = m.renderZoom(m.l.previewW, m.l.previewH)
+	} else {
+		src = cachedPNG(src, m.l.previewW, m.l.previewH)
+	}
+	fmt.Fprint(m.tty, transmitVirtual(previewID, src, m.l.previewW, m.l.previewH))
 	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
 	for s := 0; s < m.l.stripCols; s++ {
 		idx := start + s

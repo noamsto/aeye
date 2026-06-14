@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"os"
 	"path/filepath"
@@ -130,4 +131,21 @@ func (m *galleryModel) renderZoom(cols, rows int) string {
 	dst := image.NewRGBA(image.Rect(0, 0, int(float64(r.Dx())*scale), int(float64(r.Dy())*scale)))
 	draw.CatmullRom.Scale(dst, dst.Bounds(), m.curImg, r, draw.Src, nil)
 	return writePNG(zoomScratch, dst, raw)
+}
+
+// deletePreview clears just the preview image (id=previewID) + its placements,
+// leaving the filmstrip untouched — so zoom/pan keystrokes don't re-transmit the
+// whole grid (which would flicker).
+func deletePreview() string {
+	return tmuxPassthrough(fmt.Sprintf("\x1b_Ga=d,d=i,i=%d,q=2\x1b\\", previewID))
+}
+
+// transmitPreviewOnly re-renders + re-transmits only the preview image at the
+// current crop. The placeholder cells in View already reference previewID.
+func (m *galleryModel) transmitPreviewOnly() {
+	if m.backend != backendKitty || m.tty == nil || len(m.images) == 0 {
+		return
+	}
+	fmt.Fprint(m.tty, deletePreview())
+	fmt.Fprint(m.tty, transmitVirtual(previewID, m.renderZoom(m.l.previewW, m.l.previewH), m.l.previewW, m.l.previewH))
 }

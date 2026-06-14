@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	imgcolor "image/color"
 	"os"
 	"os/exec"
@@ -80,18 +81,21 @@ func stripStart(cursor, stripCols, n int) int {
 // ---------------------------------------------------------------------------
 
 type galleryModel struct {
-	pane    string
-	images  []imageEntry
-	backend gridBackend
-	theme   string
-	l       layout
-	cursor  int // selected image index
-	width   int
-	height  int
-	tty     *os.File // raw graphics sink (bypasses bubbletea's stdout)
-	mtime   int64    // manifest mtime at last load (for auto-refresh)
-	ready   bool
-	pinned  bool // follow the newest image until the user first navigates
+	pane       string
+	images     []imageEntry
+	backend    gridBackend
+	theme      string
+	l          layout
+	cursor     int // selected image index
+	width      int
+	height     int
+	tty        *os.File // raw graphics sink (bypasses bubbletea's stdout)
+	mtime      int64    // manifest mtime at last load (for auto-refresh)
+	ready      bool
+	pinned     bool        // follow the newest image until the user first navigates
+	crop       cropFrac    // visible sub-rectangle of the source (fullCrop = fit)
+	curImg     image.Image // decoded source of the current selection
+	curImgPath string      // path curImg was decoded from
 
 	// Theme colors, resolved once at startup (tmux options are session-invariant).
 	selColor, dimColor, hintFg, textFg imgcolor.Color
@@ -115,7 +119,13 @@ func (m *galleryModel) transmitView() {
 		return
 	}
 	fmt.Fprint(m.tty, deleteAll())
-	fmt.Fprint(m.tty, transmitVirtual(previewID, cachedPNG(m.images[m.cursor].Path, m.l.previewW, m.l.previewH), m.l.previewW, m.l.previewH))
+	src := m.images[m.cursor].Path
+	if m.curImg != nil && !m.crop.isFull() {
+		src = m.renderZoom(m.l.previewW, m.l.previewH)
+	} else {
+		src = cachedPNG(src, m.l.previewW, m.l.previewH)
+	}
+	fmt.Fprint(m.tty, transmitVirtual(previewID, src, m.l.previewW, m.l.previewH))
 	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
 	for s := 0; s < m.l.stripCols; s++ {
 		idx := start + s
@@ -133,6 +143,7 @@ func (m *galleryModel) selectIndex(idx int) {
 	idx = clamp(idx, 0, max(0, len(m.images)-1))
 	if idx != m.cursor {
 		m.cursor = idx
+		m.ensureDecoded()
 		m.transmitView()
 	}
 }
@@ -146,6 +157,7 @@ func (m *galleryModel) reload() {
 	}
 	if m.ready {
 		m.l = computeLayout(m.width, m.height)
+		m.ensureDecoded()
 		m.transmitView()
 		// Pre-warm transcodes for every image so navigating to a freshly
 		// captured one is a cache hit, not a full-resolution decode on the loop.
@@ -171,10 +183,46 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case "right", "l", "down", "j":
-			m.selectIndex(m.cursor + 1)
-		case "left", "h", "up", "k":
-			m.selectIndex(m.cursor - 1)
+		// When zoomed, hjkl and the arrows pan; otherwise they navigate the
+		// filmstrip. To move to another image while zoomed, use n/p/g/G (which
+		// reset the crop) or 0/esc first.
+		case "right", "l":
+			if !m.crop.isFull() {
+				m.panBy(0.1, 0)
+				m.transmitPreviewOnly()
+			} else {
+				m.selectIndex(m.cursor + 1)
+			}
+		case "left", "h":
+			if !m.crop.isFull() {
+				m.panBy(-0.1, 0)
+				m.transmitPreviewOnly()
+			} else {
+				m.selectIndex(m.cursor - 1)
+			}
+		case "down", "j":
+			if !m.crop.isFull() {
+				m.panBy(0, 0.1)
+				m.transmitPreviewOnly()
+			} else {
+				m.selectIndex(m.cursor + 1)
+			}
+		case "up", "k":
+			if !m.crop.isFull() {
+				m.panBy(0, -0.1)
+				m.transmitPreviewOnly()
+			} else {
+				m.selectIndex(m.cursor - 1)
+			}
+		case "z", "+", "=":
+			m.zoomBy(1.25)
+			m.transmitPreviewOnly()
+		case "Z", "-", "_":
+			m.zoomBy(1 / 1.25)
+			m.transmitPreviewOnly()
+		case "0", "esc":
+			m.resetZoom()
+			m.transmitPreviewOnly()
 		case "n":
 			m.selectIndex(m.cursor + m.l.stripCols)
 		case "p":
@@ -281,8 +329,11 @@ func (m galleryModel) renderView() string {
 		lipgloss.JoinHorizontal(lipgloss.Top, cells...))
 
 	// Centered key hints at the bottom.
-	hints := center(lipgloss.NewStyle().Foreground(hintFg).Render(
-		"↵/o open · O folder · h/l move · n/p page · g/G first/last · q quit"))
+	hint := "↵/o open · O folder · h/l move · n/p page · g/G first/last · z/Z zoom · q quit"
+	if !m.crop.isFull() {
+		hint = "←↑↓→/hjkl pan · z/Z zoom · 0/esc reset · q quit"
+	}
+	hints := center(lipgloss.NewStyle().Foreground(hintFg).Render(hint))
 
 	return lipgloss.JoinVertical(lipgloss.Left, title, subtitle, previewArea, filmstrip, hints)
 }
@@ -326,7 +377,11 @@ func runGallery(pane string) error {
 		mtime:   manifestMtime(pane),
 		cursor:  max(0, len(images)-1),
 		pinned:  true,
+		crop:    fullCrop(),
 	}
+	// Decode the initial selection now so zoom works on the first keystroke
+	// (otherwise curImg is nil until the first refresh tick).
+	m.ensureDecoded()
 	// Resolve theme colors once (each is a tmux subprocess; don't do it per frame).
 	m.selColor = m.thmColor("@thm_mauve", "#cba6f7", "#8839ef")
 	m.dimColor = m.thmColor("@thm_surface_1", "#45475a", "#bcc0cc")

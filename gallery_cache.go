@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -98,9 +99,18 @@ func warmCache(paths []string, previewW, previewH, stripW, stripH int) {
 	}
 }
 
+// fastPNG trades file size for encode speed — used for the interactive zoom
+// scratch, where a new PNG is produced on every pan/zoom keystroke.
+var fastPNG = png.Encoder{CompressionLevel: png.BestSpeed}
+
 // writePNG encodes img to out atomically (temp file + rename) and returns out,
 // or fallback if the cache can't be written.
 func writePNG(out string, img image.Image, fallback string) string {
+	return writePNGEnc(out, img, fallback, png.Encode)
+}
+
+// writePNGEnc is writePNG with a caller-chosen encoder (default vs fast).
+func writePNGEnc(out string, img image.Image, fallback string, encode func(io.Writer, image.Image) error) string {
 	if err := os.MkdirAll(imgCacheDir, 0o755); err != nil {
 		return fallback
 	}
@@ -108,7 +118,7 @@ func writePNG(out string, img image.Image, fallback string) string {
 	if err != nil {
 		return fallback
 	}
-	if err := png.Encode(tmp, img); err != nil {
+	if err := encode(tmp, img); err != nil {
 		tmp.Close()
 		os.Remove(tmp.Name())
 		return fallback

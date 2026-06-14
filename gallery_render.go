@@ -18,6 +18,7 @@ import (
 type imageEntry struct {
 	Path   string `json:"path"`
 	Source string `json:"source"`
+	Vector string `json:"vector,omitempty"`
 }
 
 // parseManifest decodes JSONL bytes into entries, skipping blank/unparseable

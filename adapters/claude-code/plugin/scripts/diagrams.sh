@@ -31,6 +31,7 @@ fi
 mkdir -p "$DIAGRAMS_DIR"
 hash="$(sha256sum "$candidate" | cut -c1-16)"
 png="$DIAGRAMS_DIR/$hash.png"
+svg="$DIAGRAMS_DIR/$hash.svg"
 manifest="$IMAGES_DIR/$pane_file.jsonl"
 
 # Render only when the PNG is absent (identical source is a no-op; an edited
@@ -40,7 +41,6 @@ if [[ ! -f $png ]]; then
 	resvg_bin="${AGENT_CAROUSEL_RESVG:-resvg}"
 	command -v "$d2_bin" >/dev/null 2>&1 || exit 0
 	command -v "$resvg_bin" >/dev/null 2>&1 || exit 0
-	svg="$DIAGRAMS_DIR/$hash.svg"
 	err="$DIAGRAMS_DIR/$hash.err"
 
 	d2_args=(-t "${AGENT_CAROUSEL_D2_THEME:-105}")
@@ -73,7 +73,7 @@ if [[ ! -f $png ]]; then
 		rm -f "$svg" "$err" "$png"
 		exit 0
 	fi
-	rm -f "$svg" "$err"
+	rm -f "$err"
 fi
 
 # Append guarded by a path-dedup check (independent of the render step, so a
@@ -85,8 +85,8 @@ fi
 
 mtime="$(stat -c %Y "$png" 2>/dev/null || echo 0)"
 printf -v now '%(%FT%T%z)T' -1
-jq -nc --arg path "$png" --arg source "d2" --arg ts "$now" --argjson mtime "$mtime" \
-	'{type:"image", path:$path, source:$source, ts:$ts, mtime:$mtime}' >>"$manifest"
+jq -nc --arg path "$png" --arg vector "$svg" --arg source "d2" --arg ts "$now" --argjson mtime "$mtime" \
+	'{type:"image", path:$path, vector:$vector, source:$source, ts:$ts, mtime:$mtime}' >>"$manifest"
 
 # Auto-open once per session: the first new diagram surfaces the carousel; after
 # that, leave open/closed state under user control (--ensure-open never kills).

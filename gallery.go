@@ -178,8 +178,9 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.l = computeLayout(m.width, m.height)
 		m.ready = true
 		m.transmitView()
-		return m, nil
+		return m, m.kickVector()
 	case tea.KeyPressMsg:
+		var cmd tea.Cmd
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -242,9 +243,34 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectIndex(d - 1)
 			}
 		}
+		// After any key, (re)sharpen the preview for a d2 entry off the event
+		// loop. nil for non-d2/non-kitty, so this is a no-op there.
+		cmd = m.kickVector()
+		return m, cmd
+	case vectorReadyMsg:
+		// Ignore a stale render: the selection or zoom changed while resvg ran.
+		if msg.vector != m.curVector() ||
+			msg.targetW != vectorTargetW(m.l.previewW*cellPxW, m.l.previewH*cellPxH, m.crop) ||
+			m.backend != backendKitty || m.tty == nil {
+			return m, nil
+		}
+		var src string
+		// Reuses the per-pane zoom scratch file. Safe: Update is single-threaded
+		// and kitty fetches the t=f path when it parses the placement we emit
+		// right after, so a later render can't overwrite it mid-fetch.
+		if m.crop.isFull() {
+			src = writePNGEnc(m.zoomScratchPath(),
+				fitToBox(msg.raster, m.l.previewW*cellPxW, m.l.previewH*cellPxH),
+				m.images[m.cursor].Path, fastPNG.Encode)
+		} else {
+			src = m.renderCropOf(msg.raster, m.l.previewW, m.l.previewH, m.images[m.cursor].Path)
+		}
+		fmt.Fprint(m.tty, transmitVirtual(previewID, src, m.l.previewW, m.l.previewH))
+		return m, nil
 	case galleryTickMsg:
 		if mt := manifestMtime(m.pane); mt != m.mtime {
 			m.reload()
+			return m, tea.Batch(galleryTickCmd(), m.kickVector())
 		}
 		return m, galleryTickCmd()
 	}

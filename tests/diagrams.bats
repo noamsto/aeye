@@ -179,6 +179,16 @@ STUB
 	}
 }
 
+@test "manifest vector field points at svg that still exists on disk" {
+	run_app hook-write-d2.json
+	[ -f "$MANIFEST" ]
+	png="$(jq -r '.path' "$MANIFEST")"
+	vector="$(jq -r '.vector' "$MANIFEST")"
+	[ -n "$vector" ]
+	[ -f "$vector" ]
+	[ "$vector" = "${png%.png}.svg" ]
+}
+
 @test "font dir set -> resvg gets --skip-system-fonts --use-fonts-dir" {
 	cat >"$STUB_BIN/resvg" <<'STUB'
 #!/usr/bin/env bash

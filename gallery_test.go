@@ -191,3 +191,15 @@ func TestLoadManifestDropsUndecodableFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestParseManifestVectorField(t *testing.T) {
+	got := parseManifest([]byte(`{"type":"image","path":"/d/a.png","vector":"/d/a.svg","source":"d2"}`))
+	if len(got) != 1 || got[0].Vector != "/d/a.svg" {
+		t.Fatalf("vector not parsed: %+v", got)
+	}
+	// absence is fine (backward compatible).
+	got = parseManifest([]byte(`{"type":"image","path":"/d/b.png","source":"Read"}`))
+	if len(got) != 1 || got[0].Vector != "" {
+		t.Fatalf("missing vector should be empty: %+v", got)
+	}
+}

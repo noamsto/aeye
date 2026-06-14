@@ -101,3 +101,15 @@ func TestPanByClamps(t *testing.T) {
 		t.Errorf("pan must preserve crop size, got %+v", m.crop)
 	}
 }
+
+func TestEnsureDecodedPreservesOnSamePath(t *testing.T) {
+	m := &galleryModel{
+		images:     []imageEntry{{Path: "/nope/a.png"}},
+		curImgPath: "/nope/a.png",
+		crop:       cropFrac{0.2, 0.2, 0.5, 0.5},
+	}
+	m.ensureDecoded() // same path → must not reset the crop
+	if m.crop.isFull() {
+		t.Errorf("same-path decode reset the crop: %+v", m.crop)
+	}
+}

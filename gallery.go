@@ -137,6 +137,7 @@ func (m *galleryModel) selectIndex(idx int) {
 	idx = clamp(idx, 0, max(0, len(m.images)-1))
 	if idx != m.cursor {
 		m.cursor = idx
+		m.ensureDecoded()
 		m.transmitView()
 	}
 }
@@ -150,6 +151,7 @@ func (m *galleryModel) reload() {
 	}
 	if m.ready {
 		m.l = computeLayout(m.width, m.height)
+		m.ensureDecoded()
 		m.transmitView()
 		// Pre-warm transcodes for every image so navigating to a freshly
 		// captured one is a cache hit, not a full-resolution decode on the loop.

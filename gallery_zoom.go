@@ -1,6 +1,9 @@
 package main
 
-import "image"
+import (
+	"image"
+	"os"
+)
 
 // cropFrac is the visible sub-rectangle of the source image, in source
 // fractions (0..1). Full image = {0,0,1,1}. Invariant kept by the methods that
@@ -63,6 +66,35 @@ func (m *galleryModel) panBy(dx, dy float64) {
 	x0 := clampF(m.crop.x0+dx*w, 0, 1-w)
 	y0 := clampF(m.crop.y0+dy*h, 0, 1-h)
 	m.crop = cropFrac{x0, y0, x0 + w, y0 + h}
+}
+
+// ensureDecoded decodes the currently-selected image into m.curImg, but only
+// when the selected path changed since the last decode. A changed selection
+// resets the crop to fit; an unchanged selection (e.g. an auto-refresh tick that
+// appended a different image elsewhere) preserves the crop and the decode.
+func (m *galleryModel) ensureDecoded() {
+	if len(m.images) == 0 {
+		m.curImg, m.curImgPath = nil, ""
+		return
+	}
+	p := m.images[m.cursor].Path
+	if p == m.curImgPath {
+		return
+	}
+	m.curImgPath = p
+	m.resetZoom()
+	f, err := os.Open(p)
+	if err != nil {
+		m.curImg = nil
+		return
+	}
+	defer f.Close()
+	img, _, err := image.Decode(f)
+	if err != nil {
+		m.curImg = nil
+		return
+	}
+	m.curImg = img
 }
 
 // cropPixels maps a normalized crop to a pixel rectangle inside b, offset by

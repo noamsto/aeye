@@ -57,7 +57,16 @@ launch_kitty() {
 		kitty @ close-window --match "var:claude_img_src=$KEY"
 		return
 	fi
-	kitty @ launch --type=window --var claude_img_src="$KEY" \
+	# Anchor to Claude's kitty window (its id is in our inherited env) so the
+	# viewer opens in Claude's tab even if the user switched away, and not the
+	# active one. --match selects that tab as the launch target (a remote-control
+	# --next-to is ignored across tabs without it); --next-to places the split
+	# beside Claude; --keep-focus so opening it never steals focus.
+	local placement=()
+	if [[ -n ${KITTY_WINDOW_ID:-} ]]; then
+		placement=(--match "window_id:$KITTY_WINDOW_ID" --next-to "id:$KITTY_WINDOW_ID" --keep-focus)
+	fi
+	kitty @ launch --type=window "${placement[@]}" --var claude_img_src="$KEY" \
 		--env AGENT_CAROUSEL_DIR="$STATE_DIR" \
 		--env CLAUDE_STATUS_DIR="$STATE_DIR" \
 		"${AGENT_CAROUSEL_BIN:-agent-carousel}" "$KEY" >/dev/null

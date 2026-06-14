@@ -146,6 +146,21 @@ func groupBBox(frag string) (minX, minY, maxX, maxY float64, ok bool) {
 		}
 		merge(a, b, c, d, has)
 	}
+	// Include label text: d2 draws a container's title ABOVE its shape box, so
+	// framing to the shape alone clips the title. <text> gives a baseline anchor
+	// (x,y); extend up by the font size to cover the glyph ascent.
+	for _, m := range textElemRe.FindAllStringSubmatch(frag, -1) {
+		a := parseAttrs(m[1])
+		if _, hasX := a["x"]; !hasX {
+			continue
+		}
+		fs := 16.0
+		if fm := fontSizeRe.FindStringSubmatch(m[0]); fm != nil {
+			fs, _ = strconv.ParseFloat(fm[1], 64)
+		}
+		tx, ty := translateOf(m[0])
+		merge(a["x"]+tx, a["y"]+ty-fs, a["x"]+tx, a["y"]+ty, true)
+	}
 	merge(rectBBox(frag))
 	return
 }
@@ -154,8 +169,10 @@ var (
 	rectElemRe    = regexp.MustCompile(`<rect\b([^>]*)>`)
 	ellipseElemRe = regexp.MustCompile(`<(?:ellipse|circle)\b([^>]*)>`)
 	pathElemRe    = regexp.MustCompile(`<path\b[^>]*>`)
+	textElemRe    = regexp.MustCompile(`<text\b([^>]*)>`)
 	numAttrRe     = regexp.MustCompile(`\b([\w-]+)="(-?[\d.]+)"`)
 	translateRe   = regexp.MustCompile(`translate\(\s*(-?[\d.]+)(?:[ ,]+(-?[\d.]+))?`)
+	fontSizeRe    = regexp.MustCompile(`font-size:\s*([\d.]+)`)
 )
 
 // translateOf reads translate(tx[,ty]) from an element's tag. d2 positions most

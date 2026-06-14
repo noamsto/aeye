@@ -16,11 +16,11 @@ setup() {
 	mkdir -p "$STUB_BIN"
 	cat >"$STUB_BIN/d2" <<'STUB'
 #!/usr/bin/env bash
-printf '<svg/>' >"$2"
+printf '<svg/>' >"${@: -1}"
 STUB
 	cat >"$STUB_BIN/resvg" <<'STUB'
 #!/usr/bin/env bash
-printf 'PNG' >"$2"
+printf 'PNG' >"${@: -1}"
 STUB
 	cat >"$STUB_BIN/tmux-claude-images" <<'STUB'
 #!/usr/bin/env bash
@@ -137,4 +137,66 @@ STUB
 	run_app hook-edit-d2.json
 	run grep -c -- '--ensure-open' "$TOGGLE_LOG"
 	[ "$output" -eq 1 ]
+}
+
+@test "hook passes theme + sketch to d2" {
+	cat >"$STUB_BIN/d2" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >>"$D2_ARGLOG"
+printf '<svg/>' >"${@: -1}"
+STUB
+	chmod +x "$STUB_BIN/d2"
+	# shellcheck disable=SC2030
+	export D2_ARGLOG="$BATS_TEST_TMPDIR/d2args.log"
+	export AGENT_CAROUSEL_D2_THEME=200
+	run_app hook-write-d2.json
+	run cat "$D2_ARGLOG"
+	[[ $output == *"-t 200"* ]] || {
+		echo "missing -t 200 in: $output" >&2
+		return 1
+	}
+	[[ $output == *"--sketch"* ]] || {
+		echo "missing --sketch in: $output" >&2
+		return 1
+	}
+}
+
+@test "AGENT_CAROUSEL_D2_SKETCH=0 disables sketch" {
+	cat >"$STUB_BIN/d2" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >>"$D2_ARGLOG"
+printf '<svg/>' >"${@: -1}"
+STUB
+	chmod +x "$STUB_BIN/d2"
+	# shellcheck disable=SC2031
+	export D2_ARGLOG="$BATS_TEST_TMPDIR/d2args.log"
+	export AGENT_CAROUSEL_D2_SKETCH=0
+	run_app hook-write-d2.json
+	run cat "$D2_ARGLOG"
+	[[ $output != *"--sketch"* ]] || {
+		echo "unexpected --sketch in: $output" >&2
+		return 1
+	}
+}
+
+@test "font dir set -> resvg gets --skip-system-fonts --use-fonts-dir" {
+	cat >"$STUB_BIN/resvg" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >>"$RESVG_ARGLOG"
+printf 'PNG' >"${@: -1}"
+STUB
+	chmod +x "$STUB_BIN/resvg"
+	export RESVG_ARGLOG="$BATS_TEST_TMPDIR/resvgargs.log"
+	export AGENT_CAROUSEL_D2_FONT_DIR="$BATS_TEST_TMPDIR/fonts"
+	mkdir -p "$AGENT_CAROUSEL_D2_FONT_DIR"
+	run_app hook-write-d2.json
+	run cat "$RESVG_ARGLOG"
+	[[ $output == *"--skip-system-fonts"* ]] || {
+		echo "missing --skip-system-fonts in: $output" >&2
+		return 1
+	}
+	[[ $output == *"--use-fonts-dir $AGENT_CAROUSEL_D2_FONT_DIR"* ]] || {
+		echo "missing --use-fonts-dir in: $output" >&2
+		return 1
+	}
 }

@@ -37,9 +37,14 @@
 
         devShells.default = pkgs.mkShell {
           inherit (config.pre-commit) shellHook;
+          AGENT_CAROUSEL_D2_FONT = "Source Sans 3";
+          # truetype/ = static Regular/Bold/Italic faces only; the parent dir also
+          # ships variable/ (same family name), which makes resvg's bold/italic
+          # face selection ambiguous. Keep it narrow.
+          AGENT_CAROUSEL_D2_FONT_DIR = "${pkgs.source-sans}/share/fonts/truetype";
           packages =
             config.pre-commit.settings.enabledPackages
-            ++ [pkgs.go pkgs.gopls pkgs.gotools pkgs.golangci-lint pkgs.chafa pkgs.bats pkgs.goreleaser pkgs.gh pkgs.d2 pkgs.resvg];
+            ++ [pkgs.go pkgs.gopls pkgs.gotools pkgs.golangci-lint pkgs.chafa pkgs.bats pkgs.goreleaser pkgs.gh pkgs.d2 pkgs.resvg pkgs.source-sans pkgs.source-code-pro];
         };
 
         packages = {

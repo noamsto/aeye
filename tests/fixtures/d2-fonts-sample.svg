@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg"><style type="text/css"><![CDATA[
+.d2-123 .text {
+	font-family: "d2-123-font-regular";
+}
+.d2-123 .text-bold {
+	font-family: "d2-123-font-bold";
+}
+.d2-123 .text-italic {
+	font-family: "d2-123-font-italic";
+}
+]]></style><text class="text-bold fill-N1">Hello</text></svg>

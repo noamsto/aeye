@@ -63,6 +63,17 @@
             runtimeInputs = [self'.packages.default];
             text = builtins.readFile ./scripts/tmux-claude-images.sh;
           };
+
+          # The diagram-render hook with the d2 -> svg -> resvg -> png toolchain
+          # baked onto PATH (plus jq/coreutils, and the toggle for --ensure-open),
+          # so nix consumers get diagrams without d2/resvg in their environment.
+          # Non-nix users run the plugin's scripts/diagrams.sh with their own
+          # d2/resvg on PATH (or via AGENT_CAROUSEL_D2 / AGENT_CAROUSEL_RESVG).
+          diagrams = pkgs.writeShellApplication {
+            name = "agent-carousel-diagrams";
+            runtimeInputs = [self'.packages.toggle pkgs.d2 pkgs.resvg pkgs.jq pkgs.coreutils];
+            text = builtins.readFile ./adapters/claude-code/plugin/scripts/diagrams.sh;
+          };
         };
 
         apps.default = {

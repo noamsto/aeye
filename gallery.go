@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	imgcolor "image/color"
 	"os"
 	"os/exec"
@@ -92,6 +93,9 @@ type galleryModel struct {
 	mtime   int64    // manifest mtime at last load (for auto-refresh)
 	ready   bool
 	pinned  bool // follow the newest image until the user first navigates
+	crop       cropFrac    // visible sub-rectangle of the source (fullCrop = fit)
+	curImg     image.Image // decoded source of the current selection
+	curImgPath string      // path curImg was decoded from
 
 	// Theme colors, resolved once at startup (tmux options are session-invariant).
 	selColor, dimColor, hintFg, textFg imgcolor.Color

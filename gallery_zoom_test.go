@@ -54,3 +54,50 @@ func TestCropPixelsOffsetBounds(t *testing.T) {
 		t.Errorf("offset cropPixels = %v, want (10,20)-(60,60)", r)
 	}
 }
+
+func TestResetZoom(t *testing.T) {
+	m := &galleryModel{crop: cropFrac{0.1, 0.1, 0.3, 0.3}}
+	m.resetZoom()
+	if !m.crop.isFull() {
+		t.Errorf("resetZoom = %+v", m.crop)
+	}
+}
+
+func TestZoomByShrinksCentered(t *testing.T) {
+	m := &galleryModel{crop: fullCrop()}
+	m.zoomBy(2) // zoom in 2x → crop side halves, centered
+	if !approx(m.crop.w(), 0.5) || !approx(m.crop.cx(), 0.5) {
+		t.Errorf("zoom-in crop = %+v", m.crop)
+	}
+}
+
+func TestZoomByClampsAtMax(t *testing.T) {
+	m := &galleryModel{crop: fullCrop()}
+	for i := 0; i < 50; i++ {
+		m.zoomBy(1.25)
+	}
+	if !approx(m.crop.w(), 1.0/zoomMax) {
+		t.Errorf("zoom must clamp to min side 1/%v, got w=%v", zoomMax, m.crop.w())
+	}
+}
+
+func TestZoomOutFloorsToFull(t *testing.T) {
+	m := &galleryModel{crop: cropFrac{0.4, 0.4, 0.6, 0.6}}
+	for i := 0; i < 50; i++ {
+		m.zoomBy(1 / 1.25)
+	}
+	if !m.crop.isFull() {
+		t.Errorf("zoom-out must floor at full, got %+v", m.crop)
+	}
+}
+
+func TestPanByClamps(t *testing.T) {
+	m := &galleryModel{crop: cropFrac{0.25, 0.25, 0.75, 0.75}}
+	m.panBy(-1, -1) // big step up/left
+	if !approx(m.crop.x0, 0) || !approx(m.crop.y0, 0) {
+		t.Errorf("pan must clamp to the top-left, got %+v", m.crop)
+	}
+	if !approx(m.crop.w(), 0.5) || !approx(m.crop.h(), 0.5) {
+		t.Errorf("pan must preserve crop size, got %+v", m.crop)
+	}
+}

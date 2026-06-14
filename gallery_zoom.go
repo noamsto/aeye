@@ -29,6 +29,42 @@ func clampF(v, lo, hi float64) float64 {
 	return v
 }
 
+const zoomMax = 8.0
+
+func (m *galleryModel) resetZoom() { m.crop = fullCrop() }
+
+// recenterScaled returns a crop of the given width/height centered at (cx,cy),
+// shifted to stay inside [0,1] (size preserved). w/h are pre-clamped to (0,1].
+func recenterScaled(cx, cy, w, h float64) cropFrac {
+	x0 := clampF(cx-w/2, 0, 1-w)
+	y0 := clampF(cy-h/2, 0, 1-h)
+	return cropFrac{x0, y0, x0 + w, y0 + h}
+}
+
+// zoomBy scales the crop about its center by 1/factor (factor > 1 zooms in),
+// preserving the crop's current aspect. The crop side is clamped to
+// [1/zoomMax, 1]; reaching full snaps to fullCrop.
+func (m *galleryModel) zoomBy(factor float64) {
+	const minSide = 1.0 / zoomMax
+	w := clampF(m.crop.w()/factor, minSide, 1)
+	h := clampF(m.crop.h()/factor, minSide, 1)
+	c := recenterScaled(m.crop.cx(), m.crop.cy(), w, h)
+	if c.isFull() {
+		c = fullCrop()
+	}
+	m.crop = c
+}
+
+// panBy shifts the crop by a fraction of its own size, so a keypress feels like
+// a constant on-screen distance regardless of zoom. The shift is clamped so the
+// crop stays inside [0,1] without resizing.
+func (m *galleryModel) panBy(dx, dy float64) {
+	w, h := m.crop.w(), m.crop.h()
+	x0 := clampF(m.crop.x0+dx*w, 0, 1-w)
+	y0 := clampF(m.crop.y0+dy*h, 0, 1-h)
+	m.crop = cropFrac{x0, y0, x0 + w, y0 + h}
+}
+
 // cropPixels maps a normalized crop to a pixel rectangle inside b, offset by
 // b.Min so callers can sample the source directly.
 func cropPixels(b image.Rectangle, c cropFrac) image.Rectangle {

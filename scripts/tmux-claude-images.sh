@@ -66,7 +66,7 @@ launch_kitty() {
 	if [[ -n ${KITTY_WINDOW_ID:-} ]]; then
 		placement=(--match "window_id:$KITTY_WINDOW_ID" --next-to "id:$KITTY_WINDOW_ID" --keep-focus)
 	fi
-	kitty @ launch --type=window "${placement[@]}" --var claude_img_src="$KEY" \
+	kitty @ launch --type=window ${placement[@]+"${placement[@]}"} --var claude_img_src="$KEY" \
 		--env AGENT_CAROUSEL_DIR="$STATE_DIR" \
 		--env CLAUDE_STATUS_DIR="$STATE_DIR" \
 		"${AGENT_CAROUSEL_BIN:-agent-carousel}" "$KEY" >/dev/null

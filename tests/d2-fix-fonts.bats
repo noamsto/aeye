@@ -31,3 +31,12 @@ setup() {
 	run grep -c 'font-style:italic' "$SVG"
 	[ "$output" -eq 1 ]
 }
+
+@test "running twice is idempotent (no doubled declarations)" {
+	bash "$APP" "$SVG"
+	bash "$APP" "$SVG"
+	run grep -c 'font-weight:bold' "$SVG"
+	[ "$output" -eq 1 ]
+	run grep -c 'font-style:italic' "$SVG"
+	[ "$output" -eq 1 ]
+}

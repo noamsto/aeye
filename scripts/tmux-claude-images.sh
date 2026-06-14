@@ -33,15 +33,19 @@ resolve_target() {
 
 launch_tmux() {
 	local existing
-	existing="$(tmux list-panes -F '#{pane_id} #{@claude_img_src}' |
+	# -s scans the whole session, not just the active window: the viewer lives in
+	# Claude's window, which may not be the one the user is currently looking at.
+	existing="$(tmux list-panes -s -F '#{pane_id} #{@claude_img_src}' |
 		awk -v s="$KEY" '$2 == s {print $1; exit}')"
 	if [[ -n $existing ]]; then
 		[[ -n $ENSURE_OPEN ]] && return # already open; ensure-open is a no-op
 		tmux kill-pane -t "$existing"
 		return
 	fi
+	# Anchor the split to Claude's pane (-t) so it lands in Claude's window even
+	# if the user has switched away; -d so opening it never yanks their focus.
 	local viewer
-	viewer="$(tmux split-window -h -P -F '#{pane_id}' "${AGENT_CAROUSEL_BIN:-agent-carousel} '$KEY'")"
+	viewer="$(tmux split-window -h -d -t "$KEY" -P -F '#{pane_id}' "${AGENT_CAROUSEL_BIN:-agent-carousel} '$KEY'")"
 	tmux set-option -p -t "$viewer" @claude_img_src "$KEY"
 }
 

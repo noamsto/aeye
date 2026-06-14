@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/base64"
+	"math"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -227,4 +229,41 @@ func rectBBox(frag string) (minX, minY, maxX, maxY float64, ok bool) {
 		return 0, 0, 0, 0, false
 	}
 	return
+}
+
+// regionTree indexes regions by their parent path so drilling is a lookup.
+type regionTree struct {
+	byParent map[string][]region // parent path ("" = root) → spatially ordered children
+}
+
+func newRegionTree(rs []region) *regionTree {
+	t := &regionTree{byParent: map[string][]region{}}
+	for _, r := range rs {
+		parent := ""
+		if i := strings.LastIndex(r.path, "."); i >= 0 {
+			parent = r.path[:i]
+		}
+		t.byParent[parent] = append(t.byParent[parent], r)
+	}
+	for k := range t.byParent {
+		sortSpatial(t.byParent[k])
+	}
+	return t
+}
+
+// childrenOf returns the regions directly under the given drill path (nil/empty
+// = root level), in spatial reading order.
+func (t *regionTree) childrenOf(path []string) []region {
+	return t.byParent[strings.Join(path, ".")]
+}
+
+// sortSpatial orders regions top-to-bottom then left-to-right, so Tab advances
+// in reading order. The 0.05 band tolerates minor vertical misalignment.
+func sortSpatial(rs []region) {
+	sort.SliceStable(rs, func(i, j int) bool {
+		if math.Abs(rs[i].cy()-rs[j].cy()) > 0.05 {
+			return rs[i].cy() < rs[j].cy()
+		}
+		return rs[i].cx() < rs[j].cx()
+	})
 }

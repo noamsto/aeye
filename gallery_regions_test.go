@@ -46,3 +46,33 @@ func TestParseRegionsSketch(t *testing.T) {
 		}
 	}
 }
+
+func pathsOf(rs []region) []string {
+	var p []string
+	for _, r := range rs {
+		p = append(p, r.path)
+	}
+	return p
+}
+
+func TestRegionTreeDrill(t *testing.T) {
+	rs := []region{
+		{path: "ingest", x0: 0.0, y0: 0, x1: 0.4, y1: 1},
+		{path: "store", x0: 0.6, y0: 0, x1: 1, y1: 1},
+		{path: "ingest.read", x0: 0.05, y0: 0.1, x1: 0.35, y1: 0.4},
+		{path: "ingest.parse", x0: 0.05, y0: 0.6, x1: 0.35, y1: 0.9},
+	}
+	tr := newRegionTree(rs)
+
+	root := tr.childrenOf(nil)
+	if len(root) != 2 || root[0].path != "ingest" || root[1].path != "store" {
+		t.Fatalf("root level = %v", pathsOf(root))
+	}
+	kids := tr.childrenOf([]string{"ingest"})
+	if len(kids) != 2 || kids[0].path != "ingest.read" || kids[1].path != "ingest.parse" {
+		t.Fatalf("ingest children = %v", pathsOf(kids))
+	}
+	if len(tr.childrenOf([]string{"store"})) != 0 {
+		t.Error("store should be a leaf")
+	}
+}

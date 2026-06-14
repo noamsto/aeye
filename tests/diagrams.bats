@@ -95,8 +95,17 @@ STUB
 	[ -f "$DIAGRAMS/render-errors.log" ]
 }
 
-@test "d2 not on PATH -> clean no-op" {
-	rm -f "$STUB_BIN/d2"
+@test "d2 not available -> clean no-op" {
+	# Point at a command that cannot exist, so command -v fails deterministically
+	# regardless of any real d2 on PATH (e.g. from the devShell).
+	export AGENT_CAROUSEL_D2=__agent_carousel_absent_d2__
+	run run_app hook-write-d2.json
+	[ "$status" -eq 0 ]
+	[ ! -f "$MANIFEST" ]
+}
+
+@test "resvg not available -> clean no-op" {
+	export AGENT_CAROUSEL_RESVG=__agent_carousel_absent_resvg__
 	run run_app hook-write-d2.json
 	[ "$status" -eq 0 ]
 	[ ! -f "$MANIFEST" ]

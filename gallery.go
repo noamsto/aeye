@@ -52,9 +52,9 @@ func computeLayout(paneW, paneH int) layout {
 	stripCols := clamp((paneW+stripGutter)/(stripW+2+stripGutter), 1, maxCellDim)
 
 	// Area left for the preview after title(1) + subtitle(1) +
-	// filmstrip(stripH+2 border) + hints(1), minus 2 for the preview border.
+	// filmstrip(stripH+2 border) + legend(2), minus 2 for the preview border.
 	availW := clamp(paneW-2, 1, maxCellDim)
-	availH := clamp(paneH-stripH-7, 1, maxCellDim)
+	availH := clamp(paneH-stripH-8, 1, maxCellDim)
 
 	// Largest box with cols:rows ≈ previewBoxCols/100 that fits availW × availH.
 	previewW := availW
@@ -333,15 +333,26 @@ func (m galleryModel) renderView() string {
 	selColor, dimColor := m.selColor, m.dimColor
 
 	// Big preview of the selected image, framed and centered above the filmstrip.
+	// The region keys / breadcrumb for the current entry ride on the box's top
+	// border as a title, so they sit right on the image rather than floating
+	// above it; blank for a plain image, leaving a plain border.
 	var preview string
 	if m.backend == backendKitty {
 		preview = placeholderBlock(previewID, m.l.previewW, m.l.previewH)
 	} else {
 		preview = symbolsBlock(m.images[m.cursor].Path, m.l.previewW, m.l.previewH)
 	}
-	preview = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
-		BorderForeground(selColor).Render(preview)
-	previewH := m.height - m.l.stripH - 5 // title + subtitle + filmstrip(stripH+2) + hints
+	context := ""
+	if m.curVector() != "" {
+		context = "diagram: ⇥ region · ] [ drill"
+	}
+	if m.regions != nil && m.regionIdx >= 0 {
+		if r, ok := m.focusedRegion(); ok {
+			context = "region: " + r.path + " · ⇥ next · ] [ drill · esc exit"
+		}
+	}
+	preview = borderWithTitle(preview, m.l.previewW, context, selColor)
+	previewH := m.height - m.l.stripH - 6 // title + subtitle + filmstrip(stripH+2) + legend(2)
 	previewArea := lipgloss.Place(m.width, previewH, lipgloss.Center, lipgloss.Center, preview)
 
 	// Centered title + subtitle (current image).
@@ -379,18 +390,40 @@ func (m galleryModel) renderView() string {
 	filmstrip := lipgloss.PlaceHorizontal(m.width, lipgloss.Center,
 		lipgloss.JoinHorizontal(lipgloss.Top, cells...))
 
-	// Centered key hints at the bottom.
-	hint := "↵/o open · O folder · h/l move · n/p page · g/G first/last · z/Z zoom · q quit"
-	if m.regions != nil && m.regionIdx >= 0 {
-		if r, ok := m.focusedRegion(); ok {
-			hint = "region: " + r.path + " · ⇥ next · ] [ drill · esc exit"
-		}
-	} else if !m.crop.isFull() {
-		hint = "←↑↓→/hjkl pan · z/Z zoom · 0/esc reset · q quit"
-	}
-	hints := center(lipgloss.NewStyle().Foreground(hintFg).Render(hint))
+	// Bottom legend: two universal rows that never change — view/navigation
+	// keys on the first, actions on the second. Zoom and pan sit here because
+	// they apply to plain images and diagrams alike; the region keys ride on the
+	// preview's top border instead (see above).
+	hintStyle := lipgloss.NewStyle().Foreground(hintFg)
+	navKeys := "h/l move · n/p page · g/G ends · z/Z zoom · hjkl pan · 0 reset"
+	actionKeys := "↵ open · O folder · r reload · q quit"
+	legend := lipgloss.JoinVertical(lipgloss.Left,
+		center(hintStyle.Render(truncateToWidth(navKeys, m.width))),
+		center(hintStyle.Render(truncateToWidth(actionKeys, m.width))))
 
-	return lipgloss.JoinVertical(lipgloss.Left, title, subtitle, previewArea, filmstrip, hints)
+	return lipgloss.JoinVertical(lipgloss.Left, title, subtitle, previewArea, filmstrip, legend)
+}
+
+// borderWithTitle frames inner in a rounded box (innerW = inner content width)
+// and embeds title in the top edge, like "╭─ title ────╮". An empty title gives
+// a plain border. The title is truncated to leave at least one trailing dash.
+func borderWithTitle(inner string, innerW int, title string, c imgcolor.Color) string {
+	style := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(c)
+	box := style.Render(inner)
+	if title == "" {
+		return box
+	}
+	mid := "─ " + title + " "
+	if lipgloss.Width(mid) > innerW-1 {
+		mid = truncateToWidth(mid, innerW-1)
+	}
+	mid += strings.Repeat("─", innerW-lipgloss.Width(mid))
+	top := lipgloss.NewStyle().Foreground(c).Render("╭" + mid + "╮")
+	lines := strings.SplitN(box, "\n", 2)
+	if len(lines) == 2 {
+		return top + "\n" + lines[1]
+	}
+	return top
 }
 
 // truncateToWidth cuts s to at most w display columns (ASCII-safe; bar text is

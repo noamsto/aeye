@@ -299,14 +299,31 @@ func frameRegion(r region, srcW, srcH, boxW, boxH int) cropFrac {
 	return cropFrac{x0, y0, x0 + cropW, y0 + cropH}
 }
 
-// sortSpatial orders regions top-to-bottom then left-to-right, so Tab advances
-// in reading order. The 0.05 band tolerates minor vertical misalignment.
+// sortSpatial orders regions so Tab advances in reading order along the group's
+// dominant flow: left-to-right for a wider-than-tall layout, top-to-bottom
+// otherwise. Picking the primary axis by spread keeps a horizontal flow (where a
+// node can sit lower than its neighbours) from sorting by row first. The 0.05
+// band tolerates minor misalignment on the secondary axis.
 func sortSpatial(rs []region) {
+	var minX, minY = 1.0, 1.0
+	var maxX, maxY = 0.0, 0.0
+	for _, r := range rs {
+		minX, maxX = math.Min(minX, r.cx()), math.Max(maxX, r.cx())
+		minY, maxY = math.Min(minY, r.cy()), math.Max(maxY, r.cy())
+	}
+	horizontal := (maxX - minX) > (maxY - minY)
 	sort.SliceStable(rs, func(i, j int) bool {
-		if math.Abs(rs[i].cy()-rs[j].cy()) > 0.05 {
-			return rs[i].cy() < rs[j].cy()
+		a, b := rs[i], rs[j]
+		if horizontal {
+			if math.Abs(a.cx()-b.cx()) > 0.05 {
+				return a.cx() < b.cx()
+			}
+			return a.cy() < b.cy()
 		}
-		return rs[i].cx() < rs[j].cx()
+		if math.Abs(a.cy()-b.cy()) > 0.05 {
+			return a.cy() < b.cy()
+		}
+		return a.cx() < b.cx()
 	})
 }
 

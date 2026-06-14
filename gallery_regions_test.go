@@ -138,6 +138,25 @@ func TestRegionModeCycleAndDrill(t *testing.T) {
 	}
 }
 
+// A left-to-right flow can place the entry node lower than its neighbours;
+// Tab must still start at the leftmost group, not the topmost. Coordinates
+// mirror a real D2 render (api gateway on the left, sitting below the services
+// and data columns it fans into).
+func TestRegionCycleHorizontalFlow(t *testing.T) {
+	rs := []region{
+		{path: "api", x0: 0.088, y0: 0.305, x1: 0.309, y1: 0.829},
+		{path: "services", x0: 0.431, y0: 0.176, x1: 0.626, y1: 0.717},
+		{path: "data", x0: 0.748, y0: 0.194, x1: 0.910, y1: 0.734},
+	}
+	m := &galleryModel{regions: newRegionTree(rs), regionIdx: -1, l: layout{previewW: 80, previewH: 40}}
+	for _, want := range []string{"api", "services", "data"} {
+		m.cycleRegion(+1)
+		if r, _ := m.focusedRegion(); r.path != want {
+			t.Fatalf("cycle → %v, want %v", r.path, want)
+		}
+	}
+}
+
 func TestDrillInLeafNoOp(t *testing.T) {
 	rs := []region{{path: "store", x0: 0.6, y0: 0, x1: 1, y1: 1}}
 	m := &galleryModel{regions: newRegionTree(rs), regionIdx: -1, l: layout{previewW: 80, previewH: 40}}

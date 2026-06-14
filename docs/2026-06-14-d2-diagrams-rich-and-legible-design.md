@@ -37,7 +37,8 @@ phases, each with its own implementation plan.
 
 ## Phase 0 — Fix the render pipeline (live bug, highest priority)
 
-Without text, nothing downstream matters. Scope is `diagrams.sh` + a test.
+Without text, nothing downstream matters. Scope is `diagrams.sh`, the nix font
+packaging (bundle + `AGENT_CAROUSEL_D2_FONT_DIR`), and a regression test.
 
 ### Text rendering
 

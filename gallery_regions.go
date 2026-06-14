@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"math"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -369,4 +370,25 @@ func (m *galleryModel) frameFocused() {
 	}
 	b := m.curImg.Bounds()
 	m.crop = frameRegion(r, b.Dx(), b.Dy(), m.l.previewW*cellPxW, m.l.previewH*cellPxH)
+}
+
+// ensureRegions parses the current d2 entry's SVG into m.regions on first use.
+// No vector / not kitty / nothing parses → m.regions stays nil (keys no-op).
+func (m *galleryModel) ensureRegions() {
+	if m.regions != nil || m.backend != backendKitty {
+		return
+	}
+	v := m.curVector()
+	if v == "" {
+		return
+	}
+	data, err := os.ReadFile(v)
+	if err != nil {
+		return
+	}
+	rs := parseRegions(data)
+	if len(rs) == 0 {
+		return
+	}
+	m.regions = newRegionTree(rs)
 }

@@ -225,8 +225,30 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.zoomBy(1 / 1.25)
 			m.transmitPreviewOnly()
 		case "0", "esc":
-			m.resetZoom()
+			m.exitRegions()
 			m.transmitPreviewOnly()
+		case "tab":
+			m.ensureRegions()
+			if m.regions != nil {
+				m.cycleRegion(+1)
+				m.transmitPreviewOnly()
+			}
+		case "shift+tab":
+			m.ensureRegions()
+			if m.regions != nil {
+				m.cycleRegion(-1)
+				m.transmitPreviewOnly()
+			}
+		case "]":
+			if m.regions != nil && m.regionIdx >= 0 {
+				m.drillIn()
+				m.transmitPreviewOnly()
+			}
+		case "[":
+			if m.regions != nil && m.regionIdx >= 0 {
+				m.drillOut()
+				m.transmitPreviewOnly()
+			}
 		case "n":
 			m.selectIndex(m.cursor + m.l.stripCols)
 		case "p":

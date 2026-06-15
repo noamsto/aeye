@@ -353,12 +353,16 @@ func (m *galleryModel) focusedRegion() (region, bool) {
 	return sibs[m.regionIdx], true
 }
 
-// cycleRegion focuses the next (+1) / previous (-1) sibling at the current level,
-// wrapping. The first call (regionIdx<0) enters region mode at index 0. Frames
-// the focus.
+// cycleRegion focuses the next (+1) sibling at the current level, wrapping. The
+// first call (regionIdx<0) enters region mode at index 0. Stepping back (-1) off
+// the first sibling returns to the whole diagram. Frames the focus.
 func (m *galleryModel) cycleRegion(dir int) {
 	sibs := m.regions.childrenOf(m.regionPath)
 	if len(sibs) == 0 {
+		return
+	}
+	if dir < 0 && m.regionIdx == 0 {
+		m.exitRegions()
 		return
 	}
 	if m.regionIdx < 0 {

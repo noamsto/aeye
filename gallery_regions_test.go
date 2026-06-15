@@ -177,6 +177,28 @@ func TestRegionCycleHorizontalFlow(t *testing.T) {
 	}
 }
 
+// shift+tab off the first sibling backs out to the whole diagram instead of
+// wrapping to the last one. Holds at any drill level.
+func TestRegionCycleBackFromFirstExits(t *testing.T) {
+	rs := []region{
+		{path: "a", x0: 0, y0: 0, x1: 0.3, y1: 1},
+		{path: "b", x0: 0.35, y0: 0, x1: 0.6, y1: 1},
+		{path: "c", x0: 0.65, y0: 0, x1: 1, y1: 1},
+	}
+	m := &galleryModel{regions: newRegionTree(rs), regionIdx: -1, l: layout{previewW: 80, previewH: 40}}
+	m.cycleRegion(+1) // enter at first sibling
+	if r, _ := m.focusedRegion(); r.path != "a" {
+		t.Fatalf("entered at %v, want a", r.path)
+	}
+	m.cycleRegion(-1) // back off the first → whole diagram
+	if _, ok := m.focusedRegion(); ok || m.regionIdx != -1 {
+		t.Fatalf("back from first: regionIdx=%d ok=%v, want not focused", m.regionIdx, ok)
+	}
+	if !m.crop.isFull() {
+		t.Fatalf("back from first should reset to fit-all, crop=%+v", m.crop)
+	}
+}
+
 func TestDrillInLeafNoOp(t *testing.T) {
 	rs := []region{{path: "store", x0: 0.6, y0: 0, x1: 1, y1: 1}}
 	m := &galleryModel{regions: newRegionTree(rs), regionIdx: -1, l: layout{previewW: 80, previewH: 40}}

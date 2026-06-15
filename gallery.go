@@ -378,7 +378,7 @@ func (m galleryModel) renderView() string {
 	}
 	if m.regions != nil && m.regionIdx >= 0 {
 		if r, ok := m.focusedRegion(); ok {
-			context = "region: " + r.path + " · ⇥ next · ] [ drill · esc exit"
+			context = "region: " + r.path + " · ⇥ next · ⇧⇥ back · ] [ drill · esc exit"
 		}
 	}
 	preview = borderWithTitle(preview, m.l.previewW, context, selColor)

@@ -17,6 +17,8 @@ relationships — Write a D2 diagram as a .d2 file and it renders into the
 carousel automatically. Write it to: $SRC_DIR/<name>.d2 (an absolute path
 outside any repo; never write .d2 files into the working project).
 Do NOT diagram trivial or linear one-step things. One diagram per concept.
+Escape a literal \$ in labels as \\\$ — a bare \$ starts a D2 substitution and
+the diagram silently fails to compile.
 Prose stays primary — a diagram supplements, never replaces, the explanation.
 EOF
 

@@ -79,6 +79,9 @@ with arrows, nest them with `{ }`:
   (`shape: cylinder; style.stroke: red`, not `shape: cylinder, ...`).
 - Pick a shape with `shape:` — `cylinder`, `person`, `queue`, `cloud`,
   `sql_table`, `sequence_diagram`, and more.
+- Escape `$` in label text as `\$` — a bare `$` starts a variable substitution
+  (`${var}`), so a literal `"$5,000,000"` fails to compile with
+  *"substitutions must begin on {"* and the diagram silently never renders.
 
 A complete minimal diagram — request path through a small service:
 

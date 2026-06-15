@@ -122,17 +122,23 @@ func TestZoomDeeperPreservesAspect(t *testing.T) {
 	}
 }
 
-func TestZoomInFromLetterboxedRegionSnapsToFill(t *testing.T) {
+func TestZoomInFromFramedRegionMagnifiesView(t *testing.T) {
 	m := wideModel()
 	// A wide framed region (Tab onto a step group): aspect far from the box, so it
-	// letterboxes. Zooming in must snap to fill, not preserve the strip.
+	// letterboxes. Zooming in must magnify the framed view in place — scale about
+	// its center, aspect preserved — not jump to a full-image-span slice.
 	m.crop = cropFrac{0.1, 0.45, 0.9, 0.55}
-	if m.cropFillsBox() {
-		t.Fatal("wide region should not be reported as filling the box")
-	}
+	wantAspect := m.crop.w() / m.crop.h()
+	cx, cy := m.crop.cx(), m.crop.cy()
 	m.zoomBy(1.25)
-	if !m.cropFillsBox() {
-		t.Errorf("zoom-in from a letterboxed region must snap to fill, got %+v", m.crop)
+	if got := m.crop.w() / m.crop.h(); !approx(got, wantAspect) {
+		t.Errorf("magnify must preserve the framed aspect: %v -> %v", wantAspect, got)
+	}
+	if !approx(m.crop.w(), 0.8/1.25) || !approx(m.crop.h(), 0.1/1.25) {
+		t.Errorf("magnify must scale the crop by 1/1.25 about center, got %+v", m.crop)
+	}
+	if !approx(m.crop.cx(), cx) || !approx(m.crop.cy(), cy) {
+		t.Errorf("magnify must keep the view centered, got %+v", m.crop)
 	}
 }
 

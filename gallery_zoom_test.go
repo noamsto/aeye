@@ -77,7 +77,7 @@ func TestZoomByClampsAtMax(t *testing.T) {
 		m.zoomBy(1.25)
 	}
 	if !approx(m.crop.w(), 1.0/zoomMax) || !approx(m.crop.h(), 1.0/zoomMax) {
-		t.Errorf("zoom must clamp to min side 1/%v, got w=%v h=%v", zoomMax, m.crop.w(), m.crop.h())
+		t.Errorf("zoom must clamp to max side 1/%v, got w=%v h=%v", zoomMax, m.crop.w(), m.crop.h())
 	}
 }
 
@@ -139,6 +139,21 @@ func TestZoomInFromFramedRegionMagnifiesView(t *testing.T) {
 	}
 	if !approx(m.crop.cx(), cx) || !approx(m.crop.cy(), cy) {
 		t.Errorf("magnify must keep the view centered, got %+v", m.crop)
+	}
+}
+
+func TestZoomInClampsLongSideAtMax(t *testing.T) {
+	// A near-floor framed strip: the longer side sits just above 1/zoomMax, so one
+	// more zoom-in must clamp on that box-binding side with aspect preserved. The
+	// old shorter-side floor would have inverted the scale here and grown the crop.
+	m := &galleryModel{crop: cropFrac{0.43, 0.49, 0.57, 0.51}} // w=0.14, h=0.02
+	wantAspect := m.crop.w() / m.crop.h()
+	m.zoomBy(1.25)
+	if got := max(m.crop.w(), m.crop.h()); !approx(got, 1.0/zoomMax) {
+		t.Errorf("longer side must clamp to 1/%v, got %v", zoomMax, got)
+	}
+	if got := m.crop.w() / m.crop.h(); !approx(got, wantAspect) {
+		t.Errorf("clamp must preserve aspect: %v -> %v", wantAspect, got)
 	}
 }
 

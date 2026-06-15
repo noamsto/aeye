@@ -292,8 +292,16 @@ func frameRegion(r region, srcW, srcH, boxW, boxH int) cropFrac {
 	} else {
 		cropH = rw / targetFrac
 	}
-	cropW = math.Min(cropW, 1)
-	cropH = math.Min(cropH, 1)
+	// If matching the box aspect overflows the image, the region is too tall (or
+	// wide) to fill the box without cropping it — keep that axis tight to the
+	// region so it stays centered with symmetric letterbox, rather than padding
+	// out to the full image and stranding the region against an empty margin.
+	if cropW > 1 {
+		cropW = math.Min(rw, 1)
+	}
+	if cropH > 1 {
+		cropH = math.Min(rh, 1)
+	}
 	x0 := clampF(r.cx()-cropW/2, 0, 1-cropW)
 	y0 := clampF(r.cy()-cropH/2, 0, 1-cropH)
 	return cropFrac{x0, y0, x0 + cropW, y0 + cropH}

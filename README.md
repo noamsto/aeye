@@ -13,13 +13,7 @@ render, and image your agent touches, without leaving the terminal.
 
 </div>
 
-<div align="center">
-
-[![aeye — navigating a D2 architecture diagram in the carousel](docs/assets/demo.webp)](docs/assets/demo.mp4)
-
-<sub>Drilling into a D2 diagram in the carousel — <a href="docs/assets/demo.mp4">click for the full walkthrough</a>.</sub>
-
-</div>
+https://github.com/user-attachments/assets/56da40a2-29c7-4e88-b618-91a703a4c325
 
 A big **preview** of the selected image plus a **filmstrip** of thumbnails,
 rendered in a tmux split or kitty window (dual-mode). One half **captures** every

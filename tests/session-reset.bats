@@ -22,6 +22,14 @@ setup() {
 	[ ! -f "$MANIFEST" ]
 }
 
+@test "source=startup also removes the owner sidecar" {
+	owner="$CLAUDE_STATUS_DIR/images/7.owner"
+	printf 'sess-A' >"$owner"
+	run bash "$APP" <<<'{"source":"startup"}'
+	[ "$status" -eq 0 ]
+	[ ! -f "$owner" ]
+}
+
 @test "source=resume keeps the manifest" {
 	run bash "$APP" <<<'{"source":"resume"}'
 	[ "$status" -eq 0 ]

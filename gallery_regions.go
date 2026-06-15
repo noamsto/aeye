@@ -277,6 +277,13 @@ func (t *regionTree) childrenOf(path []string) []region {
 
 const framePadding = 1.1 // ~10% margin around the framed region
 
+// boxAspectFrac returns the crop fraction aspect (cropW_frac / cropH_frac) whose
+// *pixel* aspect equals the box's, i.e. (cropW·srcW)/(cropH·srcH) == boxW/boxH.
+// A crop shaped to this ratio fills the box with no letterboxing.
+func boxAspectFrac(srcW, srcH, boxW, boxH int) float64 {
+	return (float64(boxW) * float64(srcH)) / (float64(boxH) * float64(srcW))
+}
+
 // frameRegion returns the crop (source fractions) that frames r to the preview
 // box. It matches the crop's *pixel* aspect to the box (the crop is letterboxed
 // into the box, so this fills it) by folding in the source aspect, then takes
@@ -284,8 +291,7 @@ const framePadding = 1.1 // ~10% margin around the framed region
 // [0,1].
 func frameRegion(r region, srcW, srcH, boxW, boxH int) cropFrac {
 	rw, rh := (r.x1-r.x0)*framePadding, (r.y1-r.y0)*framePadding
-	// desired cropW_frac/cropH_frac so (cropW·srcW)/(cropH·srcH) == boxW/boxH.
-	targetFrac := (float64(boxW) * float64(srcH)) / (float64(boxH) * float64(srcW))
+	targetFrac := boxAspectFrac(srcW, srcH, boxW, boxH)
 	cropW, cropH := rw, rh
 	if rw/rh < targetFrac {
 		cropW = rh * targetFrac

@@ -22,6 +22,9 @@ split-window) echo '%99' ;;
 esac
 STUB
 	chmod +x "$STUB_BIN/tmux"
+	# The wrapper resolves the viewer binary on PATH; give it a stub to find.
+	printf '#!/usr/bin/env bash\n:\n' >"$STUB_BIN/aeye"
+	chmod +x "$STUB_BIN/aeye"
 	export PATH="$STUB_BIN:$PATH"
 	export TMUX_LOG="$BATS_TEST_TMPDIR/tmux.log"
 	: >"$TMUX_LOG"

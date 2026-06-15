@@ -91,6 +91,60 @@ func TestZoomOutFloorsToFull(t *testing.T) {
 	}
 }
 
+// wideModel builds a model whose decoded image is 7.2:1 and whose preview box is
+// 1.6:1, so the box-aspect fill crop is a full-height, 2/9-width vertical slice.
+func wideModel() *galleryModel {
+	return &galleryModel{
+		curImg: image.NewRGBA(image.Rect(0, 0, 720, 100)),
+		l:      layout{previewW: 160, previewH: 50},
+		crop:   fullCrop(),
+	}
+}
+
+func TestZoomBySnapsToBoxAspectFill(t *testing.T) {
+	m := wideModel()
+	m.zoomBy(1.25) // first zoom-in from rest snaps to the fill crop
+	if !approx(m.crop.w(), 2.0/9.0) || !approx(m.crop.h(), 1) {
+		t.Errorf("fill snap = %+v, want w=2/9 h=1", m.crop)
+	}
+	if !approx(m.crop.cx(), 0.5) || m.crop.isFull() {
+		t.Errorf("fill crop must be centered and non-full, got %+v", m.crop)
+	}
+}
+
+func TestZoomDeeperPreservesAspect(t *testing.T) {
+	m := wideModel()
+	m.zoomBy(1.25) // snap to fill
+	want := m.crop.w() / m.crop.h()
+	m.zoomBy(1.25) // deeper: uniform scale, aspect preserved
+	if got := m.crop.w() / m.crop.h(); !approx(got, want) {
+		t.Errorf("deeper zoom changed aspect: %v -> %v", want, got)
+	}
+}
+
+func TestZoomInFromLetterboxedRegionSnapsToFill(t *testing.T) {
+	m := wideModel()
+	// A wide framed region (Tab onto a step group): aspect far from the box, so it
+	// letterboxes. Zooming in must snap to fill, not preserve the strip.
+	m.crop = cropFrac{0.1, 0.45, 0.9, 0.55}
+	if m.cropFillsBox() {
+		t.Fatal("wide region should not be reported as filling the box")
+	}
+	m.zoomBy(1.25)
+	if !m.cropFillsBox() {
+		t.Errorf("zoom-in from a letterboxed region must snap to fill, got %+v", m.crop)
+	}
+}
+
+func TestZoomOutFromFillSnapsToRest(t *testing.T) {
+	m := wideModel()
+	m.zoomBy(1.25) // snap to fill (h == 1)
+	m.zoomBy(1 / 1.25)
+	if !m.crop.isFull() {
+		t.Errorf("zoom-out from a full-height fill must snap to rest, got %+v", m.crop)
+	}
+}
+
 func TestPanByClamps(t *testing.T) {
 	m := &galleryModel{crop: cropFrac{0.25, 0.25, 0.75, 0.75}}
 	m.panBy(-1, -1) // big step up/left

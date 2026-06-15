@@ -45,7 +45,7 @@ launch_tmux() {
 	# Anchor the split to Claude's pane (-t) so it lands in Claude's window even
 	# if the user has switched away; -d so opening it never yanks their focus.
 	local viewer
-	viewer="$(tmux split-window -h -d -t "$KEY" -P -F '#{pane_id}' "${AEYE_BIN:-aeye} '$KEY'")"
+	viewer="$(tmux split-window -h -d -t "$KEY" -P -F '#{pane_id}' "$VIEWER_BIN '$KEY'")"
 	tmux set-option -p -t "$viewer" @claude_img_src "$KEY"
 }
 
@@ -60,18 +60,22 @@ launch_kitty() {
 	# Anchor to Claude's kitty window (its id is in our inherited env) so the
 	# viewer opens in Claude's tab even if the user switched away, and not the
 	# active one. --match selects that tab as the launch target (a remote-control
-	# --next-to is ignored across tabs without it); --next-to places the split
-	# beside Claude; --keep-focus so opening it never steals focus.
-	# Verified over the live RC socket: a window launched with these flags lands
-	# in the target's tab (not the active one) and leaves focus where it was.
+	# --location/--next-to is ignored across tabs without it); --location=vsplit
+	# opens the split to the right of Claude (mirroring the tmux split-window -h
+	# path); --next-to anchors it beside Claude; --keep-focus so opening it never
+	# steals focus. vsplit only takes effect in the splits layout, so switch
+	# Claude's tab to it first — otherwise a stacking layout (e.g. fat) drops the
+	# viewer in the bottom row. Verified over the live RC socket: the window lands
+	# in the target's tab to the right and leaves focus where it was.
 	local placement=()
 	if [[ -n ${KITTY_WINDOW_ID:-} ]]; then
-		placement=(--match "window_id:$KITTY_WINDOW_ID" --next-to "id:$KITTY_WINDOW_ID" --keep-focus)
+		kitty @ goto-layout --match "window_id:$KITTY_WINDOW_ID" splits >/dev/null 2>&1 || true
+		placement=(--match "window_id:$KITTY_WINDOW_ID" --location=vsplit --next-to "id:$KITTY_WINDOW_ID" --keep-focus)
 	fi
 	kitty @ launch --type=window ${placement[@]+"${placement[@]}"} --var claude_img_src="$KEY" \
 		--env AEYE_DIR="$STATE_DIR" \
 		--env CLAUDE_STATUS_DIR="$STATE_DIR" \
-		"${AEYE_BIN:-aeye}" "$KEY" >/dev/null
+		"$VIEWER_BIN" "$KEY" >/dev/null
 }
 
 main() {
@@ -96,6 +100,14 @@ main() {
 	if [[ ! -s $MANIFEST ]]; then
 		[[ $MODE == tmux ]] && tmux display-message "no images yet for this pane"
 		exit 0
+	fi
+	# Resolve to an absolute path here, where our PATH includes the binary (the nix
+	# wrapper puts it there). kitty/tmux launch the viewer in the *server's*
+	# environment, which never saw our PATH — a bare name wouldn't be found there.
+	VIEWER_BIN="$(command -v "${AEYE_BIN:-aeye}" 2>/dev/null || true)"
+	if [[ -z $VIEWER_BIN ]]; then
+		echo "aeye not found: set AEYE_BIN or put '${AEYE_BIN:-aeye}' on PATH" >&2
+		exit 1
 	fi
 	"launch_$MODE"
 }

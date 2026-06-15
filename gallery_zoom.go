@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"image"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -49,18 +50,73 @@ func recenterScaled(cx, cy, w, h float64) cropFrac {
 	return cropFrac{x0, y0, x0 + w, y0 + h}
 }
 
-// zoomBy scales the crop about its center by 1/factor (factor > 1 zooms in).
-// Aspect is preserved only when w == h; independent per-axis clamping at the
-// extremes ([1/zoomMax, 1]) can distort a non-square crop.
-func (m *galleryModel) zoomBy(factor float64) {
-	const minSide = 1.0 / zoomMax
-	w := clampF(m.crop.w()/factor, minSide, 1)
-	h := clampF(m.crop.h()/factor, minSide, 1)
-	c := recenterScaled(m.crop.cx(), m.crop.cy(), w, h)
-	if c.isFull() {
-		c = fullCrop()
+// baseFillCrop is the largest crop — centered on the current view — whose pixel
+// aspect matches the preview box, so it fills the box with no letterbox. For a
+// wide image that's a full-height vertical slice; for a tall image, a full-width
+// horizontal band. Returns fullCrop when nothing is decoded.
+func (m *galleryModel) baseFillCrop() cropFrac {
+	if m.curImg == nil {
+		return fullCrop()
 	}
-	m.crop = c
+	b := m.curImg.Bounds()
+	frac := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*cellPxW, m.l.previewH*cellPxH)
+	w, h := 1.0, 1.0
+	if frac <= 1 {
+		w = frac
+	} else {
+		h = 1 / frac
+	}
+	return recenterScaled(m.crop.cx(), m.crop.cy(), w, h)
+}
+
+// scaleCropAbout scales the crop's size by s about its center, preserving aspect.
+// s < 1 zooms in, s > 1 zooms out. The smaller side is floored at 1/zoomMax, and
+// flooring scales both axes together so a non-square crop never distorts.
+func scaleCropAbout(c cropFrac, s float64) cropFrac {
+	const minSide = 1.0 / zoomMax
+	if lo := min(c.w(), c.h()); lo*s < minSide {
+		s = minSide / lo
+	}
+	return recenterScaled(c.cx(), c.cy(), c.w()*s, c.h()*s)
+}
+
+// cropFillsBox reports whether the crop already fills the preview box — its pixel
+// aspect matches the box's. False for the rest view of a non-square image and for
+// a region framed wider or taller than the box (Tab framing keeps the whole
+// region, so a wide step group letterboxes).
+func (m *galleryModel) cropFillsBox() bool {
+	if m.curImg == nil {
+		return true
+	}
+	b := m.curImg.Bounds()
+	want := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*cellPxW, m.l.previewH*cellPxH)
+	return math.Abs(m.crop.w()/m.crop.h()-want) < want*1e-3
+}
+
+// zoomBy moves the crop one zoom step (factor > 1 zooms in). Zooming in while the
+// crop is letterboxed — the rest view, or a region framed wider/taller than the
+// box — snaps to the box-aspect fill crop centered on the current view, so a wide
+// diagram (or a wide Tab-framed step group) grows to fill the box instead of
+// staying a strip. Once it fills, deeper steps scale it uniformly. Zooming out
+// grows the crop until it spills past the image, then snaps back to the rest view.
+func (m *galleryModel) zoomBy(factor float64) {
+	if factor > 1 {
+		if !m.cropFillsBox() {
+			m.crop = m.baseFillCrop()
+			return
+		}
+		m.crop = scaleCropAbout(m.crop, 1/factor)
+		return
+	}
+	if m.crop.isFull() {
+		return
+	}
+	w, h := m.crop.w()/factor, m.crop.h()/factor
+	if w >= 1 || h >= 1 {
+		m.crop = fullCrop()
+		return
+	}
+	m.crop = recenterScaled(m.crop.cx(), m.crop.cy(), w, h)
 }
 
 // panBy shifts the crop by a fraction of its own size, so a keypress feels like

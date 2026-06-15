@@ -22,3 +22,8 @@ setup() {
 	run jq -e '[.hooks.SessionStart[].hooks[].command] | any(test("diagram-guidance.sh"))' "$HOOKS"
 	[ "$status" -eq 0 ]
 }
+
+@test "SessionStart runs session-reset.sh" {
+	run jq -e '[.hooks.SessionStart[].hooks[].command] | any(test("session-reset.sh"))' "$HOOKS"
+	[ "$status" -eq 0 ]
+}

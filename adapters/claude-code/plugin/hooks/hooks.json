@@ -17,6 +17,11 @@
         "hooks": [
           {"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/diagram-guidance.sh"}
         ]
+      },
+      {
+        "hooks": [
+          {"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/session-reset.sh"}
+        ]
       }
     ]
   }

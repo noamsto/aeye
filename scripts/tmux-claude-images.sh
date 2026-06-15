@@ -43,9 +43,13 @@ launch_tmux() {
 		return
 	fi
 	# Anchor the split to Claude's pane (-t) so it lands in Claude's window even
-	# if the user has switched away; -d so opening it never yanks their focus.
+	# if the user has switched away. -d on an automatic ensure-open so it never
+	# yanks their focus; on a manual toggle the user pressed the key, so move
+	# focus to the viewer.
+	local detach=()
+	[[ -n $ENSURE_OPEN ]] && detach=(-d)
 	local viewer
-	viewer="$(tmux split-window -h -d -t "$KEY" -P -F '#{pane_id}' "$VIEWER_BIN '$KEY'")"
+	viewer="$(tmux split-window -h "${detach[@]}" -t "$KEY" -P -F '#{pane_id}' "$VIEWER_BIN '$KEY'")"
 	tmux set-option -p -t "$viewer" @claude_img_src "$KEY"
 }
 

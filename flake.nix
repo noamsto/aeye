@@ -20,7 +20,13 @@
         lib,
         self',
         ...
-      }: {
+      }: let
+        # Short commit the binary was built from; "unknown" when the tree is dirty
+        # in a non-git build. Stamped into the binary so `aeye --version` and the
+        # viewer footer reveal which build is running (see the version skew this
+        # made hard to spot).
+        rev = inputs.self.shortRev or inputs.self.dirtyShortRev or "unknown";
+      in {
         pre-commit.settings.hooks = {
           gofmt.enable = true;
           # govet and golangci-lint require network access (to resolve Go module
@@ -54,6 +60,7 @@
             src = ./.;
             vendorHash = "sha256-G0x4z/zFDK578yJBLUD555wBQ9quUyLeO5bKEZewCC4=";
             doCheck = true;
+            ldflags = ["-X main.version=0.1.0-${rev}"];
             meta = {
               description = "tmux/kitty image carousel for coding agents";
               mainProgram = "aeye";

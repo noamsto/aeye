@@ -20,11 +20,16 @@ func (r region) cx() float64 { return (r.x0 + r.x1) / 2 }
 func (r region) cy() float64 { return (r.y0 + r.y1) / 2 }
 
 var (
-	svgGroupRe    = regexp.MustCompile(`<g class="([A-Za-z0-9+/=]+)"[^>]*>`)
+	// A shape with a d2 `class:` renders as class="<base64-id> <classname>" — the
+	// id stays first, so capture it and allow trailing space-separated names.
+	svgGroupRe    = regexp.MustCompile(`<g class="([A-Za-z0-9+/=]+)(?: [^"]*)?"[^>]*>`)
 	svgInnerSVGRe = regexp.MustCompile(`<svg[^>]+class="[^"]*d2-svg[^"]*"[^>]+viewBox="(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)"`)
 	svgViewBoxRe  = regexp.MustCompile(`viewBox="(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)"`)
 	svgDAttrRe    = regexp.MustCompile(`d="([^"]*)"`)
-	connPathRe    = regexp.MustCompile(`^\(.*\)\[\d+\]$`)
+	// A connection's id is "(src -> dst)[n]"; nested in a container it's
+	// "parent.(src -> dst)[n]". Match the "(...)[n]" token at the end so nested
+	// connections are filtered too, not just top-level ones.
+	connPathRe    = regexp.MustCompile(`\(.*\)\[\d+\]$`)
 	diagramIDRe   = regexp.MustCompile(`^d2-\d+`)
 )
 

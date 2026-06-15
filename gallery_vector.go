@@ -7,12 +7,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"golang.org/x/image/draw"
 )
+
+var svgViewBoxRe = regexp.MustCompile(`viewBox="(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)"`)
 
 // cropViewBox rewrites the SVG's outer viewBox to the crop sub-rectangle so
 // resvg rasterizes only the visible window — keeping render cost flat at any

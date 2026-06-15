@@ -3,6 +3,8 @@ package main
 import (
 	"math"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 )
 
@@ -70,6 +72,49 @@ func TestParseRegionsClassedNode(t *testing.T) {
 	// A nested connection is not a navigable object.
 	if _, ok := paths["box.(a -&gt; b)[0]"]; ok {
 		t.Errorf("nested connection must be skipped (got %v)", keysOf(paths))
+	}
+}
+
+// TestParseRegionsLiveD2 renders a known diagram with the installed d2 and
+// asserts parseRegions still finds its objects — so a d2 release that changes
+// SVG output fails here loudly instead of silently degrading drill-down.
+func TestParseRegionsLiveD2(t *testing.T) {
+	d2, err := exec.LookPath("d2")
+	if err != nil {
+		t.Skip("d2 not on PATH")
+	}
+	const diagram = "ingest: {\n  read\n  parse\n}\nstore\ningest -> store\n"
+	want := []string{"ingest", "store", "ingest.read", "ingest.parse"}
+	for _, sketch := range []bool{false, true} {
+		name := "plain"
+		var args []string
+		if sketch {
+			name, args = "sketch", []string{"--sketch"}
+		}
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "in.d2")
+			out := filepath.Join(dir, "out.svg")
+			if err := os.WriteFile(src, []byte(diagram), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := exec.Command(d2, append(args, src, out)...).Run(); err != nil {
+				t.Fatalf("d2 render failed: %v", err)
+			}
+			data, err := os.ReadFile(out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			paths := map[string]region{}
+			for _, r := range parseRegions(data) {
+				paths[r.path] = r
+			}
+			for _, w := range want {
+				if _, ok := paths[w]; !ok {
+					t.Errorf("missing region %q (got %v) — d2 SVG format may have changed", w, keysOf(paths))
+				}
+			}
+		})
 	}
 }
 

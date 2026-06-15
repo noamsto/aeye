@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
+	"encoding/xml"
 	"math"
 	"os"
 	"regexp"
@@ -20,86 +22,172 @@ func (r region) cx() float64 { return (r.x0 + r.x1) / 2 }
 func (r region) cy() float64 { return (r.y0 + r.y1) / 2 }
 
 var (
-	// A shape with a d2 `class:` renders as class="<base64-id> <classname>" — the
-	// id stays first, so capture it and allow trailing space-separated names.
-	svgGroupRe    = regexp.MustCompile(`<g class="([A-Za-z0-9+/=]+)(?: [^"]*)?"[^>]*>`)
-	svgInnerSVGRe = regexp.MustCompile(`<svg[^>]+class="[^"]*d2-svg[^"]*"[^>]+viewBox="(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)"`)
-	svgViewBoxRe  = regexp.MustCompile(`viewBox="(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)"`)
-	svgDAttrRe    = regexp.MustCompile(`d="([^"]*)"`)
 	// A connection's id is "(src -> dst)[n]"; nested in a container it's
 	// "parent.(src -> dst)[n]". Match the "(...)[n]" token at the end so nested
 	// connections are filtered too, not just top-level ones.
-	connPathRe    = regexp.MustCompile(`\(.*\)\[\d+\]$`)
-	diagramIDRe   = regexp.MustCompile(`^d2-\d+`)
+	connPathRe  = regexp.MustCompile(`\(.*\)\[\d+\]$`)
+	diagramIDRe = regexp.MustCompile(`^d2-\d+`)
 )
 
-// parseRegions extracts each container/shape group as a region with a normalized
-// bbox. Groups whose class isn't a decodable dotted object path, connection
-// groups, and the diagram-id class are skipped. Returns nil if nothing parses.
-func parseRegions(data []byte) []region {
-	s := string(data)
+// viewBox is an SVG coordinate space: origin (x,y) plus width/height.
+type viewBox struct{ x, y, w, h float64 }
 
-	// D2 wraps all diagram content in an inner <svg class="d2-... d2-svg" viewBox="minX minY w h">.
-	// That viewBox defines the coordinate space used by all path geometry.
-	// We must not use the outer <svg> viewBox (0 0 w h) or any <marker> viewBox.
-	var minX, minY, vbW, vbH float64
-	if vb := svgInnerSVGRe.FindStringSubmatch(s); vb != nil {
-		minX, _ = strconv.ParseFloat(vb[1], 64)
-		minY, _ = strconv.ParseFloat(vb[2], 64)
-		vbW, _ = strconv.ParseFloat(vb[3], 64)
-		vbH, _ = strconv.ParseFloat(vb[4], 64)
-	} else {
-		// Fallback: use the first viewBox found (plain D2, no sketch overlay).
-		if vb2 := svgViewBoxRe.FindStringSubmatch(s); vb2 != nil {
-			minX, _ = strconv.ParseFloat(vb2[1], 64)
-			minY, _ = strconv.ParseFloat(vb2[2], 64)
-			vbW, _ = strconv.ParseFloat(vb2[3], 64)
-			vbH, _ = strconv.ParseFloat(vb2[4], 64)
+func parseViewBox(s string) (viewBox, bool) {
+	f := strings.Fields(s)
+	if len(f) != 4 {
+		return viewBox{}, false
+	}
+	var v [4]float64
+	for i := range f {
+		n, err := strconv.ParseFloat(f[i], 64)
+		if err != nil {
+			return viewBox{}, false
+		}
+		v[i] = n
+	}
+	return viewBox{v[0], v[1], v[2], v[3]}, true
+}
+
+// parseRegions extracts each container/shape group as a region with a normalized
+// bbox. d2 emits every object as a flat <g class="<base64-id> [styles]"> whose
+// geometry (<path>/<rect>/<ellipse>/<circle>/<text>) follows in document order
+// until the next such group, so we attribute each geometry element to the most
+// recently opened decodable group. Groups whose id isn't a decodable dotted
+// object path, connection groups, and the diagram-id group are skipped. Returns
+// nil if nothing parses.
+func parseRegions(data []byte) []region {
+	type group struct {
+		path                   string
+		minX, minY, maxX, maxY float64
+		set                    bool
+	}
+	var groups []*group
+	var cur *group
+	add := func(x0, y0, x1, y1 float64) {
+		if cur == nil {
+			return
+		}
+		if !cur.set {
+			cur.minX, cur.minY, cur.maxX, cur.maxY, cur.set = x0, y0, x1, y1, true
+			return
+		}
+		cur.minX, cur.minY = math.Min(cur.minX, x0), math.Min(cur.minY, y0)
+		cur.maxX, cur.maxY = math.Max(cur.maxX, x1), math.Max(cur.maxY, y1)
+	}
+
+	// D2 wraps diagram content in an inner <svg class="… d2-svg" viewBox="minX minY w h">
+	// whose viewBox defines the coordinate space for all geometry. Prefer it; fall
+	// back to the first viewBox seen (plain D2, no sketch overlay). A <marker>
+	// viewBox is never first — it follows the root <svg> — so it can't be picked.
+	var box, firstBox viewBox
+	var haveBox, haveFirst bool
+
+	dec := xml.NewDecoder(bytes.NewReader(data))
+	dec.Strict = false // d2 SVGs carry namespaces and HTML-ish label markup.
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			break // EOF, or a malformed tail — emit whatever parsed cleanly so far.
+		}
+		el, ok := tok.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		at := func(name string) string {
+			for _, a := range el.Attr {
+				if a.Name.Local == name {
+					return a.Value
+				}
+			}
+			return ""
+		}
+		num := func(name string) (float64, bool) {
+			v, err := strconv.ParseFloat(at(name), 64)
+			return v, err == nil
+		}
+		tx, ty := translateOf(at("transform"))
+
+		switch el.Name.Local {
+		case "svg":
+			if vb, ok := parseViewBox(at("viewBox")); ok {
+				if !haveFirst {
+					firstBox, haveFirst = vb, true
+				}
+				if strings.Contains(at("class"), "d2-svg") {
+					box, haveBox = vb, true
+				}
+			}
+		case "g":
+			// Only a decodable id opens a new geometry segment. Style groups
+			// (e.g. the inner <g class="shape"> that wraps each object's shapes)
+			// must leave the current group intact, or their geometry is lost.
+			fields := strings.Fields(at("class"))
+			if len(fields) == 0 {
+				continue
+			}
+			id, err := base64.StdEncoding.DecodeString(fields[0])
+			if err != nil {
+				continue
+			}
+			g := &group{path: string(id)}
+			groups = append(groups, g)
+			cur = g
+		case "path":
+			if x0, y0, x1, y1, ok := pathBBox(at("d")); ok {
+				add(x0+tx, y0+ty, x1+tx, y1+ty)
+			}
+		case "rect":
+			if x, ok := num("x"); ok {
+				y, _ := num("y")
+				w, _ := num("width")
+				h, _ := num("height")
+				add(x+tx, y+ty, x+w+tx, y+h+ty)
+			}
+		case "ellipse", "circle":
+			if cx, ok := num("cx"); ok {
+				cy, _ := num("cy")
+				rx, _ := num("rx")
+				if rx == 0 {
+					rx, _ = num("r")
+				}
+				ry, _ := num("ry")
+				if ry == 0 {
+					ry = rx
+				}
+				add(cx-rx+tx, cy-ry+ty, cx+rx+tx, cy+ry+ty)
+			}
+		case "text":
+			// d2 draws a container's title ABOVE its shape; framing to the shape
+			// alone clips it. The baseline (x,y) plus the font ascent covers the glyph.
+			if x, ok := num("x"); ok {
+				y, _ := num("y")
+				fs := 16.0
+				if m := fontSizeRe.FindStringSubmatch(at("style")); m != nil {
+					fs, _ = strconv.ParseFloat(m[1], 64)
+				}
+				add(x+tx, y-fs+ty, x+tx, y+ty)
+			}
 		}
 	}
-	if vbW <= 0 || vbH <= 0 {
+
+	if !haveBox {
+		box = firstBox
+	}
+	if box.w <= 0 || box.h <= 0 {
 		return nil
 	}
 
-	// Only base64-decodable groups are real d2 nodes/connections; style groups
-	// like class="shape" are skipped. These bound each region's geometry segment.
-	type grp struct {
-		path       string
-		contentEnd int // end of the opening <g ...> tag
-		matchStart int // start of the <g ...> tag
-	}
-	var groups []grp
-	for _, loc := range svgGroupRe.FindAllStringSubmatchIndex(s, -1) {
-		dec, err := base64.StdEncoding.DecodeString(s[loc[2]:loc[3]])
-		if err != nil {
-			continue
-		}
-		groups = append(groups, grp{
-			path:       string(dec),
-			contentEnd: loc[1],
-			matchStart: loc[0],
-		})
-	}
-
 	var out []region
-	for i, g := range groups {
-		if g.path == "" || connPathRe.MatchString(g.path) || diagramIDRe.MatchString(g.path) || !isObjectPath(g.path) {
-			continue
-		}
-		segEnd := len(s)
-		if i+1 < len(groups) {
-			segEnd = groups[i+1].matchStart
-		}
-		x0, y0, x1, y1, ok := groupBBox(s[g.contentEnd:segEnd])
-		if !ok {
+	for _, g := range groups {
+		if g.path == "" || !g.set || connPathRe.MatchString(g.path) || diagramIDRe.MatchString(g.path) || !isObjectPath(g.path) {
 			continue
 		}
 		out = append(out, region{
 			path: g.path,
-			x0:   (x0 - minX) / vbW,
-			y0:   (y0 - minY) / vbH,
-			x1:   (x1 - minX) / vbW,
-			y1:   (y1 - minY) / vbH,
+			x0:   (g.minX - box.x) / box.w,
+			y0:   (g.minY - box.y) / box.h,
+			x1:   (g.maxX - box.x) / box.w,
+			y1:   (g.maxY - box.y) / box.h,
 		})
 	}
 	return out
@@ -116,68 +204,9 @@ func isObjectPath(p string) bool {
 	return true
 }
 
-// groupBBox unions the bbox of every <path d>, <rect>, <ellipse>, <circle> in
-// the fragment.
-func groupBBox(frag string) (minX, minY, maxX, maxY float64, ok bool) {
-	minX, minY = 1e18, 1e18
-	maxX, maxY = -1e18, -1e18
-	merge := func(a, b, c, d float64, has bool) {
-		if !has {
-			return
-		}
-		ok = true
-		if a < minX {
-			minX = a
-		}
-		if b < minY {
-			minY = b
-		}
-		if c > maxX {
-			maxX = c
-		}
-		if d > maxY {
-			maxY = d
-		}
-	}
-	for _, tag := range pathElemRe.FindAllString(frag, -1) {
-		dm := svgDAttrRe.FindStringSubmatch(tag)
-		if dm == nil {
-			continue
-		}
-		a, b, c, d, has := pathBBox(dm[1])
-		if has {
-			tx, ty := translateOf(tag)
-			a, b, c, d = a+tx, b+ty, c+tx, d+ty
-		}
-		merge(a, b, c, d, has)
-	}
-	// Include label text: d2 draws a container's title ABOVE its shape box, so
-	// framing to the shape alone clips the title. <text> gives a baseline anchor
-	// (x,y); extend up by the font size to cover the glyph ascent.
-	for _, m := range textElemRe.FindAllStringSubmatch(frag, -1) {
-		a := parseAttrs(m[1])
-		if _, hasX := a["x"]; !hasX {
-			continue
-		}
-		fs := 16.0
-		if fm := fontSizeRe.FindStringSubmatch(m[0]); fm != nil {
-			fs, _ = strconv.ParseFloat(fm[1], 64)
-		}
-		tx, ty := translateOf(m[0])
-		merge(a["x"]+tx, a["y"]+ty-fs, a["x"]+tx, a["y"]+ty, true)
-	}
-	merge(rectBBox(frag))
-	return
-}
-
 var (
-	rectElemRe    = regexp.MustCompile(`<rect\b([^>]*)>`)
-	ellipseElemRe = regexp.MustCompile(`<(?:ellipse|circle)\b([^>]*)>`)
-	pathElemRe    = regexp.MustCompile(`<path\b[^>]*>`)
-	textElemRe    = regexp.MustCompile(`<text\b([^>]*)>`)
-	numAttrRe     = regexp.MustCompile(`\b([\w-]+)="(-?[\d.]+)"`)
-	translateRe   = regexp.MustCompile(`translate\(\s*(-?[\d.]+)(?:[ ,]+(-?[\d.]+))?`)
-	fontSizeRe    = regexp.MustCompile(`font-size:\s*([\d.]+)`)
+	translateRe = regexp.MustCompile(`translate\(\s*(-?[\d.]+)(?:[ ,]+(-?[\d.]+))?`)
+	fontSizeRe  = regexp.MustCompile(`font-size:\s*([\d.]+)`)
 )
 
 // translateOf reads translate(tx[,ty]) from an element's tag. d2 positions most
@@ -191,65 +220,6 @@ func translateOf(tag string) (tx, ty float64) {
 	tx, _ = strconv.ParseFloat(m[1], 64)
 	if m[2] != "" {
 		ty, _ = strconv.ParseFloat(m[2], 64)
-	}
-	return
-}
-
-// parseAttrs returns a map of attribute name → float64 for a tag's attribute string.
-func parseAttrs(attrs string) map[string]float64 {
-	m := make(map[string]float64)
-	for _, match := range numAttrRe.FindAllStringSubmatch(attrs, -1) {
-		v, _ := strconv.ParseFloat(match[2], 64)
-		m[match[1]] = v
-	}
-	return m
-}
-
-// rectBBox unions any <rect>/<ellipse>/<circle> bbox found in the fragment.
-// Attribute lookup is scoped to each element tag to avoid matching unrelated
-// elements (e.g. <text x="..."> in the same fragment).
-func rectBBox(frag string) (minX, minY, maxX, maxY float64, ok bool) {
-	minX, minY = 1e18, 1e18
-	maxX, maxY = -1e18, -1e18
-	merge := func(x0, y0, x1, y1 float64) {
-		ok = true
-		if x0 < minX {
-			minX = x0
-		}
-		if y0 < minY {
-			minY = y0
-		}
-		if x1 > maxX {
-			maxX = x1
-		}
-		if y1 > maxY {
-			maxY = y1
-		}
-	}
-	for _, m := range rectElemRe.FindAllStringSubmatch(frag, -1) {
-		a := parseAttrs(m[1])
-		if _, hasX := a["x"]; hasX {
-			tx, ty := translateOf(m[0])
-			merge(a["x"]+tx, a["y"]+ty, a["x"]+a["width"]+tx, a["y"]+a["height"]+ty)
-		}
-	}
-	for _, m := range ellipseElemRe.FindAllStringSubmatch(frag, -1) {
-		a := parseAttrs(m[1])
-		if _, hasCX := a["cx"]; hasCX {
-			rx := a["rx"]
-			if rx == 0 {
-				rx = a["r"]
-			}
-			ry := a["ry"]
-			if ry == 0 {
-				ry = rx
-			}
-			tx, ty := translateOf(m[0])
-			merge(a["cx"]-rx+tx, a["cy"]-ry+ty, a["cx"]+rx+tx, a["cy"]+ry+ty)
-		}
-	}
-	if !ok {
-		return 0, 0, 0, 0, false
 	}
 	return
 }

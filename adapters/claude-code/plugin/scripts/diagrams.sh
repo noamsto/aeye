@@ -62,6 +62,15 @@ if [[ ! -f $png ]]; then
 		exit 0
 	fi
 
+	# Recolor labels to contrast their node's fill — d2 colors labels from the
+	# theme, not the fill, so a light fill under a dark theme (or vice versa)
+	# renders illegible text. Best-effort: an absent or older binary just renders
+	# without the pass.
+	contrast_bin="$(command -v "${AEYE_BIN:-aeye}" 2>/dev/null || true)"
+	if [[ -n $contrast_bin ]]; then
+		"$contrast_bin" svg-contrast "$svg" 2>>"$err" || true
+	fi
+
 	resvg_args=()
 	if [[ -n ${AEYE_D2_FONT_DIR:-} ]]; then
 		resvg_args+=(--skip-system-fonts --use-fonts-dir "$AEYE_D2_FONT_DIR")

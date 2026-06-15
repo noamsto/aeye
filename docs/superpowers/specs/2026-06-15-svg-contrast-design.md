@@ -64,27 +64,46 @@ A subcommand of the existing Go binary. It rewrites the SVG with a
 **byte-preserving targeted edit** — not a full `encoding/xml` decode/encode,
 which round-trips lossily (attribute reordering, self-closing normalization,
 and the `<style>` CSS block and `foreignObject` HTML are not clean XML). We
-only rewrite specific `fill` attributes and leave every other byte intact:
+only edit label colors (one attribute per label) and leave every other byte
+intact:
 
 1. Scan element opening tags in document order (a lightweight tag scanner over
-   the raw bytes). Maintain `currentShapeFill`.
+   the raw bytes; closing tags, comments, and declarations are passed through).
+   Maintain `currentFill`.
 2. On a shape element (`class` contains `shape`) with a literal `fill="#rrggbb"`,
-   set `currentShapeFill`. Skip `none`/absent/`url(...)` fills (gradient/pattern
-   — leave it; the theme default already contrasts the theme's own fill). This
-   relies on d2's emission order: within a node group the shape precedes its
-   label, and connection groups carry no `class="shape"` fill, so edges never
-   pollute `currentShapeFill`.
-3. On a `<text>` opening tag whose `class` does **not** contain `connection`,
-   rewrite its `fill` to the contrasting ink for `currentShapeFill`:
+   set `currentFill`. Skip `none`/absent/`url(...)` fills (gradient/pattern —
+   leave it; the theme default already contrasts the theme's own fill).
+3. On a connection element (`class` contains `connection`), **clear**
+   `currentFill`. The edge label that follows sits on the canvas, not on a node,
+   so it must keep the theme color. This is how edges are excluded — see Finding
+   2.
+4. On a `<text>` opening tag, if `currentFill` is set, set its label color to the
+   contrasting ink for `currentFill` **via the inline `style` attribute** (see
+   Finding 1), replacing any existing `fill:` in that style and adding a `style`
+   when absent. If `currentFill` is empty (an edge label, or a label before any
+   shape fill), leave it untouched.
    - relative luminance `L = 0.2126·R + 0.7152·G + 0.0722·B` on
      sRGB channels in `[0,1]` (linearization omitted — the simple weighted form
      is enough for a black/white decision and keeps the code small).
    - `L > 0.5` → dark ink `#13111C`; else light ink `#F5F5F5` (soft endpoints,
      not pure black/white, to stay in the sketch register).
-   - If `currentShapeFill` is unset (a label before any shape fill — e.g. a
-     bare label), leave the `<text>` untouched.
-4. Write the result back atomically (`<file>.tmp` → rename), mirroring
+5. Write the result back atomically (`<file>.tmp` → rename), mirroring
    `d2-fix-fonts.sh`.
+
+This relies on d2's emission order: within a group the shape (or connection
+path) precedes its label.
+
+#### Findings from the spike
+
+1. **A presentation `fill="…"` attribute does not work.** d2 sets label color
+   through a CSS class (`.fill-N1{fill:#CDD6F4;}`), and a CSS class rule
+   overrides a presentation attribute. The override must go in the inline
+   `style` attribute, which beats the class selector (d2 uses no `!important`).
+2. **Edge labels do not carry a `connection` class** — that class is on the
+   connection *path*; the label `<text>` is `text-italic fill-N2`. So edges
+   can't be excluded by inspecting the label. Clearing `currentFill` when the
+   connection path is seen (step 3) excludes the following label correctly, and
+   the next node's shape re-arms it.
 
 Idempotent: re-running recomputes from the shape fill (which we never touch),
 so a second pass yields the same ink.
@@ -110,8 +129,8 @@ if [[ -n $contrast_bin ]]; then
 fi
 ```
 
-(Placement and error-logging match the existing steps; final form lands in the
-plan.)
+The pass is best-effort: a failed run is swallowed (`|| true`) so a render is
+never lost to it. It slots after `d2-fix-fonts.sh` and before resvg.
 
 ### Guidance update
 
@@ -125,15 +144,19 @@ plan.)
 
 **Go unit tests** (`svg_contrast_test.go`), table-driven over small SVG inputs:
 
-- light fill (`#dcfce7`) node label → dark ink `#13111C`
+- light fill (`#dcfce7`) node label → dark ink `#13111C` (in the inline style)
 - dark fill (`#1e1e2e`) node label → light ink `#F5F5F5`
-- edge label (`class="connection"`) → unchanged
-- `fill="none"` / gradient `url(...)` → unchanged
-- idempotent: second pass equals first
+- edge label (connection path precedes it) → unchanged
+- gradient `url(...)` fill → label unchanged
+- label with no `style` attr → gains `style="fill:…"`
+- idempotent: second pass byte-equal to first
+- comments / closing tags pass through (no panic)
 
-**bats** (`tests/svg-contrast.bats`, mirroring `d2-fix-fonts.bats`): run the
-built binary against a fixture SVG and assert the recolored fills, plus a
-no-op when the input has no shape fills.
+**bats** — wiring, added to `tests/diagrams.bats` (CI runs `go test`, not bats;
+bats is the local integration net via `just test-bats`). A stub `aeye` on PATH
+records the call: assert the hook invokes `svg-contrast` on the rendered SVG,
+and that a missing contrast binary (`AEYE_BIN=…absent…`) still renders. The stub
+also keeps the existing suite hermetic against a real `aeye` on PATH.
 
 ## Out of scope
 

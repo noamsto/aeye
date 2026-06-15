@@ -5,10 +5,19 @@ import (
 	"os"
 )
 
-// usage: aeye <key>
-// <key> is a tmux pane id (%N) or a Claude Code session id — whatever the
-// capture adapter used to name the manifest file.
+// usage:
+//
+//	aeye <key>              open the carousel for a manifest key (tmux pane id
+//	                        %N or a Claude Code session id)
+//	aeye svg-contrast FILE  recolor a d2 SVG's labels to contrast their fills
 func main() {
+	if len(os.Args) > 2 && os.Args[1] == "svg-contrast" {
+		if err := runSVGContrast(os.Args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	key := ""
 	if len(os.Args) > 1 {
 		key = os.Args[1]

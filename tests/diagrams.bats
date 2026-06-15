@@ -26,9 +26,19 @@ STUB
 #!/usr/bin/env bash
 echo "$*" >>"$TOGGLE_LOG"
 STUB
-	chmod +x "$STUB_BIN/d2" "$STUB_BIN/resvg" "$STUB_BIN/tmux-claude-images"
+	# Stub aeye so the svg-contrast pass is recorded, not run for real — keeps the
+	# suite hermetic against any aeye on PATH (a real one would treat svg-contrast
+	# as a manifest key and try to open the TUI).
+	cat >"$STUB_BIN/aeye" <<'STUB'
+#!/usr/bin/env bash
+[[ ${1:-} == svg-contrast ]] && printf '%s\n' "$*" >>"$CONTRAST_LOG"
+exit 0
+STUB
+	chmod +x "$STUB_BIN/d2" "$STUB_BIN/resvg" "$STUB_BIN/tmux-claude-images" "$STUB_BIN/aeye"
 	export TOGGLE_LOG="$BATS_TEST_TMPDIR/toggle.log"
+	export CONTRAST_LOG="$BATS_TEST_TMPDIR/contrast.log"
 	: >"$TOGGLE_LOG"
+	: >"$CONTRAST_LOG"
 	export PATH="$STUB_BIN:$PATH"
 }
 
@@ -183,6 +193,20 @@ STUB
 		echo "unexpected --sketch in: $output" >&2
 		return 1
 	}
+}
+
+@test "hook runs svg-contrast on the rendered svg" {
+	run_app hook-write-d2.json
+	run grep -cE 'svg-contrast .*/diagrams/[0-9a-f]+\.svg' "$CONTRAST_LOG"
+	[ "$output" -eq 1 ]
+}
+
+@test "missing contrast binary -> still renders" {
+	export AEYE_BIN=__aeye_absent_contrast__
+	run_app hook-write-d2.json
+	[ -f "$MANIFEST" ]
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 1 ]
 }
 
 @test "manifest vector field points at svg that still exists on disk" {

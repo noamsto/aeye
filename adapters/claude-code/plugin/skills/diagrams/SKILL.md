@@ -56,6 +56,9 @@ Why these choices:
 - **Role by stroke + shape, not fill** — the carousel may render light or dark,
   so a fill-coded legend can vanish against the background. A colored *stroke*
   and a distinct *shape* survive both. Reserve `fill` for the rare emphasis.
+  When you do set a `fill`, the renderer auto-contrasts the label (dark ink on
+  light fills, light on dark), so you never need to hand-set a `font-color` to
+  keep text legible.
 - **A `classes` block alone draws nothing** — it's shown as `text` here on
   purpose. Drop it into a diagram that has shapes, as the worked examples do.
 

@@ -15,7 +15,9 @@ render, and image your agent touches, without leaving the terminal.
 
 <div align="center">
 
-<video src="https://github.com/noamsto/aeye/raw/main/docs/assets/demo.mp4" controls muted width="100%"></video>
+[![aeye — navigating a D2 architecture diagram in the carousel](docs/assets/demo.webp)](docs/assets/demo.mp4)
+
+<sub>Drilling into a D2 diagram in the carousel — <a href="docs/assets/demo.mp4">click for the full walkthrough</a>.</sub>
 
 </div>
 

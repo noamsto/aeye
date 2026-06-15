@@ -6,6 +6,7 @@
 set -euo pipefail
 
 payload="$(cat)"
+[[ -n $payload ]] || exit 0
 case "$(jq -r '.source // empty' <<<"$payload" 2>/dev/null)" in
 startup | clear) ;;
 *) exit 0 ;;

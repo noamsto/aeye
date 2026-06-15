@@ -114,6 +114,15 @@ func galleryTickCmd() tea.Cmd {
 	return tea.Tick(1500*time.Millisecond, func(time.Time) tea.Msg { return galleryTickMsg{} })
 }
 
+type settleMsg struct{}
+
+// settleCmd fires shortly after the first frame to force a repaint once the
+// initial image store has been processed (see the WindowSizeMsg handler). One
+// frame's grace is plenty for a tiny APC write through tmux passthrough.
+func settleCmd() tea.Cmd {
+	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg { return settleMsg{} })
+}
+
 // transmitView stores the preview + visible filmstrip images store-only (kitty
 // backend). Writes to /dev/tty so the APC bytes never interleave with
 // bubbletea's frame output.
@@ -177,10 +186,20 @@ func (m *galleryModel) reload() {
 func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		firstReady := !m.ready
 		m.width, m.height = msg.Width, msg.Height
 		m.l = computeLayout(m.width, m.height)
 		m.ready = true
 		m.transmitView()
+		if firstReady {
+			// The image store (transmitView → /dev/tty passthrough) and the
+			// placeholder cells (View → bubbletea's grid via tmux) travel separate,
+			// unsynchronized streams. On the very first frame the cells can reach the
+			// terminal before the store does, referencing an id that isn't stored yet
+			// → blank boxes that only fill once a later navigation repaints them.
+			// Force one repaint after the store is surely processed.
+			return m, tea.Batch(m.kickVector(), settleCmd())
+		}
 		return m, m.kickVector()
 	case tea.KeyPressMsg:
 		var cmd tea.Cmd
@@ -298,6 +317,8 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(galleryTickCmd(), m.kickVector())
 		}
 		return m, galleryTickCmd()
+	case settleMsg:
+		return m, tea.ClearScreen
 	}
 	return m, nil
 }

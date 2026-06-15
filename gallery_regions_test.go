@@ -107,6 +107,26 @@ func TestFrameRegionClampsAtEdge(t *testing.T) {
 	}
 }
 
+func TestFrameRegionTallRegionStaysTight(t *testing.T) {
+	// A tall region in a wide box can't fill it without being cropped: the crop
+	// must stay tight to the region, not pad out to the full image and strand it
+	// against the diagram's empty margin. (portrait 600x1000 source, 16:9 box.)
+	r := region{x0: 0.4, y0: 0.1, x1: 0.6, y1: 0.8}
+	c := frameRegion(r, 600, 1000, 1600, 900)
+	if !(c.x0 <= r.x0 && c.x1 >= r.x1 && c.y0 <= r.y0 && c.y1 >= r.y1) {
+		t.Errorf("crop must contain region: %+v vs %+v", c, r)
+	}
+	if c.w() > 0.99 {
+		t.Errorf("crop widened to (near) full image — the letterbox bug: w=%v", c.w())
+	}
+	if math.Abs(c.cx()-r.cx()) > 1e-9 {
+		t.Errorf("crop not centered on region horizontally: cx=%v want %v", c.cx(), r.cx())
+	}
+	if c.x0 < -1e-9 || c.y0 < -1e-9 || c.x1 > 1+1e-9 || c.y1 > 1+1e-9 {
+		t.Errorf("crop escaped [0,1]: %+v", c)
+	}
+}
+
 func TestRegionModeCycleAndDrill(t *testing.T) {
 	rs := []region{
 		{path: "ingest", x0: 0, y0: 0, x1: 0.4, y1: 1},

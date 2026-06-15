@@ -77,7 +77,7 @@ func TestZoomByClampsAtMax(t *testing.T) {
 		m.zoomBy(1.25)
 	}
 	if !approx(m.crop.w(), 1.0/zoomMax) || !approx(m.crop.h(), 1.0/zoomMax) {
-		t.Errorf("zoom must clamp to min side 1/%v, got w=%v h=%v", zoomMax, m.crop.w(), m.crop.h())
+		t.Errorf("zoom must clamp to max side 1/%v, got w=%v h=%v", zoomMax, m.crop.w(), m.crop.h())
 	}
 }
 
@@ -122,17 +122,38 @@ func TestZoomDeeperPreservesAspect(t *testing.T) {
 	}
 }
 
-func TestZoomInFromLetterboxedRegionSnapsToFill(t *testing.T) {
+func TestZoomInFromFramedRegionMagnifiesView(t *testing.T) {
 	m := wideModel()
 	// A wide framed region (Tab onto a step group): aspect far from the box, so it
-	// letterboxes. Zooming in must snap to fill, not preserve the strip.
+	// letterboxes. Zooming in must magnify the framed view in place — scale about
+	// its center, aspect preserved — not jump to a full-image-span slice.
 	m.crop = cropFrac{0.1, 0.45, 0.9, 0.55}
-	if m.cropFillsBox() {
-		t.Fatal("wide region should not be reported as filling the box")
-	}
+	wantAspect := m.crop.w() / m.crop.h()
+	cx, cy := m.crop.cx(), m.crop.cy()
 	m.zoomBy(1.25)
-	if !m.cropFillsBox() {
-		t.Errorf("zoom-in from a letterboxed region must snap to fill, got %+v", m.crop)
+	if got := m.crop.w() / m.crop.h(); !approx(got, wantAspect) {
+		t.Errorf("magnify must preserve the framed aspect: %v -> %v", wantAspect, got)
+	}
+	if !approx(m.crop.w(), 0.8/1.25) || !approx(m.crop.h(), 0.1/1.25) {
+		t.Errorf("magnify must scale the crop by 1/1.25 about center, got %+v", m.crop)
+	}
+	if !approx(m.crop.cx(), cx) || !approx(m.crop.cy(), cy) {
+		t.Errorf("magnify must keep the view centered, got %+v", m.crop)
+	}
+}
+
+func TestZoomInClampsLongSideAtMax(t *testing.T) {
+	// A near-floor framed strip: the longer side sits just above 1/zoomMax, so one
+	// more zoom-in must clamp on that box-binding side with aspect preserved. The
+	// old shorter-side floor would have inverted the scale here and grown the crop.
+	m := &galleryModel{crop: cropFrac{0.43, 0.49, 0.57, 0.51}} // w=0.14, h=0.02
+	wantAspect := m.crop.w() / m.crop.h()
+	m.zoomBy(1.25)
+	if got := max(m.crop.w(), m.crop.h()); !approx(got, 1.0/zoomMax) {
+		t.Errorf("longer side must clamp to 1/%v, got %v", zoomMax, got)
+	}
+	if got := m.crop.w() / m.crop.h(); !approx(got, wantAspect) {
+		t.Errorf("clamp must preserve aspect: %v -> %v", wantAspect, got)
 	}
 }
 

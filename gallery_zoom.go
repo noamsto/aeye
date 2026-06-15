@@ -70,20 +70,22 @@ func (m *galleryModel) baseFillCrop() cropFrac {
 }
 
 // scaleCropAbout scales the crop's size by s about its center, preserving aspect.
-// s < 1 zooms in, s > 1 zooms out. The smaller side is floored at 1/zoomMax, and
-// flooring scales both axes together so a non-square crop never distorts.
+// s < 1 zooms in, s > 1 zooms out. The longer side is floored at 1/zoomMax: it's
+// the box-binding axis, so it sets on-screen magnification (true zoomMax×), and
+// flooring on it lets a thin letterboxed strip still magnify instead of stalling.
+// Both axes scale by the same factor, so a non-square crop never distorts.
 func scaleCropAbout(c cropFrac, s float64) cropFrac {
 	const minSide = 1.0 / zoomMax
-	if lo := min(c.w(), c.h()); lo*s < minSide {
-		s = minSide / lo
+	if hi := max(c.w(), c.h()); hi*s < minSide {
+		s = minSide / hi
 	}
 	return recenterScaled(c.cx(), c.cy(), c.w()*s, c.h()*s)
 }
 
 // cropFillsBox reports whether the crop already fills the preview box — its pixel
-// aspect matches the box's. False for the rest view of a non-square image and for
-// a region framed wider or taller than the box (Tab framing keeps the whole
-// region, so a wide step group letterboxes).
+// aspect matches the box's. False for the rest view of a non-square image (which
+// is what gates the snap-to-fill on the first zoom-in) and for a Tab-framed region
+// wider/taller than the box, though zoomBy no longer passes a non-full crop here.
 func (m *galleryModel) cropFillsBox() bool {
 	if m.curImg == nil {
 		return true
@@ -93,15 +95,16 @@ func (m *galleryModel) cropFillsBox() bool {
 	return math.Abs(m.crop.w()/m.crop.h()-want) < want*1e-3
 }
 
-// zoomBy moves the crop one zoom step (factor > 1 zooms in). Zooming in while the
-// crop is letterboxed — the rest view, or a region framed wider/taller than the
-// box — snaps to the box-aspect fill crop centered on the current view, so a wide
-// diagram (or a wide Tab-framed step group) grows to fill the box instead of
-// staying a strip. Once it fills, deeper steps scale it uniformly. Zooming out
-// grows the crop until it spills past the image, then snaps back to the rest view.
+// zoomBy moves the crop one zoom step (factor > 1 zooms in). The first zoom-in
+// from the rest view of a non-square image snaps to the box-aspect fill crop, so
+// a wide diagram fills the box instead of staying a letterboxed strip. Any other
+// crop — a Tab-framed region, or an already-zoomed view — is magnified in place:
+// scaled about its own center with aspect preserved, so zoom stays on what's
+// framed rather than jumping back out to the full diagram. Zooming out grows the
+// crop until it spills past the image, then snaps back to the rest view.
 func (m *galleryModel) zoomBy(factor float64) {
 	if factor > 1 {
-		if !m.cropFillsBox() {
+		if m.crop.isFull() && !m.cropFillsBox() {
 			m.crop = m.baseFillCrop()
 			return
 		}

@@ -13,9 +13,11 @@ render, and image your agent touches, without leaving the terminal.
 
 </div>
 
-<!-- TODO(demo): hero screenshot + demo.gif — deferred until the rich-diagrams
-     work lands so the demo captures diagrams at their best. Drop assets in
-     docs/assets/ and replace this comment. -->
+<div align="center">
+
+<video src="https://github.com/noamsto/aeye/raw/main/docs/assets/demo.mp4" controls muted width="100%"></video>
+
+</div>
 
 A big **preview** of the selected image plus a **filmstrip** of thumbnails,
 rendered in a tmux split or kitty window (dual-mode). One half **captures** every
@@ -38,7 +40,8 @@ what your agent is doing without leaving the terminal.
 - 🧹 **Robust** — skips deleted or corrupt entries instead of rendering blank
   cells; logs why, for when you wonder where an image went.
 - 📊 **Diagrams (optional)** — the agent can draw [D2](https://d2lang.com)
-  diagrams that render straight into the carousel.
+  diagrams that render straight into the carousel as sharp, zoomable vectors,
+  with group-by-group drill-down and labels that auto-contrast against their fill.
 
 ## Install
 
@@ -111,14 +114,29 @@ session reads/writes/screenshots images.
 
 | Key | Action |
 |---|---|
-| `←` `→` / `h` `l` / `↑` `↓` / `k` `j` | Move selection |
+| `←` `→` `↑` `↓` / `h` `l` `k` `j` | Move selection (**pan** when zoomed in) |
 | `n` / `p` | Page the filmstrip |
 | `g` / `G` (or `Home` / `End`) | First / last image |
 | `1`–`9` | Jump to the Nth image |
+| `z` `+` `=` / `Z` `-` `_` | Zoom in / out |
 | `Enter` / `o` | Open in the default app |
 | `O` | Open the containing folder |
 | `r` | Reload the manifest |
 | `q` / `Ctrl-C` | Quit |
+
+When zoomed in, the arrows/`hjkl` pan the preview instead of moving the
+selection — use `n`/`p`/`g`/`G` (or `0`/`Esc`) to change image while zoomed.
+
+#### Diagrams (D2)
+
+Diagrams render as sharp vectors and gain a few extra keys for exploring their
+structure — group by group — when one is selected:
+
+| Key | Action |
+|---|---|
+| `Tab` / `Shift+Tab` | Cycle through regions/groups (`Shift+Tab` from the first backs out to the whole diagram) |
+| `]` / `[` | Drill into / out of the focused region |
+| `0` / `Esc` | Reset zoom and return to the whole diagram |
 
 ## Architecture
 
@@ -140,6 +158,6 @@ this repo as a flake input.
 
 Live standalone repo — the viewer binary, Claude Code capture adapter, and plugin
 skill all build and are consumed by
-[lazytmux](https://github.com/noamsto/lazytmux) as a flake input. Zoom/pan is not
-yet implemented; see [docs/2026-06-10-design.md](docs/2026-06-10-design.md) for
-the design notes.
+[lazytmux](https://github.com/noamsto/lazytmux) as a flake input. Zoom/pan and D2
+diagram navigation are implemented; see
+[docs/2026-06-10-design.md](docs/2026-06-10-design.md) for the design notes.

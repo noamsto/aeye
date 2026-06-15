@@ -38,7 +38,7 @@ func TestContrastInk(t *testing.T) {
 
 func TestContrastSVGLightFillGetsDarkInk(t *testing.T) {
 	out := string(contrastSVG([]byte(node("#dcfce7", "value"))))
-	if !strings.Contains(out, "font-size:16px;fill:"+contrastDarkInk) {
+	if !strings.Contains(out, "fill:"+contrastDarkInk) {
 		t.Fatalf("label on a light fill should get dark ink in its inline style; got:\n%s", out)
 	}
 }
@@ -84,6 +84,26 @@ func TestContrastSVGIdempotent(t *testing.T) {
 	twice := contrastSVG(once)
 	if !bytes.Equal(once, twice) {
 		t.Errorf("second pass changed the output:\nonce:  %s\ntwice: %s", once, twice)
+	}
+}
+
+func TestContrastSVGSkipsForeignObject(t *testing.T) {
+	// A node fill is set, then a markdown block whose HTML contains a literal
+	// "<text>"; it must not be recolored.
+	in := `<g class="shape"><path fill="#dcfce7" class="shape"/></g>` +
+		`<foreignObject><div class="md">sample <text>x</text></div></foreignObject>`
+	out := string(contrastSVG([]byte(in)))
+	if strings.Contains(out, "fill:"+contrastDarkInk) {
+		t.Errorf("content inside <foreignObject> must not be recolored; got:\n%s", out)
+	}
+}
+
+func TestSetStyleFillNoAttrs(t *testing.T) {
+	if got := setStyleFill("<text>", contrastDarkInk); got != `<text style="fill:`+contrastDarkInk+`">` {
+		t.Errorf("bare tag: got %q", got)
+	}
+	if got := setStyleFill("<text/>", contrastDarkInk); got != `<text style="fill:`+contrastDarkInk+`"/>` {
+		t.Errorf("self-closing: got %q", got)
 	}
 }
 

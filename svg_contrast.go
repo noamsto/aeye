@@ -34,6 +34,7 @@ func runSVGContrast(path string) error {
 	if err := os.WriteFile(tmp, contrastSVG(data), 0o644); err != nil {
 		return err
 	}
+	defer os.Remove(tmp) // no-op after a successful rename; cleans up if it fails
 	return os.Rename(tmp, path)
 }
 
@@ -44,11 +45,29 @@ func runSVGContrast(path string) error {
 // label that follows — which sits on the canvas, not on a node — is left alone.
 // The color is set via the inline style attribute, which overrides d2's fill-N
 // class rule (a presentation fill attribute would not).
+//
+// Content inside <style> (CSS) and <foreignObject> (markdown HTML) is never
+// touched — a markdown label could legitimately contain a literal "<text>".
 func contrastSVG(src []byte) []byte {
 	currentFill := ""
+	skip := 0 // depth inside <style>/<foreignObject> raw content
 	return tagRe.ReplaceAllFunc(src, func(tag []byte) []byte {
 		t := string(tag)
-		if strings.HasPrefix(t, "</") || strings.HasPrefix(t, "<!") || strings.HasPrefix(t, "<?") {
+		switch {
+		case strings.HasPrefix(t, "</style") || strings.HasPrefix(t, "</foreignObject"):
+			if skip > 0 {
+				skip--
+			}
+			return tag
+		case strings.HasPrefix(t, "</") || strings.HasPrefix(t, "<!") || strings.HasPrefix(t, "<?"):
+			return tag
+		case strings.HasPrefix(t, "<style") || strings.HasPrefix(t, "<foreignObject"):
+			if !strings.HasSuffix(t, "/>") {
+				skip++
+			}
+			return tag
+		}
+		if skip > 0 {
 			return tag
 		}
 		class := attrVal(classAttrRe, t)
@@ -84,16 +103,20 @@ func setStyleFill(tag, ink string) string {
 		}
 		return strings.Replace(tag, m[0], `style="`+body+decl+`"`, 1)
 	}
-	i := strings.IndexAny(tag, " \t\r\n")
-	if i < 0 {
-		return tag
+	if i := strings.IndexAny(tag, " \t\r\n"); i >= 0 {
+		return tag[:i] + ` style="` + decl + `"` + tag[i:]
 	}
-	return tag[:i] + ` style="` + decl + `"` + tag[i:]
+	// No attributes (e.g. "<text>"): inject before the closing '>' or '/>'.
+	end := len(tag) - 1
+	if strings.HasSuffix(tag, "/>") {
+		end--
+	}
+	return tag[:end] + ` style="` + decl + `"` + tag[end:]
 }
 
-// tagName returns the element name of an SVG tag like "<text …>" or "</g>".
+// tagName returns the element name of an opening SVG tag like "<text …>".
 func tagName(tag string) string {
-	s := strings.TrimLeft(tag, "</")
+	s := tag[1:] // drop the leading '<'
 	if i := strings.IndexAny(s, " \t\r\n/>"); i >= 0 {
 		return s[:i]
 	}
@@ -107,7 +130,9 @@ func attrVal(re *regexp.Regexp, tag string) string {
 	return ""
 }
 
-// contrastInk picks dark or light ink by the relative luminance of a #rrggbb fill.
+// contrastInk picks dark or light ink by the perceived brightness of a #rrggbb
+// fill — the luminance coefficients on raw sRGB channels (no gamma
+// linearization), which is enough for a black/white decision at a 0.5 threshold.
 func contrastInk(hexFill string) string {
 	r, _ := strconv.ParseInt(hexFill[1:3], 16, 0)
 	g, _ := strconv.ParseInt(hexFill[3:5], 16, 0)

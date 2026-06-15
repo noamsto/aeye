@@ -9,6 +9,7 @@ builds:
     goarch: [amd64, arm64]
     ldflags:
       - -s -w
+      - -X main.version={{ .Version }}
 archives:
   - # prebuilt binaries for `go install`-free users; bundles the toggle script
     # so the archive has both PATH entrypoints (viewer + tmux-claude-images)
@@ -21,3 +22,10 @@ archives:
           mode: 0755
 checksum:
   name_template: checksums.txt
+changelog:
+  # release-please owns the release notes; don't compute one we'd discard.
+  disable: true
+release:
+  # release-please creates the tag and GitHub release (with the changelog)
+  # before this runs; keep its notes and just attach the built archives.
+  mode: keep-existing

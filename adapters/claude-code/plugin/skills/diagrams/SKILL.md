@@ -79,6 +79,9 @@ with arrows, nest them with `{ }`:
   (`shape: cylinder; style.stroke: red`, not `shape: cylinder, ...`).
 - Pick a shape with `shape:` — `cylinder`, `person`, `queue`, `cloud`,
   `sql_table`, `sequence_diagram`, and more.
+- Escape `$` in label text as `\$` — a bare `$` starts a variable substitution
+  (`${var}`), so a literal `"$5,000,000"` fails to compile with
+  *"substitutions must begin on {"* and the diagram silently never renders.
 
 A complete minimal diagram — request path through a small service:
 
@@ -96,7 +99,12 @@ api -> client: response
 
 **Grouping** — wrap a subsystem in a container to give the layout structure and
 a labeled boundary; edges can cross in and out. A container's name renders as a
-visible label on the boundary, so name it meaningfully (`backend`, not `g1`):
+visible label on the boundary, so name it meaningfully (`backend`, not `g1`).
+Containers also become drill-in **regions** in the carousel — Tab cycles them
+and `]` `[` drill in and out — so when the diagram has real subsystems, group
+them into containers and the reader gets navigation for free. Only group what's
+genuinely a subsystem, though: don't wrap a flat three-node flow in a container
+it doesn't need just to manufacture regions.
 
 ```d2
 direction: right

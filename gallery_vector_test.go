@@ -1,23 +1,60 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
-func TestVectorTargetWBounded(t *testing.T) {
-	// full crop → roughly one box width (rest-state fill, no source-size blowup).
-	boxW, boxH := 800, 400
-	if got := vectorTargetW(boxW, boxH, fullCrop()); got < boxW || got > boxW*2 {
-		t.Errorf("full-crop targetW = %d, want ~%d", got, boxW)
+func TestCropViewBox(t *testing.T) {
+	svg := []byte(`<svg viewBox="0 0 100 50"><g/></svg>`)
+	out, ok := cropViewBox(svg, cropFrac{0.2, 0.2, 0.6, 0.7})
+	if !ok {
+		t.Fatal("expected crop applied")
 	}
-	// 8x zoom (min side 1/8) → ~8 box widths, NOT a function of source size.
-	c := cropFrac{x0: 0.4, y0: 0.4, x1: 0.525, y1: 0.525} // side 0.125 = 1/8
-	if got := vectorTargetW(boxW, boxH, c); got < boxW*7 || got > boxW*9 {
-		t.Errorf("8x targetW = %d, want ~%d", got, boxW*8)
+	// x: 0.2*100=20  y: 0.2*50=10  w: 0.4*100=40  h: 0.5*50=25
+	if !bytes.Contains(out, []byte(`viewBox="20.0000 10.0000 40.0000 25.0000"`)) {
+		t.Errorf("viewBox not rewritten to crop: %s", out)
+	}
+}
+
+func TestCropViewBoxHonorsOffset(t *testing.T) {
+	svg := []byte(`<svg viewBox="-10 -20 200 100"></svg>`)
+	out, ok := cropViewBox(svg, cropFrac{0, 0, 0.5, 0.5})
+	if !ok {
+		t.Fatal("expected crop applied")
+	}
+	// origin offset carries through: x:-10  y:-20  w:0.5*200=100  h:0.5*100=50
+	if !bytes.Contains(out, []byte(`viewBox="-10.0000 -20.0000 100.0000 50.0000"`)) {
+		t.Errorf("offset viewBox not honored: %s", out)
+	}
+}
+
+func TestCropViewBoxOnlyOuter(t *testing.T) {
+	// Outer + inner d2-svg both carry a viewBox; only the first (outer) is the
+	// crop window — the inner must be left intact.
+	svg := []byte(`<svg viewBox="0 0 100 100"><svg viewBox="0 0 100 100"></svg></svg>`)
+	out, _ := cropViewBox(svg, cropFrac{0, 0, 0.5, 0.5})
+	if n := bytes.Count(out, []byte(`viewBox="0 0 100 100"`)); n != 1 {
+		t.Errorf("inner viewBox should be untouched, found %d originals: %s", n, out)
+	}
+}
+
+func TestCropViewBoxNoViewBox(t *testing.T) {
+	if _, ok := cropViewBox([]byte(`<svg></svg>`), cropFrac{0, 0, 1, 1}); ok {
+		t.Error("no viewBox → ok must be false")
 	}
 }
 
 func TestRenderVectorMissingResvg(t *testing.T) {
+	// A real svg file so we exercise the resvg-lookup path, not the stat bail.
+	svg := filepath.Join(t.TempDir(), "x.svg")
+	if err := os.WriteFile(svg, []byte(`<svg viewBox="0 0 10 10"></svg>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("AEYE_RESVG", "/definitely/not/resvg")
-	if got := renderVector("/whatever.svg", 1000); got != "" {
+	if got := renderVector(svg, fullCrop(), 1000); got != "" {
 		t.Errorf("absent resvg must yield empty string, got %q", got)
 	}
 }

@@ -49,11 +49,11 @@ run_app() { # $1 = fixture name
 	[ ! -f "$MANIFEST" ]
 }
 
-@test "dedup by (path,mtime): same image twice -> one line" {
+@test "append-only: same image twice -> two lines (viewer dedups on read)" {
 	run_app hook-read-image.json
 	run_app hook-read-image.json
 	run wc -l <"$MANIFEST"
-	[ "$output" -eq 1 ]
+	[ "$output" -eq 2 ]
 }
 
 @test "no TMUX_PANE and no session id -> no-op, exit 0" {

@@ -76,7 +76,11 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 			return ""
 		}
 		if cropped, ok := cropViewBox(data, crop); ok {
-			tmp := filepath.Join(os.TempDir(), stem+"-crop.svg")
+			// Crop in the name too: two debounced renders of the same diagram at
+			// different framings can overlap, and a shared name would race (one
+			// overwriting the other's viewBox, or unlinking it before resvg opens it).
+			tmp := filepath.Join(os.TempDir(), fmt.Sprintf("%s-%.4f_%.4f_%.4f_%.4f-crop.svg",
+				stem, crop.x0, crop.y0, crop.x1, crop.y1))
 			if err := os.WriteFile(tmp, cropped, 0o644); err != nil {
 				return ""
 			}

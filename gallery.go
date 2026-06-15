@@ -99,6 +99,7 @@ type galleryModel struct {
 	regions    *regionTree // parsed lazily for the current d2 entry; nil when none
 	regionPath []string    // current drill level (container path components); empty = root
 	regionIdx  int         // focused sibling index at the current level; -1 = not in region mode
+	vecGen     uint64      // debounce generation: only the latest scheduled vector kick fires
 
 	// Theme colors, resolved once at startup (tmux options are session-invariant).
 	selColor, dimColor, hintFg, textFg imgcolor.Color
@@ -200,7 +201,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Force one repaint after the store is surely processed.
 			return m, tea.Batch(m.kickVector(), settleCmd())
 		}
-		return m, m.kickVector()
+		return m, m.scheduleVector()
 	case tea.KeyPressMsg:
 		var cmd tea.Cmd
 		switch msg.String() {
@@ -287,28 +288,31 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectIndex(d - 1)
 			}
 		}
-		// After any key, (re)sharpen the preview for a d2 entry off the event
-		// loop. nil for non-d2/non-kitty, so this is a no-op there.
-		cmd = m.kickVector()
+		// After any key, debounce-schedule a sharp d2 re-render off the event loop.
+		// nil for non-d2/non-kitty, so this is a no-op there.
+		cmd = m.scheduleVector()
 		return m, cmd
+	case vectorKickMsg:
+		// Stale tick: a later keystroke superseded this one. Drop it; only the
+		// latest generation gets to kick resvg.
+		if msg.gen != m.vecGen {
+			return m, nil
+		}
+		return m, m.kickVector()
 	case vectorReadyMsg:
-		// Ignore a stale render: the selection or zoom changed while resvg ran.
-		if msg.vector != m.curVector() ||
-			msg.targetW != vectorTargetW(m.l.previewW*cellPxW, m.l.previewH*cellPxH, m.crop) ||
+		// Ignore a stale render: the selection or framing changed while resvg ran.
+		if msg.vector != m.curVector() || msg.crop != m.crop ||
 			m.backend != backendKitty || m.tty == nil {
 			return m, nil
 		}
-		var src string
-		// Reuses the per-pane zoom scratch file. Safe: Update is single-threaded
-		// and kitty fetches the t=f path when it parses the placement we emit
-		// right after, so a later render can't overwrite it mid-fetch.
-		if m.crop.isFull() {
-			src = writePNGEnc(m.zoomScratchPath(),
-				fitToBox(msg.raster, m.l.previewW*cellPxW, m.l.previewH*cellPxH),
-				m.images[m.cursor].Path, fastPNG.Encode)
-		} else {
-			src = m.renderCropOf(msg.raster, m.l.previewW, m.l.previewH, m.images[m.cursor].Path)
-		}
+		// The raster IS the crop window (rendered at preview width), so fit it to
+		// the box and place it — no second crop. Reuses the per-pane zoom scratch
+		// file: Update is single-threaded and kitty fetches the t=f path when it
+		// parses the placement we emit right after, so a later render can't
+		// overwrite it mid-fetch.
+		src := writePNGEnc(m.zoomScratchPath(),
+			fitToBox(msg.raster, m.l.previewW*cellPxW, m.l.previewH*cellPxH),
+			m.images[m.cursor].Path, fastPNG.Encode)
 		fmt.Fprint(m.tty, transmitVirtual(previewID, src, m.l.previewW, m.l.previewH))
 		return m, nil
 	case galleryTickMsg:

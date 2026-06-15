@@ -48,6 +48,31 @@ func TestParseRegionsSketch(t *testing.T) {
 	}
 }
 
+// A shape with a d2 `class:` applied renders as class="<base64-id> <classname>".
+// The space must not stop the id from being parsed — otherwise every styled node
+// (and so every drill-in target) vanishes.
+func TestParseRegionsClassedNode(t *testing.T) {
+	// base64: box=Ym94, box.a=Ym94LmE=, nested conn box.(a -&gt; b)[0]=Ym94LihhIC0mZ3Q7IGIpWzBd
+	svg := []byte(`<svg viewBox="0 0 100 100"><svg class="d2-svg" viewBox="0 0 100 100">` +
+		`<g class="Ym94"><rect x="0" y="0" width="100" height="100"/></g>` +
+		`<g class="Ym94LmE= svc"><rect x="10" y="10" width="30" height="30"/></g>` +
+		`<g class="Ym94LihhIC0mZ3Q7IGIpWzBd"><path d="M10 10 L40 40"/></g>` +
+		`</svg></svg>`)
+	paths := map[string]region{}
+	for _, r := range parseRegions(svg) {
+		paths[r.path] = r
+	}
+	for _, want := range []string{"box", "box.a"} {
+		if _, ok := paths[want]; !ok {
+			t.Errorf("missing region %q (got %v)", want, keysOf(paths))
+		}
+	}
+	// A nested connection is not a navigable object.
+	if _, ok := paths["box.(a -&gt; b)[0]"]; ok {
+		t.Errorf("nested connection must be skipped (got %v)", keysOf(paths))
+	}
+}
+
 func pathsOf(rs []region) []string {
 	var p []string
 	for _, r := range rs {

@@ -325,9 +325,18 @@ func (m galleryModel) View() tea.View {
 	return v
 }
 
+// emptyState is the centered placeholder shown until the first image lands.
+func (m galleryModel) emptyState() string {
+	icon := lipgloss.NewStyle().Foreground(m.selColor).Bold(true).Render(galleryTitleIcon + "  Claude Images")
+	status := lipgloss.NewStyle().Foreground(m.textFg).Render("No images yet")
+	hint := lipgloss.NewStyle().Foreground(m.hintFg).Render("Draw a D2 diagram or share a screenshot — it appears here automatically.")
+	block := lipgloss.JoinVertical(lipgloss.Center, icon, "", status, "", hint)
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, block)
+}
+
 func (m galleryModel) renderView() string {
 	if len(m.images) == 0 {
-		return "no images yet"
+		return m.emptyState()
 	}
 
 	selColor, dimColor := m.selColor, m.dimColor

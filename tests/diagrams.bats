@@ -124,17 +124,23 @@ STUB
 	[ -f "$DIAGRAMS/render-errors.log" ]
 }
 
-@test "first diagram of a session opens the carousel once" {
+@test "a new diagram opens the carousel" {
 	run_app hook-write-d2.json
 	run grep -c -- '--ensure-open' "$TOGGLE_LOG"
 	[ "$output" -eq 1 ]
-	[ -f "$CLAUDE_STATUS_DIR/images/7.opened" ]
 }
 
-@test "second (new) diagram does NOT reopen the carousel" {
+@test "every new diagram re-opens the carousel" {
 	run_app hook-write-d2.json
 	printf 'a -> b -> c\n' >"$DOTD2"
 	run_app hook-edit-d2.json
+	run grep -c -- '--ensure-open' "$TOGGLE_LOG"
+	[ "$output" -eq 2 ]
+}
+
+@test "an unchanged diagram does not re-open the carousel" {
+	run_app hook-write-d2.json
+	run_app hook-write-d2.json
 	run grep -c -- '--ensure-open' "$TOGGLE_LOG"
 	[ "$output" -eq 1 ]
 }

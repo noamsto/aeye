@@ -88,10 +88,8 @@ printf -v now '%(%FT%T%z)T' -1
 jq -nc --arg path "$png" --arg vector "$svg" --arg source "d2" --arg ts "$now" --argjson mtime "$mtime" \
 	'{type:"image", path:$path, vector:$vector, source:$source, ts:$ts, mtime:$mtime}' >>"$manifest"
 
-# Auto-open once per session: the first new diagram surfaces the carousel; after
-# that, leave open/closed state under user control (--ensure-open never kills).
-marker="$IMAGES_DIR/$pane_file.opened"
-if [[ ! -f $marker ]]; then
-	"${AEYE_TOGGLE:-tmux-claude-images}" --ensure-open >/dev/null 2>&1 || true
-	: >"$marker"
-fi
+# Proactively surface the carousel on every new diagram. Reached only when a
+# genuinely new diagram was appended above (the dedup guard exits early for ones
+# already in the manifest), so this re-opens after a manual close but never
+# re-fires for an unchanged redraw. --ensure-open is idempotent and never kills.
+"${AEYE_TOGGLE:-tmux-claude-images}" --ensure-open >/dev/null 2>&1 || true

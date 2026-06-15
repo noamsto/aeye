@@ -19,6 +19,16 @@ pane_file="${pane_id#%}"
 payload="$(cat)"
 [[ -n $payload ]] || exit 0
 
+# Fast path: PostToolUse fires on every tool call, but only a few touch an image.
+# Bail before spawning any jq unless the raw payload even mentions an image
+# extension. No false negatives: both phases below also require the extension to
+# appear literally, so a payload without one would yield no path anyway.
+# nocasematch keeps the match case-insensitive without ${payload,,}, which would
+# copy the whole payload — megabytes when a Read embeds file contents.
+shopt -s nocasematch
+[[ $payload =~ \.(png|jpe?g|gif|webp|bmp) ]] || exit 0
+shopt -u nocasematch
+
 cwd="$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null)"
 source_tool="$(jq -r '.tool_name // "?"' <<<"$payload" 2>/dev/null)"
 
@@ -82,14 +92,7 @@ printf -v now '%(%FT%T%z)T' -1
 manifest="$IMAGES_DIR/$pane_file.jsonl"
 mkdir -p "$IMAGES_DIR"
 
-# Dedup by (path, mtime).
-# Best-effort dedup: concurrent hook firings can still produce duplicate
-# (path,mtime) entries. Manifest consumers must tolerate duplicates.
-if [[ -f $manifest ]] &&
-	jq -e --arg p "$path" --argjson m "$mtime" \
-		'select(.path == $p and .mtime == $m)' "$manifest" >/dev/null 2>&1; then
-	exit 0
-fi
-
+# Append-only: no write-side dedup. Concurrent firings can emit duplicate
+# (path,mtime) lines; the viewer collapses them on read (parseManifest).
 jq -nc --arg path "$path" --arg source "$source_tool" --arg ts "$now" --argjson mtime "$mtime" \
 	'{type:"image", path:$path, source:$source, ts:$ts, mtime:$mtime}' >>"$manifest"

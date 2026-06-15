@@ -155,6 +155,22 @@ not json
 	}
 }
 
+func TestParseManifestDedupes(t *testing.T) {
+	data := []byte(`{"type":"image","path":"/a/one.png","source":"Read","mtime":1}
+{"type":"image","path":"/a/one.png","source":"Read","mtime":1}
+{"type":"image","path":"/a/one.png","source":"d2","mtime":2}
+{"type":"image","path":"/b/two.png","source":"Write","mtime":5}
+`)
+	got := parseManifest(data)
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3 (duplicate path+mtime collapsed): %+v", len(got), got)
+	}
+	// Same path with a new mtime is a distinct re-capture, kept.
+	if got[0].Mtime != 1 || got[1].Mtime != 2 || got[1].Path != "/a/one.png" || got[2].Path != "/b/two.png" {
+		t.Errorf("re-captured entry not kept distinct: %+v", got)
+	}
+}
+
 func TestLoadManifestDropsUndecodableFiles(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("AEYE_DIR", dir)

@@ -19,12 +19,20 @@ type imageEntry struct {
 	Path   string `json:"path"`
 	Source string `json:"source"`
 	Vector string `json:"vector,omitempty"`
+	Mtime  int64  `json:"mtime"`
 }
 
 // parseManifest decodes JSONL bytes into entries, skipping blank/unparseable
-// lines and entries with no path.
+// lines and entries with no path. Duplicate (path, mtime) lines — which the
+// append-only capture hook can emit under concurrent firings — collapse to the
+// first occurrence; a file re-captured with a new mtime stays a distinct entry.
 func parseManifest(data []byte) []imageEntry {
+	type key struct {
+		path  string
+		mtime int64
+	}
 	var out []imageEntry
+	seen := map[key]bool{}
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -34,6 +42,11 @@ func parseManifest(data []byte) []imageEntry {
 		if json.Unmarshal([]byte(line), &e) != nil || e.Path == "" {
 			continue
 		}
+		k := key{e.Path, e.Mtime}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
 		out = append(out, e)
 	}
 	return out

@@ -174,8 +174,9 @@ func TestDragPansWhenZoomed(t *testing.T) {
 	before := m2.crop
 	// Drag right+down by a few cells → crop must move.
 	m3, _ := m2.handleMouse(tea.MouseMotionMsg{X: cx + 5, Y: cy + 3, Button: tea.MouseLeft})
-	if m3.crop == before {
-		t.Error("drag motion should pan the crop")
+	// Dragging right+down moves the image with the cursor → crop x0/y0 decrease.
+	if m3.crop.x0 >= before.x0 || m3.crop.y0 >= before.y0 {
+		t.Errorf("rightward/downward drag should decrease crop x0/y0: before %+v got %+v", before, m3.crop)
 	}
 	// Release ends the drag.
 	m4, _ := m3.handleMouse(tea.MouseReleaseMsg{X: cx + 5, Y: cy + 3, Button: tea.MouseLeft})
@@ -191,6 +192,9 @@ func TestDragIgnoredAtFullCrop(t *testing.T) {
 	pr := m.previewRect()
 	cx, cy := pr.x+pr.w/2, pr.y+pr.h/2
 	m2, _ := m.handleMouse(tea.MouseClickMsg{X: cx, Y: cy, Button: tea.MouseLeft})
+	if !m2.dragging {
+		t.Fatal("click in preview should start dragging even at full crop")
+	}
 	before := m2.crop
 	m3, _ := m2.handleMouse(tea.MouseMotionMsg{X: cx + 5, Y: cy + 3, Button: tea.MouseLeft})
 	if m3.crop != before {

@@ -123,6 +123,7 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 			changed = true
 		}
 	case tea.MouseClickMsg:
+		m.dragging = false // clear any stuck state from a dropped release
 		if e.Button == tea.MouseLeft {
 			if idx, ok := m.filmstripHit(e.X, e.Y); ok {
 				m.selectIndex(idx)

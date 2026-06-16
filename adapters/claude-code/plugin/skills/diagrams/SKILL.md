@@ -85,6 +85,12 @@ with arrows, nest them with `{ }`:
 - Escape `$` in label text as `\$` — a bare `$` starts a variable substitution
   (`${var}`), so a literal `"$5,000,000"` fails to compile with
   *"substitutions must begin on {"* and the diagram silently never renders.
+- Write labels as **plain quoted strings** (use `\n` for line breaks); do **not**
+  use `|md` / `|markdown` block bodies. D2 emits markdown as an HTML
+  `<foreignObject>`, which the carousel's static rasterizer (resvg) cannot paint,
+  so the node renders as a blank box while the diagram still compiles cleanly —
+  a silent failure that looks like a missing entity. (`|code` and `|latex`/`|tex`
+  are fine: they compile to native SVG text/glyphs, not `<foreignObject>`.)
 
 A complete minimal diagram — request path through a small service:
 
@@ -188,7 +194,7 @@ Each is a complete, single-board diagram. Lift one and adapt it.
 
 ```d2
 direction: right
-title: |md # Checkout service | { near: top-center }
+title: Checkout service { near: top-center; style: { stroke-width: 0; fill: transparent } }
 classes: {
   svc:   { style: { stroke: "#1565C0"; stroke-width: 2 } }
   store: { shape: cylinder; style: { stroke: "#2E7D32"; stroke-width: 2 } }

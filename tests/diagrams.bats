@@ -105,6 +105,27 @@ STUB
 	[ -f "$DIAGRAMS/render-errors.log" ]
 }
 
+@test "a |md block warns the agent, logs it, and still renders" {
+	printf 'a: "ok"\nb: |md\n  blank\n|\na -> b\n' >"$DOTD2"
+	run run_app hook-write-d2.json
+	[ "$status" -eq 0 ]
+	# the agent is told (additionalContext) that the markdown node renders blank
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
+	[[ $ctx == *"|md"* ]]
+	[[ $ctx == *BLANK* ]]
+	# logged for diagnostics
+	run grep -c 'WARN |md' "$DIAGRAMS/render-errors.log"
+	[ "$output" -ge 1 ]
+	# the diagram still renders — the other nodes are fine
+	[ -f "$MANIFEST" ]
+}
+
+@test "no |md block -> no warning on stdout" {
+	run run_app hook-write-d2.json
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
 @test "d2 not available -> clean no-op" {
 	# Point at a command that cannot exist, so command -v fails deterministically
 	# regardless of any real d2 on PATH (e.g. from the devShell).

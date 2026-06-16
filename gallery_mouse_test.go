@@ -223,3 +223,17 @@ func TestHandleMouseWheelZoom(t *testing.T) {
 		t.Error("wheel up over preview should zoom in (crop no longer full)")
 	}
 }
+
+func TestHandleMouseWheelFilmstrip(t *testing.T) {
+	m := mouseModel(120, 40, 5, 50)
+	m.ready = true
+	y := m.filmstripCellRects()[0].y
+	down, _ := m.handleMouse(tea.MouseWheelMsg{X: 1, Y: y, Button: tea.MouseWheelDown})
+	if down.cursor != 6 {
+		t.Errorf("wheel down over filmstrip: cursor = %d, want 6", down.cursor)
+	}
+	up, _ := m.handleMouse(tea.MouseWheelMsg{X: 1, Y: y, Button: tea.MouseWheelUp})
+	if up.cursor != 4 {
+		t.Errorf("wheel up over filmstrip: cursor = %d, want 4", up.cursor)
+	}
+}

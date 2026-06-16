@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/noamsto/aeye/compare/v0.3.0...v0.4.0) (2026-06-16)
+
+
+### Features
+
+* **hooks:** backfill image/diagram manifest on resume ([#44](https://github.com/noamsto/aeye/issues/44)) ([#52](https://github.com/noamsto/aeye/issues/52)) ([a4c1a6c](https://github.com/noamsto/aeye/commit/a4c1a6c7d51e50f48b68f3244e8859701d7dca40))
+
 ## [0.3.0](https://github.com/noamsto/aeye/compare/v0.2.0...v0.3.0) (2026-06-16)
 
 

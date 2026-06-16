@@ -201,3 +201,25 @@ func TestDragIgnoredAtFullCrop(t *testing.T) {
 		t.Error("drag at full crop must not pan")
 	}
 }
+
+func TestHandleMouseFilmstripClick(t *testing.T) {
+	m := mouseModel(120, 40, 0, 50)
+	m.ready = true
+	rects := m.filmstripCellRects()
+	cell3 := rects[3]
+	m2, _ := m.handleMouse(tea.MouseClickMsg{X: cell3.x + 1, Y: cell3.y + 1, Button: tea.MouseLeft})
+	if m2.cursor != 3 {
+		t.Errorf("filmstrip click: cursor = %d, want 3", m2.cursor)
+	}
+}
+
+func TestHandleMouseWheelZoom(t *testing.T) {
+	m := mouseModel(120, 40, 0, 5)
+	m.ready = true
+	m.crop = fullCrop()
+	pr := m.previewRect()
+	m2, _ := m.handleMouse(tea.MouseWheelMsg{X: pr.x + pr.w/2, Y: pr.y + pr.h/2, Button: tea.MouseWheelUp})
+	if m2.crop.isFull() {
+		t.Error("wheel up over preview should zoom in (crop no longer full)")
+	}
+}

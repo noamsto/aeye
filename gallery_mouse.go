@@ -137,6 +137,10 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 		// panBy no-ops at full crop, so dragging an unzoomed image does nothing.
 		if m.dragging && e.Button == tea.MouseLeft && !m.crop.isFull() {
 			pr := m.previewRect()
+			if pr.w == 0 || pr.h == 0 { // pane shrank to nothing mid-drag
+				m.dragging = false
+				break
+			}
 			dx := float64(e.X-m.lastDragX) / float64(pr.w)
 			dy := float64(e.Y-m.lastDragY) / float64(pr.h)
 			if dx != 0 || dy != 0 {

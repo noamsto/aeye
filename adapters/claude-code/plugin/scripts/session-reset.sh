@@ -21,4 +21,4 @@ pane_id="${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}"
 pane_file="${pane_id#%}"
 [[ $pane_file =~ ^[A-Za-z0-9_@:.-]+$ ]] || exit 0
 
-rm -f "$IMAGES_DIR/$pane_file.jsonl"
+rm -f "$IMAGES_DIR/$pane_file.jsonl" "$IMAGES_DIR/$pane_file.owner"

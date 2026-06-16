@@ -56,6 +56,24 @@ run_app() { # $1 = fixture name
 	[ "$output" -eq 2 ]
 }
 
+@test "owner self-heal: a different session drops the prior manifest" {
+	CLAUDE_CODE_SESSION_ID="sess-A" run_app hook-read-image.json
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 1 ]
+	CLAUDE_CODE_SESSION_ID="sess-B" run_app hook-read-image.json
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 1 ]
+	run cat "$CLAUDE_STATUS_DIR/images/7.owner"
+	[ "$output" = "sess-B" ]
+}
+
+@test "owner self-heal: same session keeps appending" {
+	CLAUDE_CODE_SESSION_ID="sess-A" run_app hook-read-image.json
+	CLAUDE_CODE_SESSION_ID="sess-A" run_app hook-read-image.json
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 2 ]
+}
+
 @test "no TMUX_PANE and no session id -> no-op, exit 0" {
 	unset TMUX_PANE
 	unset CLAUDE_CODE_SESSION_ID

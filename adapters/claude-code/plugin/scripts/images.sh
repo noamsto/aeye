@@ -92,6 +92,18 @@ printf -v now '%(%FT%T%z)T' -1
 manifest="$IMAGES_DIR/$pane_file.jsonl"
 mkdir -p "$IMAGES_DIR"
 
+# Self-heal against tmux pane-id reuse: a manifest last written by a different
+# Claude session belongs to a pane that's since been recycled — drop it so this
+# session's carousel never blends in a prior session's images. (The SessionStart
+# reset already covers fresh starts; this also guards a start the reset missed.)
+owner="$IMAGES_DIR/$pane_file.owner"
+if [[ -n ${CLAUDE_CODE_SESSION_ID:-} ]]; then
+	if [[ -f $owner && $(<"$owner") != "$CLAUDE_CODE_SESSION_ID" ]]; then
+		rm -f "$manifest"
+	fi
+	printf '%s' "$CLAUDE_CODE_SESSION_ID" >"$owner"
+fi
+
 # Append-only: no write-side dedup. Concurrent firings can emit duplicate
 # (path,mtime) lines; the viewer collapses them on read (parseManifest).
 jq -nc --arg path "$path" --arg source "$source_tool" --arg ts "$now" --argjson mtime "$mtime" \

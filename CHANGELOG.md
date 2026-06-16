@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/noamsto/aeye/compare/v0.2.0...v0.3.0) (2026-06-16)
+
+
+### Features
+
+* mouse support for the carousel viewer ([#48](https://github.com/noamsto/aeye/issues/48)) ([722a9b9](https://github.com/noamsto/aeye/commit/722a9b910ab785aa44bc2eeb60840276008f2101))
+
+
+### Bug Fixes
+
+* **adapter:** self-heal manifest on tmux pane-id reuse ([#37](https://github.com/noamsto/aeye/issues/37)) ([945c334](https://github.com/noamsto/aeye/commit/945c33417a7280e3ed5a25a880c9d1583bd88f82)), closes [#31](https://github.com/noamsto/aeye/issues/31)
+* **diagrams:** warn on |md blocks that render blank in the carousel ([#46](https://github.com/noamsto/aeye/issues/46)) ([a21b87a](https://github.com/noamsto/aeye/commit/a21b87a1c1be5acab45050719dc45465186a9a7c))
+* **regions:** stop attributing trailing &lt;mask&gt;/&lt;defs&gt; geometry to last object ([#50](https://github.com/noamsto/aeye/issues/50)) ([9c3c91c](https://github.com/noamsto/aeye/commit/9c3c91cbd691b2b647fc93c9ef5b3faec9d88803)), closes [#49](https://github.com/noamsto/aeye/issues/49)
+
 ## [0.2.0](https://github.com/noamsto/aeye/compare/v0.1.0...v0.2.0) (2026-06-15)
 
 

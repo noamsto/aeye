@@ -49,6 +49,9 @@ func TestFilmstripCellRectsFullWindow(t *testing.T) {
 	if rects[0].y != m.height-m.l.stripH-4 {
 		t.Errorf("cell y = %d, want %d", rects[0].y, m.height-m.l.stripH-4)
 	}
+	if rects[0].h != m.l.stripH+2 {
+		t.Errorf("cell height = %d, want %d", rects[0].h, m.l.stripH+2)
+	}
 }
 
 func TestFilmstripCellRectsPartialWindow(t *testing.T) {
@@ -65,6 +68,17 @@ func TestFilmstripHit(t *testing.T) {
 	idx, ok := m.filmstripHit(mid.x+1, mid.y+1)
 	if !ok || idx != 2 { // cursor 0 → stripStart 0 → cell 2 is image 2
 		t.Errorf("hit cell 2 = (%d,%v), want (2,true)", idx, ok)
+	}
+	cellW := m.l.stripW + 2
+	if idx, ok := m.filmstripHit(rects[0].x+1, rects[0].y+1); !ok || idx != 0 {
+		t.Errorf("hit cell 0 = (%d,%v), want (0,true)", idx, ok)
+	}
+	last := len(rects) - 1
+	if idx, ok := m.filmstripHit(rects[last].x+1, rects[last].y+1); !ok || idx != last {
+		t.Errorf("hit last cell = (%d,%v), want (%d,true)", idx, ok, last)
+	}
+	if _, ok := m.filmstripHit(rects[0].x+cellW, rects[0].y+1); ok {
+		t.Error("click in gutter between cells must not hit any cell")
 	}
 	if _, ok := m.filmstripHit(mid.x+1, m.height-1); ok {
 		t.Error("click in legend must not hit a cell")
@@ -90,5 +104,19 @@ func TestOverFilmstripBand(t *testing.T) {
 	}
 	if m.overFilmstripBand(2) || m.overFilmstripBand(m.height-1) {
 		t.Error("preview/legend rows should report false")
+	}
+	if m.overFilmstripBand(top + m.l.stripH + 2) {
+		t.Error("row just below the band should be false")
+	}
+}
+
+func TestPreviewRectDegeneratePane(t *testing.T) {
+	m := mouseModel(30, 12, 0, 5) // tiny pane → box can't fit the band
+	pr := m.previewRect()
+	if pr != (rect{}) {
+		t.Errorf("degenerate pane previewRect = %+v, want zero rect", pr)
+	}
+	if pr.contains(15, 6) {
+		t.Error("zero rect must not contain any point")
 	}
 }

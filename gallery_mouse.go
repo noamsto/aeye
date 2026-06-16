@@ -15,12 +15,16 @@ func (r rect) contains(x, y int) bool {
 
 // previewRect is the inner image cell area of the centered, framed preview box.
 // renderView frames a previewW×previewH block in a rounded border (+1 per side)
-// and centers it in the preview band, which starts at row 2 (title+subtitle)
-// and is height-stripH-6 rows tall.
+// and centers it in the preview band, which starts at row 2 (title+subtitle).
+// previewArea (the lipgloss.Place container) is height-stripH-6 rows; the framed
+// box of size (previewW+2)×(previewH+2) is centered within it.
 func (m galleryModel) previewRect() rect {
 	const bandTop = 2
 	bandH := m.height - m.l.stripH - 6
 	boxW, boxH := m.l.previewW+2, m.l.previewH+2
+	if bandH <= 0 || boxH > bandH {
+		return rect{}
+	}
 	boxLeft := (m.width - boxW) / 2
 	boxTop := bandTop + (bandH-boxH)/2
 	return rect{x: boxLeft + 1, y: boxTop + 1, w: m.l.previewW, h: m.l.previewH}

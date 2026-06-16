@@ -73,4 +73,31 @@ func (m galleryModel) overFilmstripBand(y int) bool {
 	return y >= top && y < top+m.l.stripH+2
 }
 
-var _ = tea.MouseLeft // keep the tea import until handleMouse lands (Task 2)
+// handleMouse turns mouse events into the same actions as the keyboard paths,
+// then schedules a sharp d2 re-render like every other input.
+func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
+	if !m.ready || len(m.images) == 0 {
+		return m, nil
+	}
+	e := msg.Mouse()
+	switch msg.(type) {
+	case tea.MouseWheelMsg:
+		dir := 0
+		switch e.Button {
+		case tea.MouseWheelUp:
+			dir = -1
+		case tea.MouseWheelDown:
+			dir = +1
+		}
+		if dir != 0 && m.overFilmstripBand(e.Y) {
+			m.selectIndex(m.cursor + dir)
+		}
+	case tea.MouseClickMsg:
+		if e.Button == tea.MouseLeft {
+			if idx, ok := m.filmstripHit(e.X, e.Y); ok {
+				m.selectIndex(idx)
+			}
+		}
+	}
+	return m, m.scheduleVector()
+}

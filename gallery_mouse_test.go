@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	tea "charm.land/bubbletea/v2"
+)
 
 // A 120x40 pane: computeLayout gives a known layout we can hit-test against.
 func mouseModel(width, height, cursor, nimages int) galleryModel {
@@ -153,5 +157,43 @@ func TestZoomAtZoomOutToFull(t *testing.T) {
 	}
 	if !m.crop.isFull() {
 		t.Errorf("repeated zoom-out must reach fullCrop, got %+v", m.crop)
+	}
+}
+
+func TestDragPansWhenZoomed(t *testing.T) {
+	m := mouseModel(120, 40, 0, 1)
+	m.ready = true
+	m.crop = cropFrac{0.25, 0.25, 0.75, 0.75} // zoomed in so panBy is live
+	pr := m.previewRect()
+	cx, cy := pr.x+pr.w/2, pr.y+pr.h/2
+	// Click in the preview starts a drag.
+	m2, _ := m.handleMouse(tea.MouseClickMsg{X: cx, Y: cy, Button: tea.MouseLeft})
+	if !m2.dragging {
+		t.Fatal("click in preview should start dragging")
+	}
+	before := m2.crop
+	// Drag right+down by a few cells → crop must move.
+	m3, _ := m2.handleMouse(tea.MouseMotionMsg{X: cx + 5, Y: cy + 3, Button: tea.MouseLeft})
+	if m3.crop == before {
+		t.Error("drag motion should pan the crop")
+	}
+	// Release ends the drag.
+	m4, _ := m3.handleMouse(tea.MouseReleaseMsg{X: cx + 5, Y: cy + 3, Button: tea.MouseLeft})
+	if m4.dragging {
+		t.Error("release should end dragging")
+	}
+}
+
+func TestDragIgnoredAtFullCrop(t *testing.T) {
+	m := mouseModel(120, 40, 0, 1)
+	m.ready = true
+	m.crop = fullCrop()
+	pr := m.previewRect()
+	cx, cy := pr.x+pr.w/2, pr.y+pr.h/2
+	m2, _ := m.handleMouse(tea.MouseClickMsg{X: cx, Y: cy, Button: tea.MouseLeft})
+	before := m2.crop
+	m3, _ := m2.handleMouse(tea.MouseMotionMsg{X: cx + 5, Y: cy + 3, Button: tea.MouseLeft})
+	if m3.crop != before {
+		t.Error("drag at full crop must not pan")
 	}
 }

@@ -127,8 +127,26 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 			if idx, ok := m.filmstripHit(e.X, e.Y); ok {
 				m.selectIndex(idx)
 				changed = true
+			} else if m.previewRect().contains(e.X, e.Y) {
+				m.dragging = true
+				m.lastDragX, m.lastDragY = e.X, e.Y
 			}
 		}
+	case tea.MouseMotionMsg:
+		// panBy no-ops at full crop, so dragging an unzoomed image does nothing.
+		if m.dragging && e.Button == tea.MouseLeft && !m.crop.isFull() {
+			pr := m.previewRect()
+			dx := float64(e.X-m.lastDragX) / float64(pr.w)
+			dy := float64(e.Y-m.lastDragY) / float64(pr.h)
+			if dx != 0 || dy != 0 {
+				m.panBy(-dx, -dy) // crop moves opposite the cursor
+				m.transmitPreviewOnly()
+				m.lastDragX, m.lastDragY = e.X, e.Y
+				changed = true
+			}
+		}
+	case tea.MouseReleaseMsg:
+		m.dragging = false
 	}
 	if !changed {
 		return m, nil

@@ -181,6 +181,37 @@ moment the user reopens. (Minor: `.opened` markers are not garbage-collected;
 they share the cleanup story of the per-key manifests themselves, and a reused
 tmux pane id at most suppresses one auto-open — acceptable.)
 
+### Browser-free rasterization; markdown left unsupported (#43)
+
+The raster step is `d2 → svg → resvg → png`, never `d2 … .png`. d2 generates the
+SVG in pure Go (LaTeX included — MathJax runs in a Go JS engine and is baked in
+as `<path>` glyphs), but d2's *own* PNG export shells out to headless Chromium.
+resvg (pure Rust) does the pixel step instead, keeping the pipeline hermetic and
+cron/SSH-safe — the same reason D2 was chosen over Mermaid (whose renderer needs
+Chromium) in the first place.
+
+The one cost: resvg is a static SVG rasterizer and does not implement
+`<foreignObject>`. d2 emits `|md` / `|markdown` block bodies as live HTML inside
+a `<foreignObject>` (it defers their layout to a browser), so those nodes paint
+blank while `d2` still exits 0 — a silent failure that looks like a missing
+entity. `|code` (native `<text>`) and `|latex`/`|tex` (`<path>`) are pre-rendered
+to SVG primitives at generation time and rasterize fine; only markdown is left as
+deferred HTML.
+
+**Rejected: a browser rasterizer to render markdown.** Headless Chromium /
+Playwright / `d2 … .png` would paint `<foreignObject>` correctly, but adopting
+one reverts the founding browser-free constraint for *every* diagram: ~200 MB of
+Chromium + font/GPU libs, slower renders, and flakiness in headless/cron runs.
+The payoff is small — markdown adds nothing over plain quoted labels +
+`style.bold/italic/font-size` + `|latex`/`|code`, except mixed inline formatting
+in one node, which is an anti-pattern for ≤12-node sketches. So markdown stays
+unsupported: the SKILL and SessionStart guidance steer to plain labels, and the
+render hook greps written `.d2` for `|md`/`|markdown` and surfaces a warning
+(`additionalContext` + `render-errors.log`) instead of failing silently. If rich
+text is ever needed, the cheaper path is a targeted hybrid — the `|md` detection
+already exists, so only those diagrams would opt into a browser raster behind an
+env flag (e.g. `AEYE_D2_BROWSER=1`), leaving the default hermetic.
+
 ## Error handling (define errors out of existence)
 
 - **`d2` or `resvg` not on PATH** → hook no-ops silently, matching the viewer's

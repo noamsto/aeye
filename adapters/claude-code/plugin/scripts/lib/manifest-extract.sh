@@ -55,3 +55,81 @@ extract_image_path() {
 	fi
 	return 0
 }
+
+# extract_d2_path PAYLOAD -> echoes a resolved, existing .d2 path or nothing.
+extract_d2_path() {
+	local payload="$1" cwd candidate
+	cwd="$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null)"
+	candidate="$(jq -r '.tool_input.file_path // empty' <<<"$payload" 2>/dev/null)"
+	[[ -n $candidate ]] || return 0
+	[[ $candidate != /* && -n $cwd ]] && candidate="$cwd/$candidate"
+	[[ ${candidate,,} == *.d2 ]] || return 0
+	[[ -f $candidate ]] || return 0
+	printf '%s' "$candidate"
+	return 0
+}
+
+# d2_png_for SRC DIAGRAMS_DIR -> echoes the cache png path (hash of source content).
+d2_png_for() {
+	local src="$1" dir="$2" hash
+	hash="$(sha256sum "$src" | cut -c1-16)"
+	printf '%s/%s.png' "$dir" "$hash"
+}
+
+# d2_render SRC DIAGRAMS_DIR -> renders SRC to a cached png (if absent) and echoes
+# the png path. Returns 1 (no output) when renderers are missing or rendering
+# fails (failure is logged to render-errors.log). Does not append or toggle.
+d2_render() {
+	local src="$1" dir="$2" png svg err
+	png="$(d2_png_for "$src" "$dir")"
+	svg="${png%.png}.svg"
+	mkdir -p "$dir"
+
+	if [[ -f $png ]]; then
+		printf '%s' "$png"
+		return 0
+	fi
+
+	local d2_bin="${AEYE_D2:-d2}" resvg_bin="${AEYE_RESVG:-resvg}"
+	command -v "$d2_bin" >/dev/null 2>&1 || return 1
+	command -v "$resvg_bin" >/dev/null 2>&1 || return 1
+	err="${png%.png}.err"
+
+	local now
+	_d2_log_err() { # $1 message; logs and cleans partials
+		printf -v now '%(%FT%T%z)T' -1
+		printf '%s\t%s\t%s\n' "$now" "$(basename "${png%.png}")" "$1" \
+			>>"$dir/render-errors.log"
+		rm -f "$svg" "$err" "$png"
+	}
+
+	local d2_args=(-t "${AEYE_D2_THEME:-105}")
+	[[ ${AEYE_D2_SKETCH:-1} != 0 ]] && d2_args+=(--sketch)
+	if ! "$d2_bin" "${d2_args[@]}" "$src" "$svg" 2>"$err"; then
+		_d2_log_err "$(tr '\n' ' ' <"$err")"
+		return 1
+	fi
+
+	# resvg can't use d2's embedded @font-face fonts; rewrite to an installed family.
+	if ! bash "$(dirname "${BASH_SOURCE[0]}")/../d2-fix-fonts.sh" "$svg" 2>>"$err"; then
+		_d2_log_err "$(tr '\n' ' ' <"$err")"
+		return 1
+	fi
+
+	# Recolor labels to contrast their node's fill. Best-effort.
+	local contrast_bin
+	contrast_bin="$(command -v "${AEYE_BIN:-aeye}" 2>/dev/null || true)"
+	[[ -n $contrast_bin ]] && "$contrast_bin" svg-contrast "$svg" 2>>"$err" || true
+
+	local resvg_args=()
+	if [[ -n ${AEYE_D2_FONT_DIR:-} ]]; then
+		resvg_args+=(--skip-system-fonts --use-fonts-dir "$AEYE_D2_FONT_DIR")
+	fi
+	if ! "$resvg_bin" "${resvg_args[@]}" "$svg" "$png" 2>>"$err"; then
+		_d2_log_err "$(tr '\n' ' ' <"$err")"
+		return 1
+	fi
+	rm -f "$err"
+	printf '%s' "$png"
+	return 0
+}

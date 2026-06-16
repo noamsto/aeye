@@ -1,0 +1,4 @@
+{"type":"assistant","cwd":"/work","timestamp":"2026-06-16T10:00:01.000Z","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}
+{"type":"assistant","cwd":"/work","timestamp":"2026-06-16T10:00:02.000Z","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"IMGPATH"}}]}}
+{"type":"assistant","cwd":"/work","timestamp":"2026-06-16T10:00:03.000Z","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"DOTD2"}}]}}
+{"type":"assistant","cwd":"/work","timestamp":"2026-06-16T10:00:04.000Z","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"IMGPATH"}}]}}

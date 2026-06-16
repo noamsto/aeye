@@ -22,6 +22,11 @@
         "hooks": [
           {"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/session-reset.sh"}
         ]
+      },
+      {
+        "hooks": [
+          {"type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/session-backfill.sh"}
+        ]
       }
     ]
   }

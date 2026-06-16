@@ -27,3 +27,8 @@ setup() {
 	run jq -e '[.hooks.SessionStart[].hooks[].command] | any(test("session-reset.sh"))' "$HOOKS"
 	[ "$status" -eq 0 ]
 }
+
+@test "SessionStart runs session-backfill.sh" {
+	run jq -e '[.hooks.SessionStart[].hooks[].command] | any(test("session-backfill.sh"))' "$HOOKS"
+	[ "$status" -eq 0 ]
+}

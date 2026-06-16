@@ -209,11 +209,11 @@ var (
 	fontSizeRe  = regexp.MustCompile(`font-size:\s*([\d.]+)`)
 )
 
-// translateOf reads translate(tx[,ty]) from an element's tag. d2 positions most
-// node shapes with local path coords + a translate; the cylinder uses absolute
-// coords + no transform. Defaulting to (0,0) handles both.
-func translateOf(tag string) (tx, ty float64) {
-	m := translateRe.FindStringSubmatch(tag)
+// translateOf reads translate(tx[,ty]) from a transform attribute value. d2
+// positions most node shapes with local path coords + a translate; the cylinder
+// uses absolute coords + no transform. Defaulting to (0,0) handles both.
+func translateOf(transform string) (tx, ty float64) {
+	m := translateRe.FindStringSubmatch(transform)
 	if m == nil {
 		return 0, 0
 	}

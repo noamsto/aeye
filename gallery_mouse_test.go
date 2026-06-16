@@ -120,3 +120,25 @@ func TestPreviewRectDegeneratePane(t *testing.T) {
 		t.Error("zero rect must not contain any point")
 	}
 }
+
+func TestZoomAtKeepsPointStationary(t *testing.T) {
+	m := mouseModel(120, 40, 0, 5)
+	m.crop = cropFrac{0, 0, 1, 1}
+	pr := m.previewRect()
+	// Pointer near the top-left quarter of the preview.
+	sx, sy := pr.x+pr.w/4, pr.y+pr.h/4
+	fx := (float64(sx-pr.x) + 0.5) / float64(pr.w)
+	fy := (float64(sy-pr.y) + 0.5) / float64(pr.h)
+	wantX := m.crop.x0 + fx*m.crop.w()
+	wantY := m.crop.y0 + fy*m.crop.h()
+	m.zoomAt(sx, sy, 1.25)
+	// The image point under the pointer must map back to the same screen frac.
+	gotX := m.crop.x0 + fx*m.crop.w()
+	gotY := m.crop.y0 + fy*m.crop.h()
+	if !approx(gotX, wantX) || !approx(gotY, wantY) {
+		t.Errorf("anchor drifted: got (%v,%v) want (%v,%v)", gotX, gotY, wantX, wantY)
+	}
+	if m.crop.isFull() {
+		t.Error("zoom-in must shrink the crop")
+	}
+}

@@ -73,6 +73,23 @@ func (m galleryModel) overFilmstripBand(y int) bool {
 	return y >= top && y < top+m.l.stripH+2
 }
 
+// zoomAt zooms by factor about the preview center (matching the z/Z keys), then
+// pans so the image point under (sx, sy) stays beneath the pointer. The fx/fy
+// fraction treats the inner box as the crop window — approximate under
+// letterbox, which is fine for anchoring (we keep the spot stationary, we do
+// not resolve a pixel).
+func (m *galleryModel) zoomAt(sx, sy int, factor float64) {
+	pr := m.previewRect()
+	fx := clampF((float64(sx-pr.x)+0.5)/float64(pr.w), 0, 1)
+	fy := clampF((float64(sy-pr.y)+0.5)/float64(pr.h), 0, 1)
+	bx := m.crop.x0 + fx*m.crop.w()
+	by := m.crop.y0 + fy*m.crop.h()
+	m.zoomBy(factor)
+	w, h := m.crop.w(), m.crop.h()
+	// Want bx == x0 + fx*w; panBy shifts x0 by dx*w, so dx = ((bx-fx*w)-x0)/w.
+	m.panBy(((bx-fx*w)-m.crop.x0)/w, ((by-fy*h)-m.crop.y0)/h)
+}
+
 // handleMouse turns mouse events into the same actions as the keyboard paths,
 // then schedules a sharp d2 re-render like every other input.
 func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
@@ -90,7 +107,18 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 		case tea.MouseWheelDown:
 			dir = +1
 		}
-		if dir != 0 && m.overFilmstripBand(e.Y) {
+		if dir == 0 {
+			break
+		}
+		if m.previewRect().contains(e.X, e.Y) {
+			factor := 1.25
+			if dir > 0 {
+				factor = 1 / 1.25
+			}
+			m.zoomAt(e.X, e.Y, factor)
+			m.transmitPreviewOnly()
+			changed = true
+		} else if m.overFilmstripBand(e.Y) {
 			m.selectIndex(m.cursor + dir)
 			changed = true
 		}

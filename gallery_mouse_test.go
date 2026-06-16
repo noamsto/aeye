@@ -142,3 +142,16 @@ func TestZoomAtKeepsPointStationary(t *testing.T) {
 		t.Error("zoom-in must shrink the crop")
 	}
 }
+
+func TestZoomAtZoomOutToFull(t *testing.T) {
+	m := mouseModel(120, 40, 0, 5)
+	m.crop = cropFrac{0.25, 0.25, 0.75, 0.75} // zoomed-in starting state
+	pr := m.previewRect()
+	sx, sy := pr.x+pr.w/2, pr.y+pr.h/2
+	for i := 0; i < 11; i++ {
+		m.zoomAt(sx, sy, 1/1.25)
+	}
+	if !m.crop.isFull() {
+		t.Errorf("repeated zoom-out must reach fullCrop, got %+v", m.crop)
+	}
+}

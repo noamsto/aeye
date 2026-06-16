@@ -55,8 +55,12 @@ append_diagram() { # $1 png  $2 svg  $3 ts
 
 # Only image/diagram-bearing lines reach jq (raw grep fast-bail, like images.sh).
 while IFS= read -r line; do
-	cwd="$(jq -r '.cwd // empty' <<<"$line" 2>/dev/null)"
-	ts="$(jq -r '.timestamp // empty' <<<"$line" 2>/dev/null)"
+	# A crashed prior session can leave a truncated, non-JSON final line; jq exits
+	# nonzero on it and the bare assignment would abort the whole backfill under
+	# set -e. Default to empty and let the line yield nothing (its inner jq scans
+	# are in process substitutions, which already swallow the parse error).
+	cwd="$(jq -r '.cwd // empty' <<<"$line" 2>/dev/null)" || cwd=""
+	ts="$(jq -r '.timestamp // empty' <<<"$line" 2>/dev/null)" || ts=""
 
 	# An assistant tool_use line -> synthetic {tool_name, tool_input, cwd}.
 	while IFS= read -r tu; do
@@ -65,7 +69,7 @@ while IFS= read -r line; do
 			'{tool_name:$tu.name, tool_input:$tu.input, tool_response:{}, cwd:$cwd}')"
 		img="$(extract_image_path "$synth")"
 		if [[ -n $img ]]; then
-			append_image "$img" "$(jq -r '.name' <<<"$tu")" "$ts"
+			append_image "$img" "$(jq -r '.name // "?"' <<<"$tu")" "$ts"
 			continue
 		fi
 		d2="$(extract_d2_path "$synth")"
@@ -83,7 +87,7 @@ while IFS= read -r line; do
 		img="$(extract_image_path "$synth")"
 		[[ -n $img ]] && append_image "$img" "screenshot" "$ts"
 	done < <(jq -c '.message.content[]? | select(.type=="tool_result") | .content' <<<"$line" 2>/dev/null)
-done < <(grep -nE '\.(png|jpe?g|gif|webp|bmp|d2)' "$transcript" | cut -d: -f2-)
+done < <(grep -E '\.(png|jpe?g|gif|webp|bmp|d2)' "$transcript")
 
 # Claim the rebuilt manifest so the live hooks' owner self-heal does not drop it.
 if [[ -f $manifest && -n ${CLAUDE_CODE_SESSION_ID:-} ]]; then

@@ -76,6 +76,17 @@ d2_png_for() {
 	printf '%s/%s.png' "$dir" "$hash"
 }
 
+# _d2_render_fail DIR PNG MSG -> log a render failure and clean its partials.
+# svg/err are derived from PNG so callers pass only the message.
+_d2_render_fail() {
+	local dir="$1" png="$2" msg="$3" base now
+	base="${png%.png}"
+	printf -v now '%(%FT%T%z)T' -1
+	printf '%s\t%s\t%s\n' "$now" "$(basename "$base")" "$msg" \
+		>>"$dir/render-errors.log"
+	rm -f "$base.svg" "$base.err" "$png"
+}
+
 # d2_render SRC DIAGRAMS_DIR -> renders SRC to a cached png (if absent) and echoes
 # the png path. Returns 1 (no output) when renderers are missing or rendering
 # fails (failure is logged to render-errors.log). Does not append or toggle.
@@ -95,38 +106,32 @@ d2_render() {
 	command -v "$resvg_bin" >/dev/null 2>&1 || return 1
 	err="${png%.png}.err"
 
-	local now
-	_d2_log_err() { # $1 message; logs and cleans partials
-		printf -v now '%(%FT%T%z)T' -1
-		printf '%s\t%s\t%s\n' "$now" "$(basename "${png%.png}")" "$1" \
-			>>"$dir/render-errors.log"
-		rm -f "$svg" "$err" "$png"
-	}
-
 	local d2_args=(-t "${AEYE_D2_THEME:-105}")
 	[[ ${AEYE_D2_SKETCH:-1} != 0 ]] && d2_args+=(--sketch)
 	if ! "$d2_bin" "${d2_args[@]}" "$src" "$svg" 2>"$err"; then
-		_d2_log_err "$(tr '\n' ' ' <"$err")"
+		_d2_render_fail "$dir" "$png" "$(tr '\n' ' ' <"$err")"
 		return 1
 	fi
 
 	# resvg can't use d2's embedded @font-face fonts; rewrite to an installed family.
 	if ! bash "$(dirname "${BASH_SOURCE[0]}")/../d2-fix-fonts.sh" "$svg" 2>>"$err"; then
-		_d2_log_err "$(tr '\n' ' ' <"$err")"
+		_d2_render_fail "$dir" "$png" "$(tr '\n' ' ' <"$err")"
 		return 1
 	fi
 
 	# Recolor labels to contrast their node's fill. Best-effort.
 	local contrast_bin
 	contrast_bin="$(command -v "${AEYE_BIN:-aeye}" 2>/dev/null || true)"
-	[[ -n $contrast_bin ]] && "$contrast_bin" svg-contrast "$svg" 2>>"$err" || true
+	if [[ -n $contrast_bin ]]; then
+		"$contrast_bin" svg-contrast "$svg" 2>>"$err" || true
+	fi
 
 	local resvg_args=()
 	if [[ -n ${AEYE_D2_FONT_DIR:-} ]]; then
 		resvg_args+=(--skip-system-fonts --use-fonts-dir "$AEYE_D2_FONT_DIR")
 	fi
 	if ! "$resvg_bin" "${resvg_args[@]}" "$svg" "$png" 2>>"$err"; then
-		_d2_log_err "$(tr '\n' ' ' <"$err")"
+		_d2_render_fail "$dir" "$png" "$(tr '\n' ' ' <"$err")"
 		return 1
 	fi
 	rm -f "$err"

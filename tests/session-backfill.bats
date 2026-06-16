@@ -81,6 +81,16 @@ run_app() { # $1 = source
 	[ ! -f "$MANIFEST" ]
 }
 
+@test "a truncated/non-JSON transcript line does not abort the backfill" {
+	# A crashed prior session can leave a partial final line that still matches the
+	# grep fast-bail. It must be skipped, not abort the whole replay.
+	printf 'truncated junk with /x.png and {"oops\n' >>"$TRANSCRIPT"
+	run run_app resume
+	[ "$status" -eq 0 ]
+	run grep -c "\"path\":\"$IMG\"" "$MANIFEST"
+	[ "$output" -eq 1 ]
+}
+
 @test "backfill does not open the carousel" {
 	cat >"$STUB/tmux-claude-images" <<STUB
 #!/usr/bin/env bash

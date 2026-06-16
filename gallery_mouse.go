@@ -80,6 +80,7 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 		return m, nil
 	}
 	e := msg.Mouse()
+	changed := false
 	switch msg.(type) {
 	case tea.MouseWheelMsg:
 		dir := 0
@@ -91,13 +92,18 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 		}
 		if dir != 0 && m.overFilmstripBand(e.Y) {
 			m.selectIndex(m.cursor + dir)
+			changed = true
 		}
 	case tea.MouseClickMsg:
 		if e.Button == tea.MouseLeft {
 			if idx, ok := m.filmstripHit(e.X, e.Y); ok {
 				m.selectIndex(idx)
+				changed = true
 			}
 		}
+	}
+	if !changed {
+		return m, nil
 	}
 	return m, m.scheduleVector()
 }

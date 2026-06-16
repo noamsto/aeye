@@ -101,10 +101,6 @@ type galleryModel struct {
 	regionIdx  int         // focused sibling index at the current level; -1 = not in region mode
 	vecGen     uint64      // debounce generation: only the latest scheduled vector kick fires
 
-	// Mouse drag state for preview panning.
-	dragging             bool
-	lastDragX, lastDragY int
-
 	// Theme colors, resolved once at startup (tmux options are session-invariant).
 	selColor, dimColor, hintFg, textFg imgcolor.Color
 }

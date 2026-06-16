@@ -17,6 +17,15 @@ setup() {
 	[[ $ctx == *".d2"* ]]
 }
 
+@test "guidance warns against |md blocks" {
+	# shellcheck disable=SC2030,SC2031
+	export TMUX="/tmp/fake"
+	run bash "$APP"
+	[ "$status" -eq 0 ]
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
+	[[ $ctx == *"|md"* ]]
+}
+
 @test "no host: emits nothing" {
 	run bash "$APP"
 	[ "$status" -eq 0 ]

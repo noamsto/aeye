@@ -83,6 +83,20 @@ if [[ ! -f $png ]]; then
 		exit 0
 	fi
 	rm -f "$err"
+
+	# d2 emits |md / |markdown bodies as an HTML <foreignObject>, which resvg
+	# can't paint — those nodes rasterize blank while d2 exits 0, a silent
+	# failure that looks like a missing entity. Detect it on the rendered SVG
+	# (exact: no source-grep false positives, catches every markdown syntax) and
+	# warn the agent. Non-blocking — the rest of the diagram still renders.
+	if grep -q '<foreignObject' "$svg"; then
+		printf -v now '%(%FT%T%z)T' -1
+		printf '%s\t%s\tWARN markdown block(s) render blank in resvg (<foreignObject>)\n' \
+			"$now" "$(basename "$candidate")" >>"$DIAGRAMS_DIR/render-errors.log"
+		warn="$(basename "$candidate") contains markdown (|md / |markdown) block(s) that render BLANK in the carousel: resvg can't paint the HTML <foreignObject> that D2 emits for markdown. Rewrite those node bodies as plain quoted labels (use \\n for line breaks)."
+		jq -nc --arg ctx "$warn" \
+			'{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}'
+	fi
 fi
 
 # Self-heal against tmux pane-id reuse: a manifest last written by a different

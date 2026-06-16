@@ -9,6 +9,16 @@ setup() {
 	EXTRACT="$ROOT/tests/lib/extract-d2-blocks.sh"
 }
 
+@test "SKILL.md d2 examples use no |md / |markdown blocks (they render blank in resvg)" {
+	mapfile -d '' -t blocks < <(bash "$EXTRACT" "$SKILL")
+	for block in "${blocks[@]}"; do
+		[[ $block != *"|md"* ]] || {
+			echo "a SKILL.md d2 example contains a |md/|markdown block: $block"
+			return 1
+		}
+	done
+}
+
 @test "every d2 example in SKILL.md compiles, renders text, and is single-board" {
 	command -v d2 >/dev/null || skip "d2 not installed"
 	command -v resvg >/dev/null || skip "resvg not installed"

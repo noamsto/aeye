@@ -205,10 +205,14 @@ Chromium + font/GPU libs, slower renders, and flakiness in headless/cron runs.
 The payoff is small — markdown adds nothing over plain quoted labels +
 `style.bold/italic/font-size` + `|latex`/`|code`, except mixed inline formatting
 in one node, which is an anti-pattern for ≤12-node sketches. So markdown stays
-unsupported: the SKILL and SessionStart guidance steer to plain labels, and the
-render hook greps written `.d2` for `|md`/`|markdown` and surfaces a warning
-(`additionalContext` + `render-errors.log`) instead of failing silently. If rich
-text is ever needed, the cheaper path is a targeted hybrid — the `|md` detection
+unsupported: the SKILL and SessionStart guidance steer to plain labels, and after
+a successful render the hook checks the generated SVG for `<foreignObject>` (the
+exact element resvg drops) and surfaces a warning (`additionalContext` +
+`render-errors.log`) instead of failing silently. Checking the rendered SVG
+rather than grepping the source is exact — it catches every markdown syntax,
+never false-positives on the literal text `|md` inside a label, and only fires
+when a render actually happened (renderers absent stays a silent no-op). If rich
+text is ever needed, the cheaper path is a targeted hybrid — the detection
 already exists, so only those diagrams would opt into a browser raster behind an
 env flag (e.g. `AEYE_D2_BROWSER=1`), leaving the default hermetic.
 

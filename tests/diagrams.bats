@@ -105,7 +105,19 @@ STUB
 	[ -f "$DIAGRAMS/render-errors.log" ]
 }
 
-@test "a |md block warns the agent, logs it, and still renders" {
+@test "a markdown node (<foreignObject> in the rendered svg) warns the agent, logs it, and still renders" {
+	# d2 stub mimicking the real tool: markdown source -> an SVG <foreignObject>.
+	cat >"$STUB_BIN/d2" <<'STUB'
+#!/usr/bin/env bash
+src=""
+for a in "$@"; do [[ -f $a && $a == *.d2 ]] && src="$a"; done
+if grep -q '|md' "$src" 2>/dev/null; then
+	printf '<svg><foreignObject><div>md</div></foreignObject></svg>' >"${@: -1}"
+else
+	printf '<svg/>' >"${@: -1}"
+fi
+STUB
+	chmod +x "$STUB_BIN/d2"
 	printf 'a: "ok"\nb: |md\n  blank\n|\na -> b\n' >"$DOTD2"
 	run run_app hook-write-d2.json
 	[ "$status" -eq 0 ]
@@ -114,21 +126,33 @@ STUB
 	[[ $ctx == *"|md"* ]]
 	[[ $ctx == *BLANK* ]]
 	# logged for diagnostics
-	run grep -c 'WARN |md' "$DIAGRAMS/render-errors.log"
+	run grep -c 'WARN markdown' "$DIAGRAMS/render-errors.log"
 	[ "$output" -ge 1 ]
 	# the diagram still renders — the other nodes are fine
 	[ -f "$MANIFEST" ]
 }
 
-@test "no |md block -> no warning on stdout" {
+@test "no markdown (no <foreignObject>) -> no warning on stdout" {
 	run run_app hook-write-d2.json
 	[ "$status" -eq 0 ]
 	[ -z "$output" ]
 }
 
+@test "renderers absent -> no markdown warning (silent no-op)" {
+	# md source, but d2 missing: the whole feature is off, so nothing is emitted.
+	printf 'b: |md\n  blank\n|\n' >"$DOTD2"
+	# shellcheck disable=SC2030,SC2031
+	export AEYE_D2=__aeye_absent_d2__
+	run run_app hook-write-d2.json
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+	[ ! -f "$DIAGRAMS/render-errors.log" ]
+}
+
 @test "d2 not available -> clean no-op" {
 	# Point at a command that cannot exist, so command -v fails deterministically
 	# regardless of any real d2 on PATH (e.g. from the devShell).
+	# shellcheck disable=SC2031
 	export AEYE_D2=__aeye_absent_d2__
 	run run_app hook-write-d2.json
 	[ "$status" -eq 0 ]

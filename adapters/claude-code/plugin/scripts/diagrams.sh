@@ -29,22 +29,6 @@ fi
 [[ -f $candidate ]] || exit 0
 
 mkdir -p "$DIAGRAMS_DIR"
-
-# |md / |markdown bodies compile to an HTML <foreignObject> that resvg can't
-# paint, so the node renders blank while d2 still exits 0 — a silent failure
-# that looks like a missing entity. Surface it to the agent (additionalContext)
-# and log it; don't block, since the rest of the diagram still renders.
-if md_hits="$(grep -nE '\|(md|markdown)\b' "$candidate")"; then
-	md_lines="$(cut -d: -f1 <<<"$md_hits" | paste -sd, -)"
-	printf -v now '%(%FT%T%z)T' -1
-	printf '%s\t%s\tWARN |md block(s) render blank in resvg (line %s)\n' \
-		"$now" "$(basename "$candidate")" "$md_lines" \
-		>>"$DIAGRAMS_DIR/render-errors.log"
-	warn="$(basename "$candidate") uses |md / |markdown block(s) on line $md_lines, which render BLANK in the carousel: resvg can't paint the HTML <foreignObject> that D2 emits for markdown. Rewrite those node bodies as plain quoted labels (use \\n for line breaks)."
-	jq -nc --arg ctx "$warn" \
-		'{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}'
-fi
-
 hash="$(sha256sum "$candidate" | cut -c1-16)"
 png="$DIAGRAMS_DIR/$hash.png"
 svg="$DIAGRAMS_DIR/$hash.svg"
@@ -99,6 +83,20 @@ if [[ ! -f $png ]]; then
 		exit 0
 	fi
 	rm -f "$err"
+
+	# d2 emits |md / |markdown bodies as an HTML <foreignObject>, which resvg
+	# can't paint — those nodes rasterize blank while d2 exits 0, a silent
+	# failure that looks like a missing entity. Detect it on the rendered SVG
+	# (exact: no source-grep false positives, catches every markdown syntax) and
+	# warn the agent. Non-blocking — the rest of the diagram still renders.
+	if grep -q '<foreignObject' "$svg"; then
+		printf -v now '%(%FT%T%z)T' -1
+		printf '%s\t%s\tWARN markdown block(s) render blank in resvg (<foreignObject>)\n' \
+			"$now" "$(basename "$candidate")" >>"$DIAGRAMS_DIR/render-errors.log"
+		warn="$(basename "$candidate") contains markdown (|md / |markdown) block(s) that render BLANK in the carousel: resvg can't paint the HTML <foreignObject> that D2 emits for markdown. Rewrite those node bodies as plain quoted labels (use \\n for line breaks)."
+		jq -nc --arg ctx "$warn" \
+			'{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}'
+	fi
 fi
 
 # Append guarded by a path-dedup check (independent of the render step, so a

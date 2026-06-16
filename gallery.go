@@ -101,6 +101,10 @@ type galleryModel struct {
 	regionIdx  int         // focused sibling index at the current level; -1 = not in region mode
 	vecGen     uint64      // debounce generation: only the latest scheduled vector kick fires
 
+	// Mouse drag state for preview panning.
+	dragging             bool
+	lastDragX, lastDragY int
+
 	// Theme colors, resolved once at startup (tmux options are session-invariant).
 	selColor, dimColor, hintFg, textFg imgcolor.Color
 }
@@ -292,6 +296,10 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// nil for non-d2/non-kitty, so this is a no-op there.
 		cmd = m.scheduleVector()
 		return m, cmd
+	case tea.MouseMsg:
+		var cmd tea.Cmd
+		m, cmd = m.handleMouse(msg)
+		return m, cmd
 	case vectorKickMsg:
 		// Stale tick: a later keystroke superseded this one. Drop it; only the
 		// latest generation gets to kick resvg.
@@ -347,6 +355,7 @@ func (m galleryModel) View() tea.View {
 	}
 	v := tea.NewView(content)
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	return v
 }
 

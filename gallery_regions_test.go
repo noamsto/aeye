@@ -118,6 +118,29 @@ func TestParseRegionsLiveD2(t *testing.T) {
 	}
 }
 
+// d2 emits a trailing <mask> holding a full-canvas <rect> after all object
+// groups. When the last group is an object (a diagram with no connections, so
+// no connection group sits between it and the mask), that canvas rect must not
+// be attributed to the object — it would balloon its bbox to the whole canvas.
+func TestParseRegionsTrailingMaskIgnored(t *testing.T) {
+	// base64: solo=c29sbw==
+	svg := []byte(`<svg viewBox="0 0 100 100"><svg class="d2-svg" viewBox="0 0 100 100">` +
+		`<g class="c29sbw=="><g class="shape"><rect x="40" y="40" width="20" height="20"/></g></g>` +
+		`<mask><rect x="-1" y="-1" width="102" height="102"/></mask>` +
+		`</svg></svg>`)
+	paths := map[string]region{}
+	for _, r := range parseRegions(svg) {
+		paths[r.path] = r
+	}
+	solo, ok := paths["solo"]
+	if !ok {
+		t.Fatalf("missing region %q (got %v)", "solo", keysOf(paths))
+	}
+	if solo.x1-solo.x0 > 0.5 || solo.y1-solo.y0 > 0.5 {
+		t.Errorf("solo bbox inflated by canvas mask rect: %+v", solo)
+	}
+}
+
 func pathsOf(rs []region) []string {
 	var p []string
 	for _, r := range rs {

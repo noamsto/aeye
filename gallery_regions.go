@@ -108,6 +108,12 @@ func parseRegions(data []byte) []region {
 		tx, ty := translateOf(at("transform"))
 
 		switch el.Name.Local {
+		case "mask", "defs":
+			// d2 closes the diagram with a <mask> wrapping a full-canvas <rect>;
+			// without this, that rect attributes to the last object group and
+			// balloons its bbox to the whole canvas. <defs> (filter/marker defs)
+			// holds no object geometry either.
+			cur = nil
 		case "svg":
 			if vb, ok := parseViewBox(at("viewBox")); ok {
 				if !haveFirst {

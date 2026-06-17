@@ -30,6 +30,11 @@ an absolute path under the carousel state dir
 throwaway diagram sources, not project artifacts; never write `.d2` files into
 the working project.
 
+`<name>` is the caption the carousel shows under the diagram, so name the file
+for the concept it draws, in kebab-case — `auth-token-flow`, `render-pipeline`,
+`origins-erd` — not `diagram` or `untitled`. It's also the name you'd reuse to
+redraw, so make it specific.
+
 ## House style
 
 The carousel hook applies the sketch look and the mode-appropriate theme to

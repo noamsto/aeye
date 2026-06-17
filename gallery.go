@@ -509,7 +509,7 @@ func runGallery(pane string) error {
 	m := galleryModel{
 		pane:    pane,
 		images:  images,
-		backend: chooseGridBackend(termName()),
+		backend: chooseGridBackend(termName(), os.Getenv("TMUX") != "", os.Getenv("WEZTERM_PANE"), os.Getenv("TERM"), probeSixel),
 		theme:   detectTheme(),
 		tty:     tty,
 		mtime:   manifestMtime(pane),

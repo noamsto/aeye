@@ -31,6 +31,17 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "render-svg" {
+		if len(os.Args) < 4 {
+			fmt.Fprintln(os.Stderr, "usage: aeye render-svg IN.d2 OUT.svg")
+			os.Exit(2)
+		}
+		if err := runRenderSVG(os.Args[2], os.Args[3]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	key := ""
 	if len(os.Args) > 1 {
 		key = os.Args[1]

@@ -88,10 +88,12 @@
           };
 
           # The diagram-render hook. aeye now embeds d2 (compile + render happen
-          # in the binary via `aeye render-diagram`), so the wrapper only needs
-          # aeye itself, resvg for rasterizing, jq/coreutils, and the toggle for
-          # --ensure-open. Non-nix users run the plugin's scripts/diagrams.sh
-          # with aeye + resvg on PATH (or via AEYE_BIN / AEYE_RESVG).
+          # in the binary via `aeye render-diagram`), and the binary also runs the
+          # `aeye svg-contrast` label-recolor pass, so the wrapper needs aeye itself
+          # (toggle only carries it internally and does not re-export it), resvg for
+          # rasterizing, jq/coreutils, and the toggle for --ensure-open. Non-nix
+          # users run the plugin's scripts/diagrams.sh with aeye + resvg on PATH
+          # (or via AEYE_BIN / AEYE_RESVG).
           diagrams = pkgs.writeShellApplication {
             name = "aeye-diagrams";
             runtimeInputs = [self'.packages.default self'.packages.toggle pkgs.resvg pkgs.jq pkgs.coreutils];

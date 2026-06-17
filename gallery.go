@@ -179,7 +179,8 @@ func (m *galleryModel) reload() {
 		m.transmitView()
 		// Pre-warm transcodes for every image so navigating to a freshly
 		// captured one is a cache hit, not a full-resolution decode on the loop.
-		if m.backend == backendKitty {
+		// Raster paints from the same cachedPNG path, so it benefits too.
+		if m.backend == backendKitty || m.backend == backendRaster {
 			paths := make([]string, len(m.images))
 			for i, im := range m.images {
 				paths[i] = im.Path

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0](https://github.com/noamsto/aeye/compare/v0.4.0...v0.5.0) (2026-06-17)
+
+
+### Features
+
+* **carousel:** caption diagrams by their .d2 name, not the hash ([#64](https://github.com/noamsto/aeye/issues/64)) ([d874bad](https://github.com/noamsto/aeye/commit/d874badd3150c0ad20e096ec8cc5f8fbee37a5fe))
+* crisp sixel rendering on non-kitty terminals ([#60](https://github.com/noamsto/aeye/issues/60)) ([#66](https://github.com/noamsto/aeye/issues/66)) ([8fc9d61](https://github.com/noamsto/aeye/commit/8fc9d61a338e6baa78ecc9cbc82e9a02dd71466a))
+* embed d2 as a library + kong CLI (drop the external d2 dep) ([#67](https://github.com/noamsto/aeye/issues/67)) ([fce2e10](https://github.com/noamsto/aeye/commit/fce2e10b6c61b17579267dddea50c04a34958b53))
+* open the carousel under ghostty and wezterm (no tmux) ([#59](https://github.com/noamsto/aeye/issues/59)) ([05c5cb1](https://github.com/noamsto/aeye/commit/05c5cb1ac1878f2045cf4f1efb2bbc3d89dbcc22))
+
+
+### Bug Fixes
+
+* **diagrams:** make svg-contrast actually run; tighten the diagram skill ([#63](https://github.com/noamsto/aeye/issues/63)) ([df2dc9c](https://github.com/noamsto/aeye/commit/df2dc9c6f5f12b200dc6dcec3cd46fee88c784fd))
+* **hooks:** make session-backfill.sh executable ([#56](https://github.com/noamsto/aeye/issues/56)) ([437594f](https://github.com/noamsto/aeye/commit/437594f2fc0828bc9dc38db4f9c92504e6179bb2))
+* **viewer:** re-store images on settle so the carousel paints on launch ([#61](https://github.com/noamsto/aeye/issues/61)) ([#62](https://github.com/noamsto/aeye/issues/62)) ([c79349e](https://github.com/noamsto/aeye/commit/c79349ea63679b25734ba7315b49dcb03dc9d52a))
+
 ## [0.4.0](https://github.com/noamsto/aeye/compare/v0.3.0...v0.4.0) (2026-06-16)
 
 

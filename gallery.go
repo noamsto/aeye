@@ -100,6 +100,7 @@ type galleryModel struct {
 	regionPath []string    // current drill level (container path components); empty = root
 	regionIdx  int         // focused sibling index at the current level; -1 = not in region mode
 	vecGen     uint64      // debounce generation: only the latest scheduled vector kick fires
+	rasterGen  uint64      // debounce generation for the post-render sixel repaint
 
 	// Mouse drag state for preview panning.
 	dragging             bool
@@ -205,7 +206,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Force one repaint after the store is surely processed.
 			return m, tea.Batch(m.kickVector(), settleCmd())
 		}
-		return m, m.scheduleVector()
+		return m, tea.Batch(m.scheduleVector(), m.schedulePaint())
 	case tea.KeyPressMsg:
 		var cmd tea.Cmd
 		switch msg.String() {
@@ -295,11 +296,11 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// After any key, debounce-schedule a sharp d2 re-render off the event loop.
 		// nil for non-d2/non-kitty, so this is a no-op there.
 		cmd = m.scheduleVector()
-		return m, cmd
+		return m, tea.Batch(cmd, m.schedulePaint())
 	case tea.MouseMsg:
 		var cmd tea.Cmd
 		m, cmd = m.handleMouse(msg)
-		return m, cmd
+		return m, tea.Batch(cmd, m.schedulePaint())
 	case vectorKickMsg:
 		// Stale tick: a later keystroke superseded this one. Drop it; only the
 		// latest generation gets to kick resvg.
@@ -326,7 +327,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case galleryTickMsg:
 		if mt := manifestMtime(m.pane); mt != m.mtime {
 			m.reload()
-			return m, tea.Batch(galleryTickCmd(), m.kickVector())
+			return m, tea.Batch(galleryTickCmd(), m.kickVector(), m.schedulePaint())
 		}
 		return m, galleryTickCmd()
 	case settleMsg:
@@ -335,8 +336,19 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// so on a freshly spawned window (e.g. a ghostty window outside tmux) the
 		// initial store doesn't stick. Re-transmitting here — now that the
 		// alt-screen is active — is what a resize would otherwise have to do.
+		// (No-op on raster, whose overlay is driven by the scheduled repaint below.)
 		m.transmitView()
+		if m.backend == backendRaster {
+			// ClearScreen forces a full redraw of the blank holes; repaint the
+			// sixel overlay just after, on top of them.
+			return m, tea.Batch(tea.ClearScreen, m.schedulePaint())
+		}
 		return m, tea.ClearScreen
+	case rasterPaintMsg:
+		if msg.gen == m.rasterGen {
+			m.paintRaster()
+		}
+		return m, nil
 	}
 	return m, nil
 }

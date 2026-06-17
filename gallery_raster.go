@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/term"
 )
 
@@ -78,6 +79,28 @@ func probeSixel() bool {
 		// Deferred tty.Close() unblocks the goroutine's Read, so it can't leak.
 		return false
 	}
+}
+
+// rasterPaintMsg fires after the debounce window to repaint the sixel overlay.
+// Only the latest generation survives, so a navigation burst paints once, on the
+// final framing — mirroring the vectorKickMsg debounce.
+type rasterPaintMsg struct{ gen uint64 }
+
+// rasterPaintDebounce delays the repaint just past bubbletea's frame flush, so the
+// sixel lands on top of the freshly-drawn blank holes rather than being clobbered
+// by the renderer. Short enough not to feel laggy; tune on-host if needed.
+const rasterPaintDebounce = 50 * time.Millisecond
+
+// schedulePaint arms a debounced sixel repaint, bumping the generation so an
+// earlier tick arrives stale and is dropped. Returns nil off the raster backend,
+// so callers can batch it unconditionally.
+func (m *galleryModel) schedulePaint() tea.Cmd {
+	if m.backend != backendRaster {
+		return nil
+	}
+	m.rasterGen++
+	g := m.rasterGen
+	return tea.Tick(rasterPaintDebounce, func(time.Time) tea.Msg { return rasterPaintMsg{gen: g} })
 }
 
 // renderSixel rasterizes a PNG to a sixel payload sized to cols×rows cells via

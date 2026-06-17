@@ -6,6 +6,22 @@ set -euo pipefail
 
 [[ -n ${TMUX:-} || -n ${KITTY_LISTEN_ON:-} ]] || exit 0
 
+# Render-pipeline preflight. diagrams.sh runs `aeye render-diagram` (d2 is
+# embedded; it shells out only to resvg), and silently no-ops when either is
+# unreachable on the PATH this hook's env shares with the PostToolUse hooks.
+# Detect that here — once, at SessionStart — and warn instead of nudging the
+# agent to draw diagrams that will never render. Resolution mirrors d2_render
+# (AEYE_BIN / AEYE_RESVG overrides).
+missing=()
+command -v "${AEYE_BIN:-aeye}" >/dev/null 2>&1 || missing+=("${AEYE_BIN:-aeye}")
+command -v "${AEYE_RESVG:-resvg}" >/dev/null 2>&1 || missing+=("${AEYE_RESVG:-resvg}")
+if ((${#missing[@]})); then
+	warn="Diagram rendering is unavailable: ${missing[*]} not found on PATH for this hook, so any .d2 you write will silently NOT render into the carousel. Don't draw diagrams this session; tell the user the diagram hook is missing ${missing[*]} on PATH (e.g. add the aeye package to home.packages)."
+	jq -nc --arg ctx "$warn" \
+		'{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'
+	exit 0
+fi
+
 STATE_DIR="${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}"
 SRC_DIR="$STATE_DIR/images/diagrams/src"
 mkdir -p "$SRC_DIR"

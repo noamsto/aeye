@@ -23,3 +23,12 @@ func TestParseSixelDA(t *testing.T) {
 		}
 	}
 }
+
+func TestBlankBlock(t *testing.T) {
+	if got := blankBlock(3, 2); got != "   \n   " {
+		t.Errorf("blankBlock(3,2) = %q, want %q", got, "   \n   ")
+	}
+	if got := blankBlock(2, 1); got != "  " {
+		t.Errorf("blankBlock(2,1) = %q, want %q", got, "  ")
+	}
+}

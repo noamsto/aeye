@@ -386,9 +386,12 @@ func (m galleryModel) renderView() string {
 	// border as a title, so they sit right on the image rather than floating
 	// above it; blank for a plain image, leaving a plain border.
 	var preview string
-	if m.backend == backendKitty {
+	switch m.backend {
+	case backendKitty:
 		preview = placeholderBlock(previewID, m.l.previewW, m.l.previewH)
-	} else {
+	case backendRaster:
+		preview = blankBlock(m.l.previewW, m.l.previewH)
+	default:
 		preview = symbolsBlock(m.images[m.cursor].Path, m.l.previewW, m.l.previewH)
 	}
 	context := ""
@@ -425,9 +428,12 @@ func (m galleryModel) renderView() string {
 			cells = append(cells, hgap)
 		}
 		var thumb string
-		if m.backend == backendKitty {
+		switch m.backend {
+		case backendKitty:
 			thumb = placeholderBlock(s+1, m.l.stripW, m.l.stripH)
-		} else {
+		case backendRaster:
+			thumb = blankBlock(m.l.stripW, m.l.stripH)
+		default:
 			thumb = symbolsBlock(m.images[idx].Path, m.l.stripW, m.l.stripH)
 		}
 		border := dimColor

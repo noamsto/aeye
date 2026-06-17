@@ -279,3 +279,15 @@ func symbolsBlock(path string, w, h int) string {
 	s = strings.ReplaceAll(s, "\x1b[?25h", "")
 	return strings.TrimRight(s, "\n")
 }
+
+// blankBlock is h lines of w spaces — the hole the raster backend paints a sixel
+// image into out-of-band. It is to backendRaster what placeholderBlock is to
+// backendKitty: the View()-side placeholder occupying the image's cells.
+func blankBlock(w, h int) string {
+	row := strings.Repeat(" ", w)
+	rows := make([]string, h)
+	for i := range rows {
+		rows[i] = row
+	}
+	return strings.Join(rows, "\n")
+}

@@ -1,3 +1,8 @@
+[files]
+# Generated SVGs (d2 renders, test fixtures) carry random class ids and hex
+# colors that read as typos (e.g. #f38BA8 -> "BA"). They aren't prose.
+extend-exclude = ["*.svg"]
+
 [default.extend-words]
 # tmux catppuccin option prefix (@thm_mauve, @thm_surface_1, …) — not a typo.
 thm = "thm"

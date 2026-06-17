@@ -10,35 +10,39 @@ setup() {
 	printf 'a -> b\n' >"$DOTD2"
 	APP="$(dirname "$BATS_TEST_DIRNAME")/adapters/claude-code/plugin/scripts/diagrams.sh"
 
-	# Stub d2 + resvg so tests are hermetic and fast.
-	# d2 <in> <out.svg> writes a fake svg; resvg <in.svg> <out.png> writes a fake png.
+	# The hook now shells to a single `aeye render-diagram IN OUT`; the whole
+	# d2-compile / fix-fonts / contrast / resvg pipeline lives inside the binary
+	# (covered by Go tests). Stub aeye to write a fake png + sibling svg, log its
+	# args, honor AEYE_RENDER_FAIL for the failure path, and emit a
+	# <foreignObject> svg for |md sources so the hook's markdown guard can fire.
 	STUB_BIN="$BATS_TEST_TMPDIR/bin"
 	mkdir -p "$STUB_BIN"
-	cat >"$STUB_BIN/d2" <<'STUB'
+	cat >"$STUB_BIN/aeye" <<'STUB'
 #!/usr/bin/env bash
-printf '<svg/>' >"${@: -1}"
-STUB
-	cat >"$STUB_BIN/resvg" <<'STUB'
-#!/usr/bin/env bash
-printf 'PNG' >"${@: -1}"
+[[ ${1:-} == render-diagram ]] || exit 0
+echo "$*" >>"$RENDER_LOG"
+[[ -n ${AEYE_RENDER_FAIL:-} ]] && {
+	echo "render boom" >&2
+	exit 1
+}
+in="$2"
+out="$3"
+if grep -q '|md' "$in" 2>/dev/null; then
+	printf '<svg><foreignObject><div>md</div></foreignObject></svg>' >"${out%.png}.svg"
+else
+	printf '<svg/>' >"${out%.png}.svg"
+fi
+printf 'PNG' >"$out"
 STUB
 	cat >"$STUB_BIN/tmux-claude-images" <<'STUB'
 #!/usr/bin/env bash
 echo "$*" >>"$TOGGLE_LOG"
 STUB
-	# Stub aeye so the svg-contrast pass is recorded, not run for real — keeps the
-	# suite hermetic against any aeye on PATH (a real one would treat svg-contrast
-	# as a manifest key and try to open the TUI).
-	cat >"$STUB_BIN/aeye" <<'STUB'
-#!/usr/bin/env bash
-[[ ${1:-} == svg-contrast ]] && printf '%s\n' "$*" >>"$CONTRAST_LOG"
-exit 0
-STUB
-	chmod +x "$STUB_BIN/d2" "$STUB_BIN/resvg" "$STUB_BIN/tmux-claude-images" "$STUB_BIN/aeye"
+	chmod +x "$STUB_BIN/aeye" "$STUB_BIN/tmux-claude-images"
 	export TOGGLE_LOG="$BATS_TEST_TMPDIR/toggle.log"
-	export CONTRAST_LOG="$BATS_TEST_TMPDIR/contrast.log"
+	export RENDER_LOG="$BATS_TEST_TMPDIR/render.log"
 	: >"$TOGGLE_LOG"
-	: >"$CONTRAST_LOG"
+	: >"$RENDER_LOG"
 	export PATH="$STUB_BIN:$PATH"
 }
 
@@ -57,6 +61,13 @@ run_app() { # $1 = fixture name
 	png="$(jq -r '.path' "$MANIFEST")"
 	[ -f "$png" ]
 	[[ $png == "$DIAGRAMS"/*.png ]]
+}
+
+@test "the hook invokes aeye render-diagram with the source and png" {
+	run_app hook-write-d2.json
+	png="$(jq -r '.path' "$MANIFEST")"
+	run cat "$RENDER_LOG"
+	[[ $output == "render-diagram $DOTD2 $png" ]]
 }
 
 @test "a relative .d2 file_path is resolved against cwd" {
@@ -91,33 +102,27 @@ run_app() { # $1 = fixture name
 	[ ! -f "$MANIFEST" ]
 }
 
-@test "malformed d2 -> skip, log to render-errors.log, no manifest line" {
-	# d2 stub that fails
-	cat >"$STUB_BIN/d2" <<'STUB'
-#!/usr/bin/env bash
-echo "parse error" >&2
-exit 1
-STUB
-	chmod +x "$STUB_BIN/d2"
+@test "render-diagram failure -> skip, log to render-errors.log, no manifest line" {
+	# shellcheck disable=SC2030
+	export AEYE_RENDER_FAIL=1
 	run run_app hook-write-d2.json
 	[ "$status" -eq 0 ]
 	[ ! -f "$MANIFEST" ]
 	[ -f "$DIAGRAMS/render-errors.log" ]
 }
 
+@test "aeye binary absent -> clean no-op (no manifest, no warning)" {
+	# md source too: with no binary the whole feature is off, nothing emitted.
+	printf 'b: |md\n  blank\n|\n' >"$DOTD2"
+	export AEYE_BIN=__aeye_absent__
+	run run_app hook-write-d2.json
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+	[ ! -f "$MANIFEST" ]
+	[ ! -f "$DIAGRAMS/render-errors.log" ]
+}
+
 @test "a markdown node (<foreignObject> in the rendered svg) warns the agent, logs it, and still renders" {
-	# d2 stub mimicking the real tool: markdown source -> an SVG <foreignObject>.
-	cat >"$STUB_BIN/d2" <<'STUB'
-#!/usr/bin/env bash
-src=""
-for a in "$@"; do [[ -f $a && $a == *.d2 ]] && src="$a"; done
-if grep -q '|md' "$src" 2>/dev/null; then
-	printf '<svg><foreignObject><div>md</div></foreignObject></svg>' >"${@: -1}"
-else
-	printf '<svg/>' >"${@: -1}"
-fi
-STUB
-	chmod +x "$STUB_BIN/d2"
 	printf 'a: "ok"\nb: |md\n  blank\n|\na -> b\n' >"$DOTD2"
 	run run_app hook-write-d2.json
 	[ "$status" -eq 0 ]
@@ -136,47 +141,6 @@ STUB
 	run run_app hook-write-d2.json
 	[ "$status" -eq 0 ]
 	[ -z "$output" ]
-}
-
-@test "renderers absent -> no markdown warning (silent no-op)" {
-	# md source, but d2 missing: the whole feature is off, so nothing is emitted.
-	printf 'b: |md\n  blank\n|\n' >"$DOTD2"
-	# shellcheck disable=SC2030,SC2031
-	export AEYE_D2=__aeye_absent_d2__
-	run run_app hook-write-d2.json
-	[ "$status" -eq 0 ]
-	[ -z "$output" ]
-	[ ! -f "$DIAGRAMS/render-errors.log" ]
-}
-
-@test "d2 not available -> clean no-op" {
-	# Point at a command that cannot exist, so command -v fails deterministically
-	# regardless of any real d2 on PATH (e.g. from the devShell).
-	# shellcheck disable=SC2031
-	export AEYE_D2=__aeye_absent_d2__
-	run run_app hook-write-d2.json
-	[ "$status" -eq 0 ]
-	[ ! -f "$MANIFEST" ]
-}
-
-@test "resvg not available -> clean no-op" {
-	export AEYE_RESVG=__aeye_absent_resvg__
-	run run_app hook-write-d2.json
-	[ "$status" -eq 0 ]
-	[ ! -f "$MANIFEST" ]
-}
-
-@test "resvg failure -> skip, log to render-errors.log, no manifest line" {
-	cat >"$STUB_BIN/resvg" <<'STUB'
-#!/usr/bin/env bash
-echo "resvg boom" >&2
-exit 1
-STUB
-	chmod +x "$STUB_BIN/resvg"
-	run run_app hook-write-d2.json
-	[ "$status" -eq 0 ]
-	[ ! -f "$MANIFEST" ]
-	[ -f "$DIAGRAMS/render-errors.log" ]
 }
 
 @test "a new diagram opens the carousel" {
@@ -200,60 +164,6 @@ STUB
 	[ "$output" -eq 1 ]
 }
 
-@test "hook passes theme + sketch to d2" {
-	cat >"$STUB_BIN/d2" <<'STUB'
-#!/usr/bin/env bash
-echo "$*" >>"$D2_ARGLOG"
-printf '<svg/>' >"${@: -1}"
-STUB
-	chmod +x "$STUB_BIN/d2"
-	# shellcheck disable=SC2030
-	export D2_ARGLOG="$BATS_TEST_TMPDIR/d2args.log"
-	export AEYE_D2_THEME=200
-	run_app hook-write-d2.json
-	run cat "$D2_ARGLOG"
-	[[ $output == *"-t 200"* ]] || {
-		echo "missing -t 200 in: $output" >&2
-		return 1
-	}
-	[[ $output == *"--sketch"* ]] || {
-		echo "missing --sketch in: $output" >&2
-		return 1
-	}
-}
-
-@test "AEYE_D2_SKETCH=0 disables sketch" {
-	cat >"$STUB_BIN/d2" <<'STUB'
-#!/usr/bin/env bash
-echo "$*" >>"$D2_ARGLOG"
-printf '<svg/>' >"${@: -1}"
-STUB
-	chmod +x "$STUB_BIN/d2"
-	# shellcheck disable=SC2031
-	export D2_ARGLOG="$BATS_TEST_TMPDIR/d2args.log"
-	export AEYE_D2_SKETCH=0
-	run_app hook-write-d2.json
-	run cat "$D2_ARGLOG"
-	[[ $output != *"--sketch"* ]] || {
-		echo "unexpected --sketch in: $output" >&2
-		return 1
-	}
-}
-
-@test "hook runs svg-contrast on the rendered svg" {
-	run_app hook-write-d2.json
-	run grep -cE 'svg-contrast .*/diagrams/[0-9a-f]+\.svg' "$CONTRAST_LOG"
-	[ "$output" -eq 1 ]
-}
-
-@test "missing contrast binary -> still renders" {
-	export AEYE_BIN=__aeye_absent_contrast__
-	run_app hook-write-d2.json
-	[ -f "$MANIFEST" ]
-	run wc -l <"$MANIFEST"
-	[ "$output" -eq 1 ]
-}
-
 @test "manifest vector field points at svg that still exists on disk" {
 	run_app hook-write-d2.json
 	[ -f "$MANIFEST" ]
@@ -262,26 +172,4 @@ STUB
 	[ -n "$vector" ]
 	[ -f "$vector" ]
 	[ "$vector" = "${png%.png}.svg" ]
-}
-
-@test "font dir set -> resvg gets --skip-system-fonts --use-fonts-dir" {
-	cat >"$STUB_BIN/resvg" <<'STUB'
-#!/usr/bin/env bash
-echo "$*" >>"$RESVG_ARGLOG"
-printf 'PNG' >"${@: -1}"
-STUB
-	chmod +x "$STUB_BIN/resvg"
-	export RESVG_ARGLOG="$BATS_TEST_TMPDIR/resvgargs.log"
-	export AEYE_D2_FONT_DIR="$BATS_TEST_TMPDIR/fonts"
-	mkdir -p "$AEYE_D2_FONT_DIR"
-	run_app hook-write-d2.json
-	run cat "$RESVG_ARGLOG"
-	[[ $output == *"--skip-system-fonts"* ]] || {
-		echo "missing --skip-system-fonts in: $output" >&2
-		return 1
-	}
-	[[ $output == *"--use-fonts-dir $AEYE_D2_FONT_DIR"* ]] || {
-		echo "missing --use-fonts-dir in: $output" >&2
-		return 1
-	}
 }

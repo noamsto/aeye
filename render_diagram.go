@@ -43,19 +43,24 @@ func renderD2SVG(in string) ([]byte, error) {
 	// overrides these.
 	themeID := int64(105)
 	if t := os.Getenv("AEYE_D2_THEME"); t != "" {
-		if n, err := strconv.ParseInt(t, 10, 64); err == nil {
-			themeID = n
+		n, perr := strconv.ParseInt(t, 10, 64)
+		if perr != nil {
+			return nil, fmt.Errorf("invalid AEYE_D2_THEME %q: %w", t, perr)
 		}
+		themeID = n
 	}
 	renderOpts := &d2svg.RenderOpts{
 		Pad:     go2.Pointer(int64(d2svg.DEFAULT_PADDING)),
 		ThemeID: &themeID,
-		Sketch:  go2.Pointer(os.Getenv("AEYE_D2_SKETCH") != "0"),
+		Sketch:  go2.Pointer(os.Getenv("AEYE_D2_SKETCH") != "0"), // on unless =0
 	}
+	// Leave Layout nil so d2 picks it up from the source's
+	// `vars: { d2-config: { layout-engine: ... } }` (it only honors that when
+	// Layout is unset), falling back to dagre. LayoutResolver routes the chosen
+	// engine — including the in-file elk that keeps arrows off node labels.
 	ctx := log.WithDefault(context.Background())
 	diagram, _, err := d2lib.Compile(ctx, string(src), &d2lib.CompileOptions{
 		Ruler:          ruler,
-		Layout:         go2.Pointer("dagre"),
 		LayoutResolver: layoutResolver,
 		InputPath:      in,
 	}, renderOpts)
@@ -66,7 +71,7 @@ func renderD2SVG(in string) ([]byte, error) {
 }
 
 var (
-	fontFamilyRe = regexp.MustCompile(`d2-[0-9]+-font-[a-z]+`)
+	fontFamilyRe = regexp.MustCompile(`d2-[0-9]+-font-[a-z]+(?:-[a-z]+)*`)
 	boldRe       = regexp.MustCompile(`\.text-bold \{(?:font-weight:bold;)?`)
 	italicRe     = regexp.MustCompile(`\.text-italic \{(?:font-style:italic;)?`)
 )
@@ -94,13 +99,13 @@ func fixFonts(svg []byte) []byte {
 func runRenderDiagram(in, out string) error {
 	svg, err := renderD2SVG(in)
 	if err != nil {
-		return err
+		return fmt.Errorf("compile %s: %w", in, err)
 	}
 	svg = contrastSVG(fixFonts(svg))
 
-	svgPath := out[:len(out)-len(filepath.Ext(out))] + ".svg"
+	svgPath := out[:len(out)-len(filepath.Ext(out))] + ".svg" // out has no ext -> out+".svg"
 	if err := os.WriteFile(svgPath, svg, 0o644); err != nil {
-		return err
+		return fmt.Errorf("write %s: %w", svgPath, err)
 	}
 
 	resvg := os.Getenv("AEYE_RESVG")

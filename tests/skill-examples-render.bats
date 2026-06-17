@@ -1,11 +1,11 @@
 #!/usr/bin/env bats
-# Every ```d2 example in SKILL.md must compile, render text (0 "No match"),
-# and be single-board. Skips when d2/resvg are unavailable.
+# Every ```d2 example in SKILL.md must be single-board and render via
+# `aeye render-diagram` (embedded d2 + resvg) without error. Skips when go or
+# resvg is unavailable.
 
 setup() {
 	ROOT="$(dirname "$BATS_TEST_DIRNAME")"
 	SKILL="$ROOT/adapters/claude-code/plugin/skills/diagrams/SKILL.md"
-	FIX="$ROOT/adapters/claude-code/plugin/scripts/d2-fix-fonts.sh"
 	EXTRACT="$ROOT/tests/lib/extract-d2-blocks.sh"
 }
 
@@ -19,9 +19,11 @@ setup() {
 	done
 }
 
-@test "every d2 example in SKILL.md compiles, renders text, and is single-board" {
-	command -v d2 >/dev/null || skip "d2 not installed"
+@test "every d2 example in SKILL.md renders via aeye render-diagram" {
+	command -v go >/dev/null || skip "go not installed"
 	command -v resvg >/dev/null || skip "resvg not installed"
+	AEYE="$BATS_TEST_TMPDIR/aeye"
+	go build -C "$ROOT" -o "$AEYE" . || skip "aeye build failed"
 
 	mapfile -d '' -t blocks < <(bash "$EXTRACT" "$SKILL")
 	[ "${#blocks[@]}" -ge 1 ] || {
@@ -32,29 +34,15 @@ setup() {
 	local i=0
 	for block in "${blocks[@]}"; do
 		i=$((i + 1))
-		local d2f="$BATS_TEST_TMPDIR/ex$i.d2" out="$BATS_TEST_TMPDIR/ex$i.svg"
+		local d2f="$BATS_TEST_TMPDIR/ex$i.d2" png="$BATS_TEST_TMPDIR/ex$i.png"
 		printf '%s' "$block" >"$d2f"
-
-		run d2 "$d2f" "$out"
+		run "$AEYE" render-diagram "$d2f" "$png"
 		[ "$status" -eq 0 ] || {
-			echo "example $i failed to compile: $output"
+			echo "example $i failed to render: $output"
 			return 1
 		}
-		[ -f "$out" ] || {
-			echo "example $i produced multiple boards (not single-board): $d2f"
-			return 1
-		}
-
-		bash "$FIX" "$out"
-		args=()
-		[[ -n ${AEYE_D2_FONT_DIR:-} ]] && args=(--skip-system-fonts --use-fonts-dir "$AEYE_D2_FONT_DIR")
-		run bash -c 'resvg "$@" 2>&1' _ "${args[@]}" "$out" "$BATS_TEST_TMPDIR/ex$i.png"
-		[ "$status" -eq 0 ] || {
-			echo "example $i resvg failed: $output"
-			return 1
-		}
-		[[ $output != *"No match for font-family"* ]] || {
-			echo "example $i has unresolved fonts: $output"
+		[ -s "$png" ] || {
+			echo "example $i produced no png"
 			return 1
 		}
 	done

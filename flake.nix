@@ -69,7 +69,7 @@
             pname = "aeye";
             version = "0.1.0";
             src = ./.;
-            vendorHash = "sha256-G0x4z/zFDK578yJBLUD555wBQ9quUyLeO5bKEZewCC4=";
+            vendorHash = "sha256-2DJ3mafs3Ckn4dg8FNP+iC05fPu6SY48yau3pKy2aPI=";
             doCheck = true;
             ldflags = ["-X main.version=0.1.0-${rev}"];
             meta = {

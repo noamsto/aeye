@@ -136,6 +136,11 @@ structure — group by group — when one is selected:
 
 ## Architecture
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-dark.svg">
+  <img alt="aeye architecture: capture adapter appends to a per-pane manifest, which the viewer polls and renders into a tmux split or kitty window" src="docs/assets/architecture.svg">
+</picture>
+
 The viewer is **agent-agnostic**. It renders a per-pane manifest and has no
 knowledge of which agent produced it — the [manifest JSONL](docs/MANIFEST.md) is
 the stable interface. Each agent gets a small **capture adapter** that appends to

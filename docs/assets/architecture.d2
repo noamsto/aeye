@@ -1,0 +1,30 @@
+direction: down
+title: aeye — capture - manifest - render { near: top-center; style: { stroke-width: 0; fill: transparent } }
+
+classes: {
+  svc:   { style: { stroke: "#1565C0"; stroke-width: 2 } }
+  store: { shape: cylinder; style: { stroke: "#2E7D32"; stroke-width: 2 } }
+  ext:   { style: { stroke: "#E65100"; stroke-width: 2; stroke-dash: 3 } }
+}
+
+agent: Coding Agent { shape: person }
+
+capture: Capture Adapter {
+  images: "images.sh\nRead / Write / screenshot" { class: svc }
+  diagrams: "diagrams.sh\nD2 -> SVG -> PNG" { class: svc }
+}
+
+manifest: "Manifest\n<key>.jsonl\n(stable interface)" { class: store }
+
+viewer: "aeye viewer\n(Go / Bubble Tea)\nkitty graphics or chafa\nzoom - pan - D2 regions" { class: svc }
+
+toggle: "tmux-claude-images\ntoggle script" { class: ext }
+screen: "tmux split\nor kitty window" { shape: queue }
+
+agent -> capture.images: tool calls
+agent -> capture.diagrams: writes .d2
+capture.images -> manifest: append line
+capture.diagrams -> manifest: append (path + vector)
+manifest -> viewer: poll every ~1.5s
+toggle -> viewer: launches beside agent
+viewer -> screen: preview + filmstrip

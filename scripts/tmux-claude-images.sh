@@ -103,6 +103,27 @@ launch_kitty() {
 		"$VIEWER_BIN" "$KEY" >/dev/null
 }
 
+launch_wezterm() {
+	# wezterm has a real mux CLI: split-pane returns the new pane id, kill-pane
+	# removes it. We persist the id (keyed by session id) for the toggle.
+	local panefile="$IMAGES_DIR/$KEY.wezterm-pane" pane=""
+	[[ -f $panefile ]] && pane="$(<"$panefile")"
+	# Liveness: `wezterm cli list` prints a PANEID column (3rd field; row 1 is the
+	# header). A stale id (pane already gone) falls through to a fresh split.
+	if [[ -n $pane ]] &&
+		wezterm cli list 2>/dev/null | awk -v p="$pane" 'NR>1 && $3==p{f=1} END{exit !f}'; then
+		[[ -n $ENSURE_OPEN ]] && return # already open; ensure-open is a no-op
+		wezterm cli kill-pane --pane-id "$pane" >/dev/null 2>&1 || true
+		rm -f "$panefile"
+		return
+	fi
+	# split-pane defaults its target to $WEZTERM_PANE, so it lands next to the
+	# agent. env forwards the state dir — the mux server never saw our env.
+	pane="$(wezterm cli split-pane --right --percent 40 --cwd "$STATE_DIR" -- \
+		env AEYE_DIR="$STATE_DIR" CLAUDE_STATUS_DIR="$STATE_DIR" "$VIEWER_BIN" "$KEY")"
+	printf '%s\n' "$pane" >"$panefile"
+}
+
 main() {
 	resolve_target
 	[[ ${1:-} == --ensure-open ]] && ENSURE_OPEN=1

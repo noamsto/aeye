@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseSixelDA(t *testing.T) {
 	cases := []struct {
@@ -30,5 +33,23 @@ func TestBlankBlock(t *testing.T) {
 	}
 	if got := blankBlock(2, 1); got != "  " {
 		t.Errorf("blankBlock(2,1) = %q, want %q", got, "  ")
+	}
+}
+
+func TestPaintSixelAt(t *testing.T) {
+	var b strings.Builder
+	paintSixelAt(&b, rect{x: 4, y: 2, w: 8, h: 4}, "SIXELDATA")
+	// Cursor coords are 1-based: row = y+1 = 3, col = x+1 = 5.
+	want := "\x1b7\x1b[3;5HSIXELDATA\x1b8"
+	if b.String() != want {
+		t.Errorf("paintSixelAt =\n%q\nwant\n%q", b.String(), want)
+	}
+}
+
+func TestPaintSixelAtEmpty(t *testing.T) {
+	var b strings.Builder
+	paintSixelAt(&b, rect{x: 1, y: 1, w: 4, h: 4}, "")
+	if b.String() != "" {
+		t.Errorf("paintSixelAt with empty payload wrote %q, want nothing", b.String())
 	}
 }

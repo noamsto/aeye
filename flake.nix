@@ -69,7 +69,7 @@
             pname = "aeye";
             version = "0.1.0";
             src = ./.;
-            vendorHash = "sha256-G0x4z/zFDK578yJBLUD555wBQ9quUyLeO5bKEZewCC4=";
+            vendorHash = "sha256-2DJ3mafs3Ckn4dg8FNP+iC05fPu6SY48yau3pKy2aPI=";
             doCheck = true;
             ldflags = ["-X main.version=0.1.0-${rev}"];
             meta = {
@@ -87,14 +87,14 @@
             text = builtins.readFile ./scripts/tmux-claude-images.sh;
           };
 
-          # The diagram-render hook with the d2 -> svg -> resvg -> png toolchain
-          # baked onto PATH (plus jq/coreutils, and the toggle for --ensure-open),
-          # so nix consumers get diagrams without d2/resvg in their environment.
-          # Non-nix users run the plugin's scripts/diagrams.sh with their own
-          # d2/resvg on PATH (or via AEYE_D2 / AEYE_RESVG).
+          # The diagram-render hook. aeye now embeds d2 (compile + render happen
+          # in the binary via `aeye render-diagram`), so the wrapper only needs
+          # aeye itself, resvg for rasterizing, jq/coreutils, and the toggle for
+          # --ensure-open. Non-nix users run the plugin's scripts/diagrams.sh
+          # with aeye + resvg on PATH (or via AEYE_BIN / AEYE_RESVG).
           diagrams = pkgs.writeShellApplication {
             name = "aeye-diagrams";
-            runtimeInputs = [self'.packages.toggle pkgs.d2 pkgs.resvg pkgs.jq pkgs.coreutils];
+            runtimeInputs = [self'.packages.default self'.packages.toggle pkgs.resvg pkgs.jq pkgs.coreutils];
             text = builtins.readFile ./adapters/claude-code/plugin/scripts/diagrams.sh;
           };
         };

@@ -68,18 +68,16 @@ setup() {
 	[ "$output" = "$first" ]
 }
 
-@test "d2_render: renders png via stubbed d2/resvg" {
+@test "d2_render: renders png via stubbed aeye render-diagram" {
 	STUB="$BATS_TEST_TMPDIR/bin"
 	mkdir -p "$STUB"
-	cat >"$STUB/d2" <<'STUB'
+	cat >"$STUB/aeye" <<'STUB'
 #!/usr/bin/env bash
-printf '<svg/>' >"${@: -1}"
+[[ ${1:-} == render-diagram ]] || exit 0
+printf '<svg/>' >"${3%.png}.svg"
+printf 'PNG' >"$3"
 STUB
-	cat >"$STUB/resvg" <<'STUB'
-#!/usr/bin/env bash
-printf 'PNG' >"${@: -1}"
-STUB
-	chmod +x "$STUB/d2" "$STUB/resvg"
+	chmod +x "$STUB/aeye"
 	export PATH="$STUB:$PATH"
 	d2="$BATS_TEST_TMPDIR/flow.d2"
 	printf 'a -> b\n' >"$d2"

@@ -88,12 +88,11 @@ _d2_render_fail() {
 }
 
 # d2_render SRC DIAGRAMS_DIR -> renders SRC to a cached png (if absent) and echoes
-# the png path. Returns 1 (no output) when renderers are missing or rendering
+# the png path. Returns 1 (no output) when the aeye binary is missing or rendering
 # fails (failure is logged to render-errors.log). Does not append or toggle.
 d2_render() {
-	local src="$1" dir="$2" png svg err
+	local src="$1" dir="$2" png err
 	png="$(d2_png_for "$src" "$dir")"
-	svg="${png%.png}.svg"
 	mkdir -p "$dir"
 
 	if [[ -f $png ]]; then
@@ -101,36 +100,15 @@ d2_render() {
 		return 0
 	fi
 
-	local d2_bin="${AEYE_D2:-d2}" resvg_bin="${AEYE_RESVG:-resvg}"
-	command -v "$d2_bin" >/dev/null 2>&1 || return 1
-	command -v "$resvg_bin" >/dev/null 2>&1 || return 1
+	# aeye render-diagram does the whole pipeline in-process (embedded d2 compile
+	# -> font rewrite -> label contrast -> resvg), writing $png and its sibling
+	# .svg. It resolves resvg from PATH (or AEYE_RESVG); theme/sketch via
+	# AEYE_D2_THEME / AEYE_D2_SKETCH.
+	local aeye_bin="${AEYE_BIN:-aeye}"
+	command -v "$aeye_bin" >/dev/null 2>&1 || return 1
 	err="${png%.png}.err"
 
-	local d2_args=(-t "${AEYE_D2_THEME:-105}")
-	[[ ${AEYE_D2_SKETCH:-1} != 0 ]] && d2_args+=(--sketch)
-	if ! "$d2_bin" "${d2_args[@]}" "$src" "$svg" 2>"$err"; then
-		_d2_render_fail "$dir" "$png" "$(tr '\n' ' ' <"$err")"
-		return 1
-	fi
-
-	# resvg can't use d2's embedded @font-face fonts; rewrite to an installed family.
-	if ! bash "$(dirname "${BASH_SOURCE[0]}")/../d2-fix-fonts.sh" "$svg" 2>>"$err"; then
-		_d2_render_fail "$dir" "$png" "$(tr '\n' ' ' <"$err")"
-		return 1
-	fi
-
-	# Recolor labels to contrast their node's fill. Best-effort.
-	local contrast_bin
-	contrast_bin="$(command -v "${AEYE_BIN:-aeye}" 2>/dev/null || true)"
-	if [[ -n $contrast_bin ]]; then
-		"$contrast_bin" svg-contrast "$svg" 2>>"$err" || true
-	fi
-
-	local resvg_args=()
-	if [[ -n ${AEYE_D2_FONT_DIR:-} ]]; then
-		resvg_args+=(--skip-system-fonts --use-fonts-dir "$AEYE_D2_FONT_DIR")
-	fi
-	if ! "$resvg_bin" "${resvg_args[@]}" "$svg" "$png" 2>>"$err"; then
+	if ! "$aeye_bin" render-diagram "$src" "$png" 2>"$err"; then
 		_d2_render_fail "$dir" "$png" "$(tr '\n' ' ' <"$err")"
 		return 1
 	fi

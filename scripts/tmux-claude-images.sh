@@ -42,6 +42,7 @@ resolve_target() {
 		MODE=wezterm
 		KEY="${CLAUDE_CODE_SESSION_ID:-}"
 		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
+	# TERM can be overridden in a user's shell; GHOSTTY_RESOURCES_DIR is a reliable fallback.
 	elif [[ ${TERM:-} == xterm-ghostty* || -n ${GHOSTTY_RESOURCES_DIR:-} ]]; then
 		MODE=ghostty
 		KEY="${CLAUDE_CODE_SESSION_ID:-}"

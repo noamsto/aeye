@@ -24,10 +24,18 @@ setup() {
 	run bash "$APP" --resolve
 	[ "$status" -eq 0 ]
 	[ "$(echo "$output" | cut -f1)" = wezterm ]
+	[ "$(echo "$output" | cut -f3)" = "$CLAUDE_STATUS_DIR/images/sess-123.jsonl" ]
 }
 
 @test "resolve: ghostty when TERM=xterm-ghostty" {
 	export TERM=xterm-ghostty
+	run bash "$APP" --resolve
+	[ "$status" -eq 0 ]
+	[ "$(echo "$output" | cut -f1)" = ghostty ]
+}
+
+@test "resolve: ghostty when GHOSTTY_RESOURCES_DIR set (TERM not ghostty)" {
+	export GHOSTTY_RESOURCES_DIR=/usr/share/ghostty
 	run bash "$APP" --resolve
 	[ "$status" -eq 0 ]
 	[ "$(echo "$output" | cut -f1)" = ghostty ]

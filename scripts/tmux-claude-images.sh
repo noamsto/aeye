@@ -5,6 +5,9 @@
 #     Keyed by $TMUX_PANE.
 #   - Outside tmux, in kitty with remote control: toggle a split window via
 #     `kitty @ launch`. Keyed by $CLAUDE_CODE_SESSION_ID.
+#   - Outside tmux, in wezterm: toggle a real split via `wezterm cli split-pane`.
+#   - Outside tmux, in ghostty: toggle a separate window via `ghostty +new-window`
+#     (Linux) / `open -na ghostty` (macOS). Keyed by $CLAUDE_CODE_SESSION_ID.
 # The carousel binary ($AEYE_BIN, default `aeye` on PATH)
 # and manifest format are shared.
 set -euo pipefail
@@ -14,9 +17,18 @@ IMAGES_DIR="$STATE_DIR/images"
 ENSURE_OPEN=""
 
 # resolve_target sets MODE/KEY/MANIFEST from the environment.
-#   MODE=tmux  + KEY=<pane id>         inside tmux
-#   MODE=kitty + KEY=<cc session id>   outside tmux, kitty remote control up
-#   MODE=none                          neither host available
+#   MODE=tmux    + KEY=<pane id>        inside tmux
+#   MODE=kitty   + KEY=<cc session id>  outside tmux, kitty remote control up
+#   MODE=wezterm + KEY=<cc session id>  outside tmux, in wezterm
+#   MODE=ghostty + KEY=<cc session id>  outside tmux, in ghostty
+#   MODE=none                           no host available
+#
+# Adding a terminal:
+#   1. Detect it here by a distinct env var; set MODE/KEY/MANIFEST.
+#   2. Add launch_<mode>(): open-or-toggle the viewer as "$VIEWER_BIN" "$KEY".
+#   3. Crisp images need the kitty graphics protocol's UNICODE PLACEHOLDERS
+#      (U+10EEEE) — add the $TERM prefix to chooseGridBackend in
+#      gallery_render.go. Without them the host falls back to chafa.
 resolve_target() {
 	if [[ -n ${TMUX:-} ]]; then
 		MODE=tmux
@@ -24,6 +36,14 @@ resolve_target() {
 		MANIFEST="$IMAGES_DIR/${KEY#%}.jsonl"
 	elif [[ -n ${KITTY_LISTEN_ON:-} ]]; then
 		MODE=kitty
+		KEY="${CLAUDE_CODE_SESSION_ID:-}"
+		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
+	elif [[ -n ${WEZTERM_PANE:-} ]]; then
+		MODE=wezterm
+		KEY="${CLAUDE_CODE_SESSION_ID:-}"
+		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
+	elif [[ ${TERM:-} == xterm-ghostty* || -n ${GHOSTTY_RESOURCES_DIR:-} ]]; then
+		MODE=ghostty
 		KEY="${CLAUDE_CODE_SESSION_ID:-}"
 		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
 	else
@@ -91,10 +111,10 @@ main() {
 	fi
 	case $MODE in
 	none)
-		echo "image carousel needs tmux or kitty remote control" >&2
+		echo "image carousel needs tmux, kitty remote control, wezterm, or ghostty" >&2
 		exit 0
 		;;
-	kitty)
+	kitty | wezterm | ghostty)
 		[[ -n $KEY ]] || {
 			echo "no CLAUDE_CODE_SESSION_ID; cannot locate images" >&2
 			exit 0

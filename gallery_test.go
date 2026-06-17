@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"image"
+	"image/png"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -218,4 +222,51 @@ func TestParseManifestVectorField(t *testing.T) {
 	if len(got) != 1 || got[0].Vector != "" {
 		t.Fatalf("missing vector should be empty: %+v", got)
 	}
+}
+
+// TestSettleMsgReTransmits guards the first-paint fix (#61): on a freshly
+// spawned window the initial store lands before bubbletea switches to the
+// alt-screen, so the settle repaint must RE-store, not just ClearScreen —
+// otherwise the carousel stays blank until the user interacts.
+func TestSettleMsgReTransmits(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { r.Close() })
+	got := make(chan []byte, 1)
+	go func() { b, _ := io.ReadAll(r); got <- b }()
+
+	m := galleryModel{
+		backend: backendKitty,
+		tty:     w,
+		images:  []imageEntry{{Path: writeTestPNG(t)}},
+		ready:   true,
+		width:   100,
+		height:  40,
+	}
+	m.l = computeLayout(m.width, m.height)
+
+	m.Update(settleMsg{})
+	w.Close()
+
+	// deleteAll() is transmitView's first write; its absence means the settle
+	// handler skipped the re-store.
+	if out := <-got; !bytes.Contains(out, []byte("\x1b_Ga=d,d=A")) {
+		t.Fatalf("settleMsg did not re-transmit the image store to the tty; got %q", out)
+	}
+}
+
+func writeTestPNG(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "x.png")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, image.NewRGBA(image.Rect(0, 0, 4, 4))); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }

@@ -53,12 +53,17 @@ Why these choices:
   "explanatory sketch," not a rigid spec. If you ever render a file by hand,
   add `vars: { d2-config: { sketch: true; pad: 16 } }` to match; under the
   carousel it's redundant.
-- **Role by stroke + shape, not fill** — the carousel may render light or dark,
-  so a fill-coded legend can vanish against the background. A colored *stroke*
-  and a distinct *shape* survive both. Reserve `fill` for the rare emphasis.
-  When you do set a `fill`, the renderer auto-contrasts the label (dark ink on
-  light fills, light on dark), so you never need to hand-set a `font-color` to
-  keep text legible.
+- **Role by stroke + shape — never by fill.** The carousel renders light *or*
+  dark and caches the PNG by source hash, so you can't preview the theme you're
+  not on: a light fill that reads fine under the light theme becomes
+  light-text-on-light-fill — illegible — under the dark one (and vice versa). A
+  colored *stroke* plus a distinct *shape* carry role on both themes, because the
+  label keeps the theme's own always-contrasting text color. So tell roles apart
+  with `stroke` + `shape`, not `fill`. Reserve `fill` for a genuine one-off
+  emphasis or a deliberately dark panel. The render's `svg-contrast` pass
+  recolors a filled node's label to contrast its fill as a backstop — treat that
+  as a safety net, not a license: a stroke-coded diagram is legible by
+  construction and needs no net.
 - **A `classes` block alone draws nothing** — it's shown as `text` here on
   purpose. Drop it into a diagram that has shapes, as the worked examples do.
 
@@ -275,11 +280,23 @@ transform.enrich -> alerts: anomalies
 - **Distinguish roles by stroke + shape, not a rainbow of fills** — see the
   house palette.
 - **Label every non-obvious edge.** An unlabeled arrow asks the reader to guess.
+- **Don't echo the target's name in an edge label.** An arrow into a container
+  titled "X lifecycle" needs no `"lifecycle"` label — the duplicate text stacks
+  on the container's own title right where the edge enters. Label an edge only
+  with what the target's name doesn't already say.
 - **One concept per diagram.** Don't merge the architecture and the data model.
 - **`direction: right` unless it's inherently tall** (sequence, deep tree).
 - **Let layout breathe** — prefer grouping over one long thin chain.
+- **An arrow cutting through a node's label?** Switch to ELK —
+  `vars: { d2-config: { layout-engine: elk } }`. The default engine (dagre)
+  draws straight lines that can cross a box; ELK routes orthogonally from node
+  borders, so edges attach instead of slicing through text. A good default for
+  any branchy flow with a node that several edges converge on, not just ERDs.
 
 ## Requirements
 
 Rendering needs `d2` and `resvg` on PATH. If either is missing the hook no-ops
-silently (no diagram, no error) — install both to enable diagrams.
+silently (no diagram, no error) — install both to enable diagrams. The optional
+`svg-contrast` label-recolor backstop runs only when the `aeye` binary is also on
+PATH (it is, in the nix package); without it, a filled node's label falls back to
+the theme default — fine for the stroke-coded diagrams this skill recommends.

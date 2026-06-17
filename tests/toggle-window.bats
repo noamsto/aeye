@@ -143,7 +143,7 @@ STUB
 	export STUB_PGREP_PID=$pid
 	run bash "$APP"
 	[ "$status" -eq 0 ]
-	wait "$pid" 2>/dev/null || true
+	wait "$pid" 2>/dev/null || true # reap first; kill -0 on a zombie is a false positive
 	run kill -0 "$pid"
 	[ "$status" -ne 0 ]
 }

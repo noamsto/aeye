@@ -128,6 +128,10 @@ launch_ghostty() {
 	# ghostty has no window query/close IPC (+close is unshipped), so toggle on
 	# the viewer process itself: it runs as `"$VIEWER_BIN" "$KEY"` and $KEY is the
 	# unique CC session id, so pgrep matches exactly our viewer.
+	# Known tolerated race: the short-lived `ghostty +new-window … "$VIEWER_BIN" "$KEY"`
+	# launcher briefly carries the same string. It only matters on a manual toggle
+	# (--ensure-open with any match is a no-op, never a kill), and the window is
+	# milliseconds wide — acceptable.
 	local pids
 	pids="$(pgrep -f "$VIEWER_BIN $KEY" 2>/dev/null || true)"
 	if [[ -n $pids ]]; then

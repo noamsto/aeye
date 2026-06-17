@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
 # shellcheck disable=SC2030,SC2031  # bats wraps each @test in a subshell; export is intentional
+# shellcheck disable=SC2016  # single-quoted printf strings write literal $vars into stub scripts intentionally
 
 setup() {
 	export CLAUDE_STATUS_DIR="$BATS_TEST_TMPDIR/state"
@@ -31,6 +32,21 @@ split-pane) echo "${STUB_NEW_PANE:-42}" ;;
 esac
 STUB
 	chmod +x "$STUB_BIN/wezterm"
+	# ghostty + helpers stubs. ghostty/open log args; uname is pinned by
+	# $STUB_UNAME; pgrep reports a viewer pid only when $STUB_PGREP_PID is set.
+	export GHOSTTY_LOG="$BATS_TEST_TMPDIR/ghostty.log"
+	export OPEN_LOG="$BATS_TEST_TMPDIR/open.log"
+	: >"$GHOSTTY_LOG"
+	: >"$OPEN_LOG"
+	printf '#!/usr/bin/env bash\necho "$*" >>"%s"\n' "$GHOSTTY_LOG" >"$STUB_BIN/ghostty"
+	printf '#!/usr/bin/env bash\necho "$*" >>"%s"\n' "$OPEN_LOG" >"$STUB_BIN/open"
+	printf '#!/usr/bin/env bash\necho "${STUB_UNAME:-Linux}"\n' >"$STUB_BIN/uname"
+	cat >"$STUB_BIN/pgrep" <<'STUB'
+#!/usr/bin/env bash
+[[ -n ${STUB_PGREP_PID:-} ]] && { echo "$STUB_PGREP_PID"; exit 0; }
+exit 1
+STUB
+	chmod +x "$STUB_BIN/ghostty" "$STUB_BIN/open" "$STUB_BIN/uname" "$STUB_BIN/pgrep"
 	export PATH="$STUB_BIN:$PATH"
 }
 
@@ -90,4 +106,44 @@ STUB
 	[ "$status" -eq 0 ]
 	run grep -c split-pane "$WEZTERM_LOG"
 	[ "$output" = 0 ]
+}
+
+@test "ghostty: Linux opens a viewer window via +new-window" {
+	export TERM=xterm-ghostty
+	unset STUB_PGREP_PID
+	export STUB_UNAME=Linux
+	run bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q -- "+new-window" "$GHOSTTY_LOG"
+	grep -q -- "$CLAUDE_CODE_SESSION_ID" "$GHOSTTY_LOG"
+}
+
+@test "ghostty: macOS opens a viewer window via open -na ghostty" {
+	export TERM=xterm-ghostty
+	unset STUB_PGREP_PID
+	export STUB_UNAME=Darwin
+	run bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q -- "-na ghostty" "$OPEN_LOG"
+	grep -q -- "$CLAUDE_CODE_SESSION_ID" "$OPEN_LOG"
+}
+
+@test "ghostty: --ensure-open with a live viewer does not spawn" {
+	export TERM=xterm-ghostty
+	export STUB_PGREP_PID=4242
+	run bash "$APP" --ensure-open
+	[ "$status" -eq 0 ]
+	[ ! -s "$GHOSTTY_LOG" ]
+}
+
+@test "ghostty: bare toggle kills the live viewer process" {
+	export TERM=xterm-ghostty
+	sleep 300 &
+	pid=$!
+	export STUB_PGREP_PID=$pid
+	run bash "$APP"
+	[ "$status" -eq 0 ]
+	wait "$pid" 2>/dev/null || true
+	run kill -0 "$pid"
+	[ "$status" -ne 0 ]
 }

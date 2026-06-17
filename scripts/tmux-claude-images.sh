@@ -124,6 +124,27 @@ launch_wezterm() {
 	printf '%s\n' "$pane" >"$panefile"
 }
 
+launch_ghostty() {
+	# ghostty has no window query/close IPC (+close is unshipped), so toggle on
+	# the viewer process itself: it runs as `"$VIEWER_BIN" "$KEY"` and $KEY is the
+	# unique CC session id, so pgrep matches exactly our viewer.
+	local pids
+	pids="$(pgrep -f "$VIEWER_BIN $KEY" 2>/dev/null || true)"
+	if [[ -n $pids ]]; then
+		[[ -n $ENSURE_OPEN ]] && return # already open; ensure-open is a no-op
+		# shellcheck disable=SC2086 # pgrep may return several pids; split intentionally
+		kill $pids 2>/dev/null || true # viewer exit closes its ghostty window
+		return
+	fi
+	# env forwards the state dir (D-Bus/new instance never saw our env);
+	# --working-directory is explicit to dodge the 1.3.0 -e working-dir bug.
+	local cmd=(env AEYE_DIR="$STATE_DIR" CLAUDE_STATUS_DIR="$STATE_DIR" "$VIEWER_BIN" "$KEY")
+	case "$(uname -s)" in
+	Darwin) open -na ghostty --args --working-directory="$STATE_DIR" -e "${cmd[@]}" ;;
+	*) ghostty +new-window --working-directory="$STATE_DIR" -e "${cmd[@]}" ;;
+	esac
+}
+
 main() {
 	resolve_target
 	[[ ${1:-} == --ensure-open ]] && ENSURE_OPEN=1

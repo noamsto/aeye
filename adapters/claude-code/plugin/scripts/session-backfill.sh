@@ -44,13 +44,13 @@ append_image() { # $1 path  $2 source  $3 ts
 		'{type:"image", path:$path, source:$source, ts:$ts, mtime:$mtime}' >>"$manifest"
 }
 
-append_diagram() { # $1 png  $2 svg  $3 ts
+append_diagram() { # $1 png  $2 svg  $3 ts  $4 name
 	[[ -n ${seen["$1"]:-} ]] && return 0
 	seen["$1"]=1
 	local mtime
 	mtime="$(stat -c %Y "$1" 2>/dev/null || echo 0)"
-	jq -nc --arg path "$1" --arg vector "$2" --arg source "d2" --arg ts "$3" --argjson mtime "$mtime" \
-		'{type:"image", path:$path, vector:$vector, source:$source, ts:$ts, mtime:$mtime}' >>"$manifest"
+	jq -nc --arg path "$1" --arg vector "$2" --arg source "d2" --arg name "$4" --arg ts "$3" --argjson mtime "$mtime" \
+		'{type:"image", path:$path, vector:$vector, source:$source, name:$name, ts:$ts, mtime:$mtime}' >>"$manifest"
 }
 
 # Only image/diagram-bearing lines reach jq (raw grep fast-bail, like images.sh).
@@ -75,7 +75,7 @@ while IFS= read -r line; do
 		d2="$(extract_d2_path "$synth")"
 		if [[ -n $d2 ]]; then
 			png="$(d2_render "$d2" "$DIAGRAMS_DIR")" || continue
-			append_diagram "$png" "${png%.png}.svg" "$ts"
+			append_diagram "$png" "${png%.png}.svg" "$ts" "$(basename "$d2" .d2)"
 		fi
 	done < <(jq -c '.message.content[]? | select(.type=="tool_use")' <<<"$line" 2>/dev/null)
 

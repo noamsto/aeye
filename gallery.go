@@ -410,7 +410,7 @@ func (m galleryModel) renderView() string {
 	title := center(lipgloss.NewStyle().Foreground(selColor).Bold(true).Render(galleryTitleIcon+"  Claude Images") +
 		lipgloss.NewStyle().Foreground(hintFg).Render("  "+version))
 	subtitle := center(lipgloss.NewStyle().Foreground(textFg).Render(
-		truncateToWidth(fmt.Sprintf("[%d/%d]  %s", m.cursor+1, len(m.images), filepath.Base(m.images[m.cursor].Path)), m.width)))
+		truncateToWidth(fmt.Sprintf("[%d/%d]  %s", m.cursor+1, len(m.images), m.images[m.cursor].caption()), m.width)))
 
 	// Filmstrip window: each thumb framed; the selected thumb's frame is colored.
 	start := stripStart(m.cursor, m.l.stripCols, len(m.images))

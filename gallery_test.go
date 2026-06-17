@@ -270,3 +270,16 @@ func writeTestPNG(t *testing.T) string {
 	}
 	return path
 }
+
+func TestCaption(t *testing.T) {
+	// A diagram's name (its .d2 source) beats the content-hash png basename.
+	named := imageEntry{Path: "/d/1495b42c989a23e6.png", Name: "raster-backend"}
+	if got := named.caption(); got != "raster-backend" {
+		t.Fatalf("named caption = %q, want raster-backend", got)
+	}
+	// No name (a screenshot) falls back to the file basename.
+	plain := imageEntry{Path: "/shots/login.png"}
+	if got := plain.caption(); got != "login.png" {
+		t.Fatalf("unnamed caption = %q, want login.png", got)
+	}
+}

@@ -19,7 +19,18 @@ type imageEntry struct {
 	Path   string `json:"path"`
 	Source string `json:"source"`
 	Vector string `json:"vector,omitempty"`
+	Name   string `json:"name,omitempty"`
 	Mtime  int64  `json:"mtime"`
+}
+
+// caption is the label shown for an entry in the carousel: its name when set —
+// diagrams carry their .d2 source name, which beats the content-hash png
+// basename — otherwise the file's basename.
+func (e imageEntry) caption() string {
+	if e.Name != "" {
+		return e.Name
+	}
+	return filepath.Base(e.Path)
 }
 
 // parseManifest decodes JSONL bytes into entries, skipping blank/unparseable

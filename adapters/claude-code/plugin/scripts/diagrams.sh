@@ -68,8 +68,8 @@ fi
 
 mtime="$(stat -c %Y "$png" 2>/dev/null || echo 0)"
 printf -v now '%(%FT%T%z)T' -1
-jq -nc --arg path "$png" --arg vector "$svg" --arg source "d2" --arg ts "$now" --argjson mtime "$mtime" \
-	'{type:"image", path:$path, vector:$vector, source:$source, ts:$ts, mtime:$mtime}' >>"$manifest"
+jq -nc --arg path "$png" --arg vector "$svg" --arg source "d2" --arg name "$(basename "$candidate" .d2)" --arg ts "$now" --argjson mtime "$mtime" \
+	'{type:"image", path:$path, vector:$vector, source:$source, name:$name, ts:$ts, mtime:$mtime}' >>"$manifest"
 
 # Proactively surface the carousel on every new diagram. Reached only when a
 # genuinely new diagram was appended above (the dedup guard exits early for ones

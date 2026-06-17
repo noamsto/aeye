@@ -27,8 +27,9 @@ what your agent is doing without leaving the terminal.
   scrollable strip of thumbnails.
 - 🪄 **Auto-capture** — a PostToolUse hook records every image the session reads,
   writes, or screenshots into a per-pane manifest. Nothing to do by hand.
-- 🔭 **Dual-mode rendering** — a tmux split or a kitty window, auto-detected from
-  the host. Opens beside your agent, not wherever you happened to navigate.
+- 🔭 **Multi-host rendering** — a tmux split, a kitty/wezterm split, or a ghostty
+  window, auto-detected from the host. Opens beside your agent, not wherever you
+  happened to navigate. See [Terminal support](#terminal-support).
 - ⚡ **Live** — opens on the newest image and follows new captures as they stream
   in, until you take over with the keyboard; polls for changes every ~1.5s.
 - ✨ **Crisp** — kitty graphics protocol on kitty/ghostty, with a
@@ -133,6 +134,27 @@ structure — group by group — when one is selected:
 | `Tab` / `Shift+Tab` | Cycle through regions/groups (`Shift+Tab` from the first backs out to the whole diagram) |
 | `]` / `[` | Drill into / out of the focused region |
 | `0` / `Esc` | Reset zoom and return to the whole diagram |
+
+## Terminal support
+
+Two things vary by host: **where** the viewer opens, and **how sharp** the images
+are. Crisp rendering needs the kitty graphics protocol's *unicode placeholders*
+(U+10EEEE); everything else uses the [`chafa`](https://hpjansson.org/chafa/)
+block-art fallback.
+
+| Host (no tmux) | Window placement | Image quality |
+|----------------|------------------|---------------|
+| **kitty** | split beside the agent (`kitty @ launch`) | crisp |
+| **ghostty** | separate window (`ghostty +new-window` / `open -na`) | crisp |
+| **wezterm** | split beside the agent (`wezterm cli split-pane`) | chafa\* |
+| **Alacritty / Warp / other** | — (use tmux) | chafa |
+
+Inside **tmux** the viewer always opens as a split, on any host. WezTerm speaks
+the kitty protocol but not its unicode placeholders ([wezterm#986](https://github.com/wezterm/wezterm/issues/986)),
+so it uses chafa today and would upgrade automatically if that lands.
+
+\* Crisp real-pixel rendering on wezterm/iTerm2 (sixel / OSC 1337) is tracked
+separately.
 
 ## Architecture
 

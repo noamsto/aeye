@@ -53,6 +53,17 @@
             ++ [pkgs.go pkgs.gopls pkgs.gotools pkgs.golangci-lint pkgs.chafa pkgs.bats pkgs.goreleaser pkgs.gh pkgs.d2 pkgs.resvg pkgs.source-sans pkgs.source-code-pro pkgs.just];
         };
 
+        # `nix develop .#verify` — the real terminal hosts for manually checking the
+        # ghostty/wezterm launch paths, which bats can only stub (they need a live
+        # GUI/D-Bus/mux session). Kept out of the default shell so contributors don't
+        # build these heavy emulators on every `nix develop`. ghostty is Linux-only
+        # in nixpkgs (macOS uses the official app); wezterm is cross-platform.
+        devShells.verify = pkgs.mkShell {
+          packages =
+            [self'.packages.default self'.packages.toggle pkgs.chafa pkgs.wezterm]
+            ++ lib.optionals pkgs.stdenv.isLinux [pkgs.ghostty];
+        };
+
         packages = {
           default = pkgs.buildGoModule {
             pname = "aeye";

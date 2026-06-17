@@ -5,6 +5,9 @@
 #     Keyed by $TMUX_PANE.
 #   - Outside tmux, in kitty with remote control: toggle a split window via
 #     `kitty @ launch`. Keyed by $CLAUDE_CODE_SESSION_ID.
+#   - Outside tmux, in wezterm: toggle a real split via `wezterm cli split-pane`.
+#   - Outside tmux, in ghostty: toggle a separate window via `ghostty +new-window`
+#     (Linux) / `open -na ghostty` (macOS). Keyed by $CLAUDE_CODE_SESSION_ID.
 # The carousel binary ($AEYE_BIN, default `aeye` on PATH)
 # and manifest format are shared.
 set -euo pipefail
@@ -14,9 +17,18 @@ IMAGES_DIR="$STATE_DIR/images"
 ENSURE_OPEN=""
 
 # resolve_target sets MODE/KEY/MANIFEST from the environment.
-#   MODE=tmux  + KEY=<pane id>         inside tmux
-#   MODE=kitty + KEY=<cc session id>   outside tmux, kitty remote control up
-#   MODE=none                          neither host available
+#   MODE=tmux    + KEY=<pane id>        inside tmux
+#   MODE=kitty   + KEY=<cc session id>  outside tmux, kitty remote control up
+#   MODE=wezterm + KEY=<cc session id>  outside tmux, in wezterm
+#   MODE=ghostty + KEY=<cc session id>  outside tmux, in ghostty
+#   MODE=none                           no host available
+#
+# Adding a terminal:
+#   1. Detect it here by a distinct env var; set MODE/KEY/MANIFEST.
+#   2. Add launch_<mode>(): open-or-toggle the viewer as "$VIEWER_BIN" "$KEY".
+#   3. Crisp images need the kitty graphics protocol's UNICODE PLACEHOLDERS
+#      (U+10EEEE) — add the $TERM prefix to chooseGridBackend in
+#      gallery_render.go. Without them the host falls back to chafa.
 resolve_target() {
 	if [[ -n ${TMUX:-} ]]; then
 		MODE=tmux
@@ -24,6 +36,15 @@ resolve_target() {
 		MANIFEST="$IMAGES_DIR/${KEY#%}.jsonl"
 	elif [[ -n ${KITTY_LISTEN_ON:-} ]]; then
 		MODE=kitty
+		KEY="${CLAUDE_CODE_SESSION_ID:-}"
+		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
+	elif [[ -n ${WEZTERM_PANE:-} ]]; then
+		MODE=wezterm
+		KEY="${CLAUDE_CODE_SESSION_ID:-}"
+		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
+	# TERM can be overridden in a user's shell; GHOSTTY_RESOURCES_DIR is a reliable fallback.
+	elif [[ ${TERM:-} == xterm-ghostty* || -n ${GHOSTTY_RESOURCES_DIR:-} ]]; then
+		MODE=ghostty
 		KEY="${CLAUDE_CODE_SESSION_ID:-}"
 		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
 	else
@@ -82,6 +103,55 @@ launch_kitty() {
 		"$VIEWER_BIN" "$KEY" >/dev/null
 }
 
+launch_wezterm() {
+	# wezterm has a real mux CLI: split-pane returns the new pane id, kill-pane
+	# removes it. We persist the id (keyed by session id) for the toggle.
+	local panefile="$IMAGES_DIR/$KEY.wezterm-pane" pane=""
+	[[ -f $panefile ]] && pane="$(<"$panefile")"
+	# Liveness: `wezterm cli list` prints a PANEID column (3rd field; row 1 is the
+	# header). A stale id (pane already gone) falls through to a fresh split. The
+	# header guard turns a future column reorder into a loud error, not a silent
+	# mismatch that would orphan panes.
+	if [[ -n $pane ]] &&
+		wezterm cli list 2>/dev/null |
+		awk -v p="$pane" 'NR==1 && $3!="PANEID"{exit 2} NR>1 && $3==p{f=1} END{exit !f}'; then
+		[[ -n $ENSURE_OPEN ]] && return # already open; ensure-open is a no-op
+		wezterm cli kill-pane --pane-id "$pane" >/dev/null 2>&1 || true
+		rm -f "$panefile"
+		return
+	fi
+	# split-pane defaults its target to $WEZTERM_PANE, so it lands next to the
+	# agent. env forwards the state dir — the mux server never saw our env.
+	pane="$(wezterm cli split-pane --right --percent 40 --cwd "$STATE_DIR" -- \
+		env AEYE_DIR="$STATE_DIR" CLAUDE_STATUS_DIR="$STATE_DIR" "$VIEWER_BIN" "$KEY")"
+	printf '%s\n' "$pane" >"$panefile"
+}
+
+launch_ghostty() {
+	# ghostty has no window query/close IPC (+close is unshipped), so toggle on
+	# the viewer process itself: it runs as `"$VIEWER_BIN" "$KEY"` and $KEY is the
+	# unique CC session id, so pgrep matches exactly our viewer.
+	# Known tolerated race: the short-lived `ghostty +new-window … "$VIEWER_BIN" "$KEY"`
+	# launcher briefly carries the same string. It only matters on a manual toggle
+	# (--ensure-open with any match is a no-op, never a kill), and the window is
+	# milliseconds wide — acceptable.
+	local pids
+	pids="$(pgrep -f "$VIEWER_BIN $KEY" 2>/dev/null || true)"
+	if [[ -n $pids ]]; then
+		[[ -n $ENSURE_OPEN ]] && return # already open; ensure-open is a no-op
+		# shellcheck disable=SC2086 # pgrep may return several pids; split intentionally
+		kill $pids 2>/dev/null || true # viewer exit closes its ghostty window
+		return
+	fi
+	# env forwards the state dir (D-Bus/new instance never saw our env);
+	# --working-directory is explicit to dodge the 1.3.0 -e working-dir bug.
+	local cmd=(env AEYE_DIR="$STATE_DIR" CLAUDE_STATUS_DIR="$STATE_DIR" "$VIEWER_BIN" "$KEY")
+	case "$(uname -s)" in
+	Darwin) open -na ghostty --args --working-directory="$STATE_DIR" -e "${cmd[@]}" ;;
+	*) ghostty +new-window --working-directory="$STATE_DIR" -e "${cmd[@]}" ;;
+	esac
+}
+
 main() {
 	resolve_target
 	[[ ${1:-} == --ensure-open ]] && ENSURE_OPEN=1
@@ -91,10 +161,10 @@ main() {
 	fi
 	case $MODE in
 	none)
-		echo "image carousel needs tmux or kitty remote control" >&2
+		echo "image carousel needs tmux, kitty remote control, wezterm, or ghostty" >&2
 		exit 0
 		;;
-	kitty)
+	kitty | wezterm | ghostty)
 		[[ -n $KEY ]] || {
 			echo "no CLAUDE_CODE_SESSION_ID; cannot locate images" >&2
 			exit 0

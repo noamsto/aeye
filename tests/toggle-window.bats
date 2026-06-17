@@ -89,5 +89,5 @@ STUB
 	run bash "$APP" --ensure-open
 	[ "$status" -eq 0 ]
 	run grep -c split-pane "$WEZTERM_LOG"
-	[ "$output" -eq 0 ]
+	[ "$output" = 0 ]
 }

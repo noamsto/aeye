@@ -142,14 +142,26 @@ type gridBackend int
 const (
 	backendKitty gridBackend = iota
 	backendSymbols
+	backendRaster
 )
 
-// chooseGridBackend picks the grid renderer from the OUTER terminal name only.
-// The kitty backend uses the raw graphics protocol (not `kitten icat`), so —
-// unlike the v1 focus view — it does not depend on `kitten` being on PATH.
-func chooseGridBackend(termname string) gridBackend {
+// chooseGridBackend picks the grid renderer. The kitty backend needs unicode
+// PLACEHOLDERS (not just kitty graphics), which has no capability query and which
+// wezterm lacks despite speaking graphics — so kitty stays a termname allowlist,
+// never a probe. Otherwise: a standalone (no tmux) host identified by env gets
+// sixel with no probe latency; everything else (notably in-tmux, where the only
+// reliable signal is whether THIS tmux passes sixel) falls to the DA1 probe.
+// probeSixel is injected so this stays a pure, testable function and is invoked
+// lazily — only on the probe branch.
+func chooseGridBackend(termname string, inTmux bool, weztermPane, term string, probeSixel func() bool) gridBackend {
 	if strings.HasPrefix(termname, "xterm-kitty") || strings.HasPrefix(termname, "xterm-ghostty") {
 		return backendKitty
+	}
+	if !inTmux && (weztermPane != "" || strings.HasPrefix(term, "foot")) {
+		return backendRaster
+	}
+	if probeSixel() {
+		return backendRaster
 	}
 	return backendSymbols
 }
@@ -266,4 +278,16 @@ func symbolsBlock(path string, w, h int) string {
 	s = strings.ReplaceAll(s, "\x1b[?25l", "")
 	s = strings.ReplaceAll(s, "\x1b[?25h", "")
 	return strings.TrimRight(s, "\n")
+}
+
+// blankBlock is h lines of w spaces — the hole the raster backend paints a sixel
+// image into out-of-band. It is to backendRaster what placeholderBlock is to
+// backendKitty: the View()-side placeholder occupying the image's cells.
+func blankBlock(w, h int) string {
+	row := strings.Repeat(" ", w)
+	rows := make([]string, h)
+	for i := range rows {
+		rows[i] = row
+	}
+	return strings.Join(rows, "\n")
 }

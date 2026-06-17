@@ -42,21 +42,39 @@ func TestDeleteAll(t *testing.T) {
 }
 
 func TestChooseGridBackend(t *testing.T) {
+	yes := func() bool { return true }
+	no := func() bool { return false }
 	cases := []struct {
-		term string
-		want gridBackend
+		name        string
+		term        string
+		inTmux      bool
+		weztermPane string
+		envTerm     string
+		probe       func() bool
+		want        gridBackend
 	}{
-		{"xterm-kitty", backendKitty},
-		{"xterm-ghostty", backendKitty},
-		{"xterm-kitty-something", backendKitty},
-		{"foot", backendSymbols},
-		{"xterm-256color", backendSymbols},
-		{"", backendSymbols},
+		{"kitty termname", "xterm-kitty", false, "", "xterm-kitty", nil, backendKitty},
+		{"ghostty termname", "xterm-ghostty", false, "", "xterm-ghostty", nil, backendKitty},
+		{"kitty suffix", "xterm-kitty-direct", false, "", "foot", nil, backendKitty},
+		{"wezterm standalone", "xterm-256color", false, "1", "xterm-256color", nil, backendRaster},
+		{"foot standalone", "foot", false, "", "foot", nil, backendRaster},
+		{"in tmux, probe yes", "tmux-256color", true, "", "tmux-256color", yes, backendRaster},
+		{"in tmux, probe no", "tmux-256color", true, "", "tmux-256color", no, backendSymbols},
+		{"leaked weztermpane in tmux still probes", "tmux-256color", true, "1", "tmux-256color", no, backendSymbols},
+		{"unknown standalone, probe yes", "xterm-256color", false, "", "xterm-256color", yes, backendRaster},
+		{"unknown standalone, probe no", "xterm-256color", false, "", "xterm-256color", no, backendSymbols},
 	}
 	for _, c := range cases {
-		if got := chooseGridBackend(c.term); got != c.want {
-			t.Errorf("chooseGridBackend(%q) = %v, want %v", c.term, got, c.want)
-		}
+		t.Run(c.name, func(t *testing.T) {
+			probe := c.probe
+			if probe == nil {
+				probe = func() bool { t.Fatal("probe must not run on a fast-path"); return false }
+			}
+			got := chooseGridBackend(c.term, c.inTmux, c.weztermPane, c.envTerm, probe)
+			if got != c.want {
+				t.Errorf("chooseGridBackend = %v, want %v", got, c.want)
+			}
+		})
 	}
 }
 

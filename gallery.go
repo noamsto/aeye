@@ -100,6 +100,7 @@ type galleryModel struct {
 	regionPath []string    // current drill level (container path components); empty = root
 	regionIdx  int         // focused sibling index at the current level; -1 = not in region mode
 	vecGen     uint64      // debounce generation: only the latest scheduled vector kick fires
+	rasterGen  uint64      // debounce generation for the post-render sixel repaint
 
 	// Mouse drag state for preview panning.
 	dragging             bool
@@ -178,7 +179,8 @@ func (m *galleryModel) reload() {
 		m.transmitView()
 		// Pre-warm transcodes for every image so navigating to a freshly
 		// captured one is a cache hit, not a full-resolution decode on the loop.
-		if m.backend == backendKitty {
+		// Raster paints from the same cachedPNG path, so it benefits too.
+		if m.backend == backendKitty || m.backend == backendRaster {
 			paths := make([]string, len(m.images))
 			for i, im := range m.images {
 				paths[i] = im.Path
@@ -205,7 +207,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Force one repaint after the store is surely processed.
 			return m, tea.Batch(m.kickVector(), settleCmd())
 		}
-		return m, m.scheduleVector()
+		return m, tea.Batch(m.scheduleVector(), m.schedulePaint())
 	case tea.KeyPressMsg:
 		var cmd tea.Cmd
 		switch msg.String() {
@@ -295,11 +297,11 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// After any key, debounce-schedule a sharp d2 re-render off the event loop.
 		// nil for non-d2/non-kitty, so this is a no-op there.
 		cmd = m.scheduleVector()
-		return m, cmd
+		return m, tea.Batch(cmd, m.schedulePaint())
 	case tea.MouseMsg:
 		var cmd tea.Cmd
 		m, cmd = m.handleMouse(msg)
-		return m, cmd
+		return m, tea.Batch(cmd, m.schedulePaint())
 	case vectorKickMsg:
 		// Stale tick: a later keystroke superseded this one. Drop it; only the
 		// latest generation gets to kick resvg.
@@ -326,7 +328,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case galleryTickMsg:
 		if mt := manifestMtime(m.pane); mt != m.mtime {
 			m.reload()
-			return m, tea.Batch(galleryTickCmd(), m.kickVector())
+			return m, tea.Batch(galleryTickCmd(), m.kickVector(), m.schedulePaint())
 		}
 		return m, galleryTickCmd()
 	case settleMsg:
@@ -335,8 +337,19 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// so on a freshly spawned window (e.g. a ghostty window outside tmux) the
 		// initial store doesn't stick. Re-transmitting here — now that the
 		// alt-screen is active — is what a resize would otherwise have to do.
+		// (No-op on raster, whose overlay is driven by the scheduled repaint below.)
 		m.transmitView()
+		if m.backend == backendRaster {
+			// ClearScreen forces a full redraw of the blank holes; repaint the
+			// sixel overlay just after, on top of them.
+			return m, tea.Batch(tea.ClearScreen, m.schedulePaint())
+		}
 		return m, tea.ClearScreen
+	case rasterPaintMsg:
+		if msg.gen == m.rasterGen {
+			m.paintRaster()
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -386,9 +399,12 @@ func (m galleryModel) renderView() string {
 	// border as a title, so they sit right on the image rather than floating
 	// above it; blank for a plain image, leaving a plain border.
 	var preview string
-	if m.backend == backendKitty {
+	switch m.backend {
+	case backendKitty:
 		preview = placeholderBlock(previewID, m.l.previewW, m.l.previewH)
-	} else {
+	case backendRaster:
+		preview = blankBlock(m.l.previewW, m.l.previewH)
+	default:
 		preview = symbolsBlock(m.images[m.cursor].Path, m.l.previewW, m.l.previewH)
 	}
 	context := ""
@@ -425,9 +441,12 @@ func (m galleryModel) renderView() string {
 			cells = append(cells, hgap)
 		}
 		var thumb string
-		if m.backend == backendKitty {
+		switch m.backend {
+		case backendKitty:
 			thumb = placeholderBlock(s+1, m.l.stripW, m.l.stripH)
-		} else {
+		case backendRaster:
+			thumb = blankBlock(m.l.stripW, m.l.stripH)
+		default:
 			thumb = symbolsBlock(m.images[idx].Path, m.l.stripW, m.l.stripH)
 		}
 		border := dimColor
@@ -509,7 +528,7 @@ func runGallery(pane string) error {
 	m := galleryModel{
 		pane:    pane,
 		images:  images,
-		backend: chooseGridBackend(termName()),
+		backend: chooseGridBackend(termName(), os.Getenv("TMUX") != "", os.Getenv("WEZTERM_PANE"), os.Getenv("TERM"), probeSixel),
 		theme:   detectTheme(),
 		tty:     tty,
 		mtime:   manifestMtime(pane),

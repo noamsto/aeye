@@ -330,6 +330,12 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, galleryTickCmd()
 	case settleMsg:
+		// Re-store before the repaint: the first transmitView (in the
+		// WindowSizeMsg handler) runs before bubbletea switches to the alt-screen,
+		// so on a freshly spawned window (e.g. a ghostty window outside tmux) the
+		// initial store doesn't stick. Re-transmitting here — now that the
+		// alt-screen is active — is what a resize would otherwise have to do.
+		m.transmitView()
 		return m, tea.ClearScreen
 	}
 	return m, nil

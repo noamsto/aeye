@@ -109,9 +109,12 @@ launch_wezterm() {
 	local panefile="$IMAGES_DIR/$KEY.wezterm-pane" pane=""
 	[[ -f $panefile ]] && pane="$(<"$panefile")"
 	# Liveness: `wezterm cli list` prints a PANEID column (3rd field; row 1 is the
-	# header). A stale id (pane already gone) falls through to a fresh split.
+	# header). A stale id (pane already gone) falls through to a fresh split. The
+	# header guard turns a future column reorder into a loud error, not a silent
+	# mismatch that would orphan panes.
 	if [[ -n $pane ]] &&
-		wezterm cli list 2>/dev/null | awk -v p="$pane" 'NR>1 && $3==p{f=1} END{exit !f}'; then
+		wezterm cli list 2>/dev/null |
+		awk -v p="$pane" 'NR==1 && $3!="PANEID"{exit 2} NR>1 && $3==p{f=1} END{exit !f}'; then
 		[[ -n $ENSURE_OPEN ]] && return # already open; ensure-open is a no-op
 		wezterm cli kill-pane --pane-id "$pane" >/dev/null 2>&1 || true
 		rm -f "$panefile"

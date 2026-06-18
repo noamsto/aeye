@@ -23,7 +23,9 @@ candidate="$(extract_d2_path "$payload")"
 [[ -n $candidate ]] || exit 0
 
 mkdir -p "$DIAGRAMS_DIR"
-png="$(d2_png_for "$candidate" "$DIAGRAMS_DIR")"
+# Canonical variant recorded in the manifest; the carousel swaps -dark/-light to
+# the live theme at view time. d2_render below renders both variants.
+png="$(d2_png_for "$candidate" "$DIAGRAMS_DIR" dark)"
 svg="${png%.png}.svg"
 manifest="$IMAGES_DIR/$pane_file.jsonl"
 

@@ -97,6 +97,37 @@ func loadManifest(pane string) []imageEntry {
 	return out
 }
 
+// resolveThemeVariants rewrites each d2 entry's Path/Vector to the variant for
+// the given mode ("light"/"dark"). The hook renders both, so switching the theme
+// is a path swap, not a re-render. Non-d2 entries and pre-#81 caches (no theme
+// suffix) pass through unchanged.
+func resolveThemeVariants(entries []imageEntry, mode string) []imageEntry {
+	for i := range entries {
+		if entries[i].Source != "d2" {
+			continue
+		}
+		entries[i].Path = withTheme(entries[i].Path, mode)
+		entries[i].Vector = withTheme(entries[i].Vector, mode)
+	}
+	return entries
+}
+
+// withTheme rewrites a `…-light`/`…-dark` variant path to mode, returning a path
+// without that suffix unchanged.
+func withTheme(path, mode string) string {
+	if path == "" {
+		return path
+	}
+	ext := filepath.Ext(path)
+	stem := strings.TrimSuffix(path, ext)
+	for _, t := range []string{"light", "dark"} {
+		if strings.HasSuffix(stem, "-"+t) {
+			return strings.TrimSuffix(stem, "-"+t) + "-" + mode + ext
+		}
+	}
+	return path
+}
+
 // decodeErr returns nil if path's header decodes as a registered image format.
 // DecodeConfig reads only the header (cheap), so this validates every manifest
 // entry on load without paying a full decode.

@@ -37,14 +37,30 @@ redraw, so make it specific.
 
 ## House style
 
-The carousel hook applies the sketch look and the mode-appropriate theme to
-every render automatically — you do **not** put `sketch` or `theme` in the
-file. What you provide is `direction` and a role `classes` palette. Open each
-diagram with this block, then add your shapes:
+The carousel hook applies the sketch look, the mode-appropriate theme, and a set
+of **semantic role classes** automatically — you do **not** put `sketch`,
+`theme`, or those classes in the file. Tag a shape or edge with a role and aeye
+colors it for the rendered theme: a soft pastel fill on light, a bright accent
+border + title on dark (no heavy blocks either way).
+
+| `class:` | meaning |
+|----------|---------|
+| `warn`   | error / danger / the broken (before) case |
+| `good`   | success / the fixed (after) case |
+| `accent` | emphasis / focus |
+| `info`   | neutral highlight |
+
+```d2
+before: BEFORE { class: warn }
+after: AFTER { class: good }
+before -> after: fix { class: good }
+```
+
+For your own *structural* distinctions (service vs store vs external), define
+extra classes — tell those apart by **stroke + shape**, not fill, so they read on
+both themes:
 
 ```text
-# Role classes distinguish by stroke + shape (NOT fill) so they read on BOTH
-# the light and dark theme the carousel may render.
 classes: {
   svc:   { style: { stroke: "#1565C0"; stroke-width: 2 } }
   store: { shape: cylinder; style: { stroke: "#2E7D32"; stroke-width: 2 } }
@@ -58,17 +74,15 @@ Why these choices:
   "explanatory sketch," not a rigid spec. If you ever render a file by hand,
   add `vars: { d2-config: { sketch: true; pad: 16 } }` to match; under the
   carousel it's redundant.
-- **Role by stroke + shape — never by fill.** The carousel renders light *or*
-  dark and caches the PNG by source hash, so you can't preview the theme you're
-  not on: a light fill that reads fine under the light theme becomes
-  light-text-on-light-fill — illegible — under the dark one (and vice versa). A
-  colored *stroke* plus a distinct *shape* carry role on both themes, because the
-  label keeps the theme's own always-contrasting text color. So tell roles apart
-  with `stroke` + `shape`, not `fill`. Reserve `fill` for a genuine one-off
-  emphasis or a deliberately dark panel. The render's `svg-contrast` pass
-  recolors a filled node's label to contrast its fill as a backstop — treat that
-  as a safety net, not a license: a stroke-coded diagram is legible by
-  construction and needs no net.
+- **Color through roles; in your own classes, stroke not fill.** The semantic
+  roles above are aeye-managed — it picks a theme-appropriate treatment, so
+  `class: warn` is safe whatever theme renders. For a class you define yourself,
+  tell it apart by a colored *stroke* + distinct *shape*: those read on both
+  themes because the label keeps the theme's own contrasting text color, whereas a
+  raw `fill` you set by hand is baked for one theme and can go light-on-light (or
+  dark-on-dark) under the other. Reserve hand-set `fill` for a genuine one-off; the
+  render's contrast pass recolors a filled node's label as a backstop, not a
+  license.
 - **A `classes` block alone draws nothing** — it's shown as `text` here on
   purpose. Drop it into a diagram that has shapes, as the worked examples do.
 

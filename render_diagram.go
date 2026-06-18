@@ -69,8 +69,12 @@ func renderD2SVG(in string) ([]byte, error) {
 	// `vars: { d2-config: { layout-engine: ... } }` (it only honors that when
 	// Layout is unset), falling back to dagre. LayoutResolver routes the chosen
 	// engine — including the in-file elk that keeps arrows off node labels.
+	// Prepend the semantic role classes for this theme so a diagram can tag
+	// shapes/edges `class: warn` etc. without naming a color or a mode. d2 merges
+	// this with any classes block in the source.
+	source := classesBlock(paletteMode(themeID)) + string(src)
 	ctx := log.WithDefault(context.Background())
-	diagram, graph, err := d2lib.Compile(ctx, string(src), &d2lib.CompileOptions{
+	diagram, graph, err := d2lib.Compile(ctx, source, &d2lib.CompileOptions{
 		Ruler:          ruler,
 		LayoutResolver: layoutResolver,
 		InputPath:      in,

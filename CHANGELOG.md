@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/noamsto/aeye/compare/v0.6.0...v0.7.0) (2026-06-18)
+
+
+### Features
+
+* render diagrams in both themes, carousel picks per live theme ([#83](https://github.com/noamsto/aeye/issues/83)) ([c1016e7](https://github.com/noamsto/aeye/commit/c1016e72d10050897f4a630ba68908d040659b68))
+* semantic role palette injected per theme ([#80](https://github.com/noamsto/aeye/issues/80)) ([d78a3fb](https://github.com/noamsto/aeye/commit/d78a3fb8c7e0c17469b3580d7f3f292b9553639c))
+
 ## [0.6.0](https://github.com/noamsto/aeye/compare/v0.5.0...v0.6.0) (2026-06-18)
 
 

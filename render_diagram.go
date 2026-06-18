@@ -23,6 +23,24 @@ import (
 // matching the carousel's old CLI invocation (`d2 -t 200 --sketch`). The
 // in-file `vars: { d2-config: ... }` still overrides these (e.g. the
 // layout-engine: elk that keeps arrows from crossing node labels).
+// d2ThemeID picks the d2 theme. AEYE_D2_THEME wins when set; otherwise the
+// terminal's mode decides — dark gets the dark theme (200), light the light one
+// (105) — so a diagram matches the surroundings it's rendered into without the
+// skill having to ask. In-file d2-config still overrides the chosen theme.
+func d2ThemeID() (int64, error) {
+	if t := os.Getenv("AEYE_D2_THEME"); t != "" {
+		n, err := strconv.ParseInt(t, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid AEYE_D2_THEME %q: %w", t, err)
+		}
+		return n, nil
+	}
+	if detectTheme() == "light" {
+		return 105, nil
+	}
+	return 200, nil
+}
+
 func renderD2SVG(in string) ([]byte, error) {
 	src, err := os.ReadFile(in)
 	if err != nil {
@@ -38,16 +56,9 @@ func renderD2SVG(in string) ([]byte, error) {
 		}
 		return d2dagrelayout.DefaultLayout, nil
 	}
-	// Theme + sketch stay env-configurable, matching the old shell pipeline
-	// (AEYE_D2_THEME default 105 = light; 200 = dark). In-file d2-config still
-	// overrides these.
-	themeID := int64(105)
-	if t := os.Getenv("AEYE_D2_THEME"); t != "" {
-		n, perr := strconv.ParseInt(t, 10, 64)
-		if perr != nil {
-			return nil, fmt.Errorf("invalid AEYE_D2_THEME %q: %w", t, perr)
-		}
-		themeID = n
+	themeID, err := d2ThemeID()
+	if err != nil {
+		return nil, err
 	}
 	renderOpts := &d2svg.RenderOpts{
 		Pad:     go2.Pointer(int64(d2svg.DEFAULT_PADDING)),

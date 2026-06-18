@@ -56,19 +56,23 @@ setup() {
 	[ -z "$output" ]
 }
 
-@test "d2_png_for: hash-stable png path under the diagrams dir" {
+@test "d2_png_for: hash-stable themed png path under the diagrams dir" {
 	d2="$BATS_TEST_TMPDIR/flow.d2"
 	printf 'a -> b\n' >"$d2"
-	run d2_png_for "$d2" "/tmp/diagrams"
+	run d2_png_for "$d2" "/tmp/diagrams" dark
 	[ "$status" -eq 0 ]
-	[[ $output == /tmp/diagrams/*.png ]]
+	[[ $output == /tmp/diagrams/*-dark.png ]]
 	# stable for identical content
 	first="$output"
-	run d2_png_for "$d2" "/tmp/diagrams"
+	run d2_png_for "$d2" "/tmp/diagrams" dark
 	[ "$output" = "$first" ]
+	# light variant shares the hash, differs only by the theme suffix
+	run d2_png_for "$d2" "/tmp/diagrams" light
+	[[ $output == /tmp/diagrams/*-light.png ]]
+	[ "${output/-light.png/-dark.png}" = "$first" ]
 }
 
-@test "d2_render: renders png via stubbed aeye render-diagram" {
+@test "d2_render: renders both theme variants, echoes the dark one" {
 	STUB="$BATS_TEST_TMPDIR/bin"
 	mkdir -p "$STUB"
 	cat >"$STUB/aeye" <<'STUB'
@@ -83,6 +87,8 @@ STUB
 	printf 'a -> b\n' >"$d2"
 	run d2_render "$d2" "$BATS_TEST_TMPDIR/diagrams"
 	[ "$status" -eq 0 ]
+	[[ $output == *-dark.png ]]
 	[ -f "$output" ]
-	[[ $output == *.png ]]
+	# both variants rendered
+	[ -f "${output/-dark.png/-light.png}" ]
 }

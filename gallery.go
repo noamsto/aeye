@@ -171,7 +171,7 @@ func (m *galleryModel) selectIndex(idx int) {
 
 func (m *galleryModel) reload() {
 	m.mtime = manifestMtime(m.pane)
-	m.images = loadManifest(m.pane)
+	m.images = resolveThemeVariants(loadManifest(m.pane), m.theme)
 	m.cursor = clamp(m.cursor, 0, max(0, len(m.images)-1))
 	if m.pinned {
 		m.cursor = max(0, len(m.images)-1)
@@ -332,6 +332,13 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		fmt.Fprint(m.tty, transmitVirtual(previewID, src, m.l.previewW, m.l.previewH))
 		return m, nil
 	case galleryTickMsg:
+		// A live light/dark switch repaints from the already-rendered variant —
+		// reload() re-resolves every d2 path to the new theme. Force the reload by
+		// clearing mtime so the diff below always fires.
+		if th := detectTheme(); th != m.theme {
+			m.theme = th
+			m.mtime = 0
+		}
 		if mt := manifestMtime(m.pane); mt != m.mtime {
 			m.reload()
 			return m, tea.Batch(galleryTickCmd(), m.kickVector(), m.schedulePaint())
@@ -549,12 +556,13 @@ func (m galleryModel) thmColor(opt, dark, light string) imgcolor.Color {
 // runGallery is the entry point called by main with the key/pane positional arg.
 func runGallery(pane string) error {
 	tty, _ := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
-	images := loadManifest(pane)
+	theme := detectTheme()
+	images := resolveThemeVariants(loadManifest(pane), theme)
 	m := galleryModel{
 		pane:    pane,
 		images:  images,
 		backend: chooseGridBackend(termName(), os.Getenv("TMUX") != "", os.Getenv("WEZTERM_PANE"), os.Getenv("TERM"), probeSixel),
-		theme:   detectTheme(),
+		theme:   theme,
 		tty:     tty,
 		mtime:   manifestMtime(pane),
 		cursor:  max(0, len(images)-1),

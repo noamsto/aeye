@@ -69,11 +69,14 @@ extract_d2_path() {
 	return 0
 }
 
-# d2_png_for SRC DIAGRAMS_DIR -> echoes the cache png path (hash of source content).
+# d2_png_for SRC DIAGRAMS_DIR THEME -> echoes the cache png path for one theme
+# variant (<hash>-<theme>.png). The hash is of the source content only — the
+# palette/theme is applied by aeye at render time, so both variants share a hash
+# and differ only by the suffix the carousel swaps to match the live theme.
 d2_png_for() {
-	local src="$1" dir="$2" hash
+	local src="$1" dir="$2" theme="$3" hash
 	hash="$(sha256sum "$src" | cut -c1-16)"
-	printf '%s/%s.png' "$dir" "$hash"
+	printf '%s/%s-%s.png' "$dir" "$hash" "$theme"
 }
 
 # _d2_render_fail DIR PNG MSG -> log a render failure and clean its partials.
@@ -87,32 +90,35 @@ _d2_render_fail() {
 	rm -f "$base.svg" "$base.err" "$png"
 }
 
-# d2_render SRC DIAGRAMS_DIR -> renders SRC to a cached png (if absent) and echoes
-# the png path. Returns 1 (no output) when the aeye binary is missing or rendering
-# fails (failure is logged to render-errors.log). Does not append or toggle.
+# d2_render SRC DIAGRAMS_DIR -> renders both theme variants of SRC (each only if
+# absent) and echoes the canonical (dark) png path for the manifest; the carousel
+# swaps the suffix to the live theme at view time. Returns 1 (no output) when the
+# aeye binary is missing or any render fails (failure logged to render-errors.log).
 d2_render() {
-	local src="$1" dir="$2" png err
-	png="$(d2_png_for "$src" "$dir")"
+	local src="$1" dir="$2" theme id png err
 	mkdir -p "$dir"
 
-	if [[ -f $png ]]; then
-		printf '%s' "$png"
-		return 0
-	fi
+	local aeye_bin="${AEYE_BIN:-aeye}"
+	command -v "$aeye_bin" >/dev/null 2>&1 || return 1
 
 	# aeye render-diagram does the whole pipeline in-process (embedded d2 compile
 	# -> font rewrite -> label contrast -> resvg), writing $png and its sibling
-	# .svg. It resolves resvg from PATH (or AEYE_RESVG); theme/sketch via
-	# AEYE_D2_THEME / AEYE_D2_SKETCH.
-	local aeye_bin="${AEYE_BIN:-aeye}"
-	command -v "$aeye_bin" >/dev/null 2>&1 || return 1
-	err="${png%.png}.err"
+	# .svg. theme via AEYE_D2_THEME (105 light / 200 dark); resvg from PATH/AEYE_RESVG.
+	for theme in light dark; do
+		case $theme in
+		light) id=105 ;;
+		dark) id=200 ;;
+		esac
+		png="$(d2_png_for "$src" "$dir" "$theme")"
+		[[ -f $png ]] && continue
+		err="${png%.png}.err"
+		if ! AEYE_D2_THEME="$id" "$aeye_bin" render-diagram "$src" "$png" 2>"$err"; then
+			_d2_render_fail "$dir" "$png" "$(tr '\n' ' ' <"$err")"
+			return 1
+		fi
+		rm -f "$err"
+	done
 
-	if ! "$aeye_bin" render-diagram "$src" "$png" 2>"$err"; then
-		_d2_render_fail "$dir" "$png" "$(tr '\n' ' ' <"$err")"
-		return 1
-	fi
-	rm -f "$err"
-	printf '%s' "$png"
+	printf '%s' "$(d2_png_for "$src" "$dir" dark)"
 	return 0
 }

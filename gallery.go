@@ -102,6 +102,9 @@ type galleryModel struct {
 	vecGen     uint64      // debounce generation: only the latest scheduled vector kick fires
 	rasterGen  uint64      // debounce generation for the post-render sixel repaint
 
+	// Transient one-line feedback (e.g. copy result), cleared on the next key.
+	status string
+
 	// Mouse drag state for preview panning.
 	dragging             bool
 	lastDragX, lastDragY int
@@ -210,6 +213,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.scheduleVector(), m.schedulePaint())
 	case tea.KeyPressMsg:
 		var cmd tea.Cmd
+		m.status = "" // any keypress clears the previous transient message
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -287,6 +291,8 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.openSelected("")
 		case "O":
 			m.openSelected("dir")
+		case "y":
+			m.copySelected()
 		case "r":
 			m.reload()
 		default:
@@ -365,6 +371,19 @@ func (m galleryModel) openSelected(mode string) {
 		target = filepath.Dir(target)
 	}
 	_ = exec.Command("xdg-open", target).Start()
+}
+
+// copySelected copies the current image onto the system clipboard and records a
+// one-line result in m.status for the footer.
+func (m *galleryModel) copySelected() {
+	if len(m.images) == 0 {
+		return
+	}
+	if err := copyImageToClipboard(m.images[m.cursor].Path); err != nil {
+		m.status = "copy failed: " + err.Error()
+		return
+	}
+	m.status = "Copied image to clipboard"
 }
 
 func (m galleryModel) View() tea.View {
@@ -465,10 +484,16 @@ func (m galleryModel) renderView() string {
 	// preview's top border instead (see above).
 	hintStyle := lipgloss.NewStyle().Foreground(hintFg)
 	navKeys := "h/l move · n/p page · g/G ends · z/Z zoom · hjkl pan · 0 reset"
-	actionKeys := "↵ open · O folder · r reload · q quit"
+	actionKeys := "↵ open · O folder · y copy · r reload · q quit"
+	// A transient message (e.g. copy result) takes over the action row until the
+	// next keypress; the keys reappear right after.
+	second := hintStyle.Render(truncateToWidth(actionKeys, m.width))
+	if m.status != "" {
+		second = lipgloss.NewStyle().Foreground(m.selColor).Render(truncateToWidth(m.status, m.width))
+	}
 	legend := lipgloss.JoinVertical(lipgloss.Left,
 		center(hintStyle.Render(truncateToWidth(navKeys, m.width))),
-		center(hintStyle.Render(truncateToWidth(actionKeys, m.width))))
+		center(second))
 
 	return lipgloss.JoinVertical(lipgloss.Left, title, subtitle, previewArea, filmstrip, legend)
 }

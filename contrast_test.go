@@ -61,6 +61,15 @@ func TestContrastLabelsLeavesThemeShapesAlone(t *testing.T) {
 	}
 }
 
+func TestContrastLabelsEdgeInsideFilledContainer(t *testing.T) {
+	// An edge label drawn inside a light-filled container must darken too — the
+	// connection carries no fill, so the old shape-only pass missed it.
+	svg := renderSrc(t, "c: \"\" {\n  style.fill: \"#fde8e8\"\n  a -> b: hi\n}\n")
+	if !strings.Contains(svg, contrastDarkInk) {
+		t.Fatal("an edge label inside a light-filled container should darken")
+	}
+}
+
 func TestContrastLabelsRespectsUserFontColor(t *testing.T) {
 	// User chose both fill and font-color: the explicit font-color must win.
 	svg := renderSrc(t, "a: A {\n  style.fill: \"#fde8e8\"\n  style.font-color: \"#00ff00\"\n}\n")

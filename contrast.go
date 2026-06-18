@@ -25,22 +25,60 @@ var hexFillRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 //
 // It works on the compiled graph + diagram rather than the rendered SVG, so
 // fills are resolved color values with none of the class-vs-hex ambiguity the
-// old SVG-regex pass tripped over. d2's exporter builds diagram.Shapes 1:1 from
-// graph.Objects with shape.ID == obj.AbsID(), so a shape is user-filled exactly
-// when its object's Style.Fill is set.
+// old SVG-regex pass tripped over. d2's exporter builds diagram.Shapes/Connections
+// 1:1 from graph.Objects/Edges with matching AbsID, so a shape is user-filled
+// exactly when its object's Style.Fill is set.
+//
+// Edge labels are handled too: an edge label is drawn inside the lowest container
+// shared by both ends, so if that container (or a filled ancestor) is user-filled
+// the label — which keeps its theme color — would otherwise sit light-on-light.
 func contrastLabels(diagram *d2target.Diagram, graph *d2graph.Graph) {
-	userFilled := make(map[string]bool, len(graph.Objects))
+	fill := make(map[string]string, len(graph.Objects))
 	for _, obj := range graph.Objects {
-		if obj.Style.Fill != nil && obj.Style.FontColor == nil {
-			userFilled[obj.AbsID()] = true
+		if obj.Style.Fill != nil && obj.Style.FontColor == nil && hexFillRe.MatchString(obj.Style.Fill.Value) {
+			fill[obj.AbsID()] = obj.Style.Fill.Value
 		}
 	}
 	for i := range diagram.Shapes {
-		s := &diagram.Shapes[i]
-		if userFilled[s.ID] && hexFillRe.MatchString(s.Fill) {
-			s.Color = contrastInk(s.Fill)
+		if f, ok := fill[diagram.Shapes[i].ID]; ok {
+			diagram.Shapes[i].Color = contrastInk(f)
 		}
 	}
+
+	edges := make(map[string]*d2graph.Edge, len(graph.Edges))
+	for _, e := range graph.Edges {
+		edges[e.AbsID()] = e
+	}
+	for i := range diagram.Connections {
+		e := edges[diagram.Connections[i].ID]
+		if e == nil || e.Style.FontColor != nil {
+			continue
+		}
+		if f, ok := enclosingFill(commonContainer(e.Src, e.Dst), fill); ok {
+			diagram.Connections[i].Color = contrastInk(f)
+		}
+	}
+}
+
+// commonContainer returns the lowest object that contains both a and b.
+func commonContainer(a, b *d2graph.Object) *d2graph.Object {
+	for p := a; p != nil; p = p.Parent {
+		if b == p || b.IsDescendantOf(p) {
+			return p
+		}
+	}
+	return nil
+}
+
+// enclosingFill walks up from obj (inclusive) and returns the fill of the nearest
+// ancestor the user filled — the color behind a label drawn at obj's level.
+func enclosingFill(obj *d2graph.Object, fill map[string]string) (string, bool) {
+	for p := obj; p != nil; p = p.Parent {
+		if f, ok := fill[p.AbsID()]; ok {
+			return f, true
+		}
+	}
+	return "", false
 }
 
 // contrastInk returns the ink — dark or light — that reads best on hexFill,

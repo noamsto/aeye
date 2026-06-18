@@ -41,8 +41,10 @@ func runSVGContrast(path string) error {
 // contrastSVG recolors node/container label text against the most recent shape
 // fill, leaving every other byte untouched. It relies on d2's emission order:
 // within a group the shape (or connection path) precedes its label. A shape with
-// a solid fill sets the tracked fill; a connection path clears it, so the edge
-// label that follows — which sits on the canvas, not on a node — is left alone.
+// an inline hex fill sets the tracked fill; a connection path or a themed shape
+// (filled via class, no inline hex) clears it, so the edge label that follows —
+// which sits on the canvas, not on a node — is left alone, as is a themed child
+// box that would otherwise inherit its parent container's fill.
 // The color is set via the inline style attribute, which overrides d2's fill-N
 // class rule (a presentation fill attribute would not).
 //
@@ -76,8 +78,14 @@ func contrastSVG(src []byte) []byte {
 			currentFill = ""
 			return tag
 		case strings.Contains(class, "shape"):
+			// A themed shape carries its fill as a fill-N/fill-B class, not an
+			// inline hex, so clear the tracked fill rather than letting a parent
+			// container's fill leak onto the child's label — that left dark ink on
+			// dark themed boxes. Such labels already get theme-correct text.
 			if f := attrVal(fillAttrRe, t); hexFillRe.MatchString(f) {
 				currentFill = f
+			} else {
+				currentFill = ""
 			}
 			return tag
 		case tagName(t) == "text":

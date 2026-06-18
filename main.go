@@ -15,10 +15,6 @@ var cli struct {
 		Key string `arg:"" optional:"" help:"Manifest key: a tmux pane id (%N) or a Claude Code session id."`
 	} `cmd:"" default:"withargs" help:"Open the image carousel (default)."`
 
-	SvgContrast struct {
-		File string `arg:"" help:"SVG file to recolor in place."`
-	} `cmd:"" name:"svg-contrast" help:"Recolor a d2 SVG's labels to contrast their fills."`
-
 	RenderDiagram struct {
 		In  string `arg:"" help:"Input .d2 file."`
 		Out string `arg:"" help:"Output .png file (a sibling .svg is written too)."`
@@ -33,8 +29,6 @@ func main() {
 		kong.UsageOnError(),
 	)
 	switch ctx.Command() {
-	case "svg-contrast <file>":
-		ctx.FatalIfErrorf(runSVGContrast(cli.SvgContrast.File))
 	case "render-diagram <in> <out>":
 		ctx.FatalIfErrorf(runRenderDiagram(cli.RenderDiagram.In, cli.RenderDiagram.Out))
 	default: // "open" or "open <key>"

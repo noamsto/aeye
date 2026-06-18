@@ -156,5 +156,6 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 	if !changed {
 		return m, nil
 	}
+	m.status = "" // a navigation/zoom dismisses the transient message, like a keypress
 	return m, m.scheduleVector()
 }

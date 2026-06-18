@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/noamsto/aeye/compare/v0.7.0...v0.7.1) (2026-06-18)
+
+
+### Bug Fixes
+
+* derive version from the release-please manifest ([#84](https://github.com/noamsto/aeye/issues/84)) ([46ae772](https://github.com/noamsto/aeye/commit/46ae772f1779b85084173d5238e3d4b5f8d84077))
+
 ## [0.7.0](https://github.com/noamsto/aeye/compare/v0.6.0...v0.7.0) (2026-06-18)
 
 

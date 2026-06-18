@@ -70,7 +70,7 @@ func renderD2SVG(in string) ([]byte, error) {
 	// Layout is unset), falling back to dagre. LayoutResolver routes the chosen
 	// engine — including the in-file elk that keeps arrows off node labels.
 	ctx := log.WithDefault(context.Background())
-	diagram, _, err := d2lib.Compile(ctx, string(src), &d2lib.CompileOptions{
+	diagram, graph, err := d2lib.Compile(ctx, string(src), &d2lib.CompileOptions{
 		Ruler:          ruler,
 		LayoutResolver: layoutResolver,
 		InputPath:      in,
@@ -78,6 +78,7 @@ func renderD2SVG(in string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	contrastLabels(diagram, graph)
 	return d2svg.Render(diagram, renderOpts)
 }
 
@@ -104,15 +105,15 @@ func fixFonts(svg []byte) []byte {
 }
 
 // runRenderDiagram is the whole diagram pipeline in one call: compile the .d2
-// via the embedded d2 library, rewrite fonts, contrast labels against their
-// fills, write the processed SVG next to the PNG (the carousel's vector
-// source), then rasterize to PNG with resvg.
+// via the embedded d2 library (labels contrasted against their fills during
+// compile), rewrite fonts, write the processed SVG next to the PNG (the
+// carousel's vector source), then rasterize to PNG with resvg.
 func runRenderDiagram(in, out string) error {
 	svg, err := renderD2SVG(in)
 	if err != nil {
 		return fmt.Errorf("compile %s: %w", in, err)
 	}
-	svg = contrastSVG(fixFonts(svg))
+	svg = fixFonts(svg)
 
 	svgPath := out[:len(out)-len(filepath.Ext(out))] + ".svg" // out has no ext -> out+".svg"
 	if err := os.WriteFile(svgPath, svg, 0o644); err != nil {

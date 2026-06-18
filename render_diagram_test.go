@@ -35,6 +35,46 @@ func TestFixFonts(t *testing.T) {
 	}
 }
 
+func TestD2ThemeID(t *testing.T) {
+	// Point detectTheme at a scratch state dir so the test controls the mode.
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
+	writeTheme := func(theme string) {
+		if err := os.WriteFile(filepath.Join(state, "theme-state.json"),
+			[]byte(`{"theme":"`+theme+`"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("env wins", func(t *testing.T) {
+		t.Setenv("AEYE_D2_THEME", "300")
+		got, err := d2ThemeID()
+		if err != nil || got != 300 {
+			t.Fatalf("env override: got %d, %v; want 300", got, err)
+		}
+	})
+	t.Run("invalid env errors", func(t *testing.T) {
+		t.Setenv("AEYE_D2_THEME", "nope")
+		if _, err := d2ThemeID(); err == nil {
+			t.Fatal("expected an error for a non-numeric AEYE_D2_THEME")
+		}
+	})
+	t.Run("dark mode -> 200", func(t *testing.T) {
+		t.Setenv("AEYE_D2_THEME", "")
+		writeTheme("dark")
+		if got, _ := d2ThemeID(); got != 200 {
+			t.Fatalf("dark mode: got %d, want 200", got)
+		}
+	})
+	t.Run("light mode -> 105", func(t *testing.T) {
+		t.Setenv("AEYE_D2_THEME", "")
+		writeTheme("light")
+		if got, _ := d2ThemeID(); got != 105 {
+			t.Fatalf("light mode: got %d, want 105", got)
+		}
+	})
+}
+
 func TestRenderD2SVG(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "d.d2")
 	if err := os.WriteFile(src, []byte("a -> b -> c\n"), 0o644); err != nil {

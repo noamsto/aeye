@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.6.0](https://github.com/noamsto/aeye/compare/v0.5.0...v0.6.0) (2026-06-18)
+
+
+### Features
+
+* copy the current image to the clipboard with y ([#75](https://github.com/noamsto/aeye/issues/75)) ([5137c70](https://github.com/noamsto/aeye/commit/5137c70dae0a8bfd4b247a29684c77a3e49bf122))
+* default diagram theme from detected terminal mode ([#77](https://github.com/noamsto/aeye/issues/77)) ([2f0457b](https://github.com/noamsto/aeye/commit/2f0457b5a9d527a549944e92d922a799bc4be665))
+* warn at SessionStart when the diagram render deps are missing ([#72](https://github.com/noamsto/aeye/issues/72)) ([4822769](https://github.com/noamsto/aeye/commit/4822769e0c87761e217921b02b206f90768f3e08)), closes [#71](https://github.com/noamsto/aeye/issues/71)
+
+
+### Bug Fixes
+
+* contrast diagram labels at the graph level (shapes + edge labels) ([#79](https://github.com/noamsto/aeye/issues/79)) ([ecc5842](https://github.com/noamsto/aeye/commit/ecc5842391fdba35b4abfe2dd95c85f191c68274))
+* keep theme text on themed child labels in contrast pass ([#74](https://github.com/noamsto/aeye/issues/74)) ([eceb1af](https://github.com/noamsto/aeye/commit/eceb1af2d4d8cb52f93c706a26a55f75e0f495bd))
+
 ## [0.5.0](https://github.com/noamsto/aeye/compare/v0.4.0...v0.5.0) (2026-06-17)
 
 

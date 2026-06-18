@@ -61,6 +61,16 @@ func TestContrastLabelsLeavesThemeShapesAlone(t *testing.T) {
 	}
 }
 
+func TestContrastLabelsLeavesContainerLabelAlone(t *testing.T) {
+	// A container's label is drawn above its fill, on the canvas — it must keep the
+	// theme color (here: light, readable on the dark canvas), not be inked dark
+	// against the fill. No edge labels, so nothing should darken.
+	svg := renderSrc(t, "c: Outer {\n  style.fill: \"#fde8e8\"\n  a -> b\n}\n")
+	if strings.Contains(svg, contrastDarkInk) {
+		t.Fatalf("a container's outside label must not be inked against its fill:\n%.200s", svg)
+	}
+}
+
 func TestContrastLabelsEdgeInsideFilledContainer(t *testing.T) {
 	// An edge label drawn inside a light-filled container must darken too — the
 	// connection carries no fill, so the old shape-only pass missed it.

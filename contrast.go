@@ -6,6 +6,7 @@ import (
 
 	"oss.terrastruct.com/d2/d2graph"
 	"oss.terrastruct.com/d2/d2target"
+	"oss.terrastruct.com/d2/lib/label"
 )
 
 // Soft ink endpoints — high contrast without the harshness of pure black/white,
@@ -40,8 +41,12 @@ func contrastLabels(diagram *d2target.Diagram, graph *d2graph.Graph) {
 		}
 	}
 	for i := range diagram.Shapes {
-		if f, ok := fill[diagram.Shapes[i].ID]; ok {
-			diagram.Shapes[i].Color = contrastInk(f)
+		s := &diagram.Shapes[i]
+		// A container's label is drawn outside its body (above it, on the canvas),
+		// not on the fill — so contrast it against the canvas, i.e. leave the theme
+		// color. Only labels sitting on the fill (leaf shapes, centered) get inked.
+		if f, ok := fill[s.ID]; ok && !label.FromString(s.LabelPosition).IsOutside() {
+			s.Color = contrastInk(f)
 		}
 	}
 

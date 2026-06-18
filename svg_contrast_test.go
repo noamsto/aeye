@@ -14,6 +14,15 @@ func node(fill, label string) string {
 		label + `</text></g>`
 }
 
+// themedNode renders a node whose fill comes from a fill-N/fill-B class (d2's
+// theme default) rather than an inline hex — the shape carries no fill attribute.
+func themedNode(label string) string {
+	return `<g class="aWQ= role"><g class="shape"><path stroke="#16a34a"` +
+		` class="shape stroke-B1 fill-B5" style="stroke-width:2;"/></g>` +
+		`<text x="1" y="2" fill="#CDD6F4" class="text-bold fill-N1" style="text-anchor:middle;font-size:16px">` +
+		label + `</text></g>`
+}
+
 // edge renders a connection group: a connection path (fill:none), then its label.
 func edge(label string) string {
 	return `<g class="edge"><path d="M0 0" fill="none" class="connection stroke-B1" style="stroke-width:2;"/>` +
@@ -58,6 +67,20 @@ func TestContrastSVGEdgeLabelUntouched(t *testing.T) {
 	}
 	if !strings.Contains(out, `font-size:16px">conflict</text>`) {
 		t.Errorf("edge label style should be unchanged; got:\n%s", out)
+	}
+}
+
+func TestContrastSVGThemedChildKeepsThemeText(t *testing.T) {
+	// A themed child box nested after a light-filled parent container: its label
+	// must keep the theme's light text, not inherit the parent's fill and end up
+	// dark-on-dark.
+	in := node("#fde8e8", "PARENT") + themedNode("CHILD")
+	out := string(contrastSVG([]byte(in)))
+	if n := strings.Count(out, "fill:"+contrastDarkInk); n != 1 {
+		t.Fatalf("only the light-filled parent label should darken, not the themed child; got %d in:\n%s", n, out)
+	}
+	if !strings.Contains(out, `font-size:16px">CHILD</text>`) {
+		t.Errorf("themed child label style should be untouched; got:\n%s", out)
 	}
 }
 

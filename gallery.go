@@ -450,7 +450,7 @@ func (m galleryModel) renderView() string {
 	hintFg, textFg := m.hintFg, m.textFg
 	center := func(s string) string { return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, s) }
 	title := center(lipgloss.NewStyle().Foreground(selColor).Bold(true).Render(galleryTitleIcon+"  Claude Images") +
-		lipgloss.NewStyle().Foreground(hintFg).Render("  "+version))
+		lipgloss.NewStyle().Foreground(hintFg).Render("  "+version()))
 	subtitle := center(lipgloss.NewStyle().Foreground(textFg).Render(
 		truncateToWidth(fmt.Sprintf("[%d/%d]  %s", m.cursor+1, len(m.images), m.images[m.cursor].caption()), m.width)))
 

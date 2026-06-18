@@ -1,12 +1,34 @@
 package main
 
 import (
+	_ "embed"
+	"encoding/json"
+
 	"github.com/alecthomas/kong"
 )
 
-// version is stamped at build time via -ldflags "-X main.version=...".
-// Plain `go build` / devShell runs leave it "dev".
-var version = "dev"
+// releaseManifest is release-please's source of truth for the version, embedded
+// so every build path reports the real release — no hardcoded constant to drift.
+//
+//go:embed .release-please-manifest.json
+var releaseManifest []byte
+
+// buildSuffix is appended to the version via -ldflags (the git shortrev in nix
+// builds) to pin which commit a binary was built from. Empty for plain go build.
+var buildSuffix string
+
+// version is the released version from the manifest, plus the build suffix.
+func version() string {
+	var m map[string]string
+	if json.Unmarshal(releaseManifest, &m) != nil || m["."] == "" {
+		return "dev"
+	}
+	v := m["."]
+	if buildSuffix != "" {
+		v += "-" + buildSuffix
+	}
+	return v
+}
 
 var cli struct {
 	Version kong.VersionFlag `short:"v" help:"Print the build version."`
@@ -25,7 +47,7 @@ func main() {
 	ctx := kong.Parse(&cli,
 		kong.Name("aeye"),
 		kong.Description("Image carousel for coding agents, plus the diagram render pipeline."),
-		kong.Vars{"version": version},
+		kong.Vars{"version": version()},
 		kong.UsageOnError(),
 	)
 	switch ctx.Command() {

@@ -26,6 +26,9 @@
         # viewer footer reveal which build is running (see the version skew this
         # made hard to spot).
         rev = inputs.self.shortRev or inputs.self.dirtyShortRev or "unknown";
+        # Single source of truth, bumped by release-please. The Go binary embeds
+        # the same file (see main.go), so the derivation and the runtime agree.
+        releaseVersion = (builtins.fromJSON (builtins.readFile ./.release-please-manifest.json)).".";
       in {
         pre-commit.settings.hooks = {
           gofmt.enable = true;
@@ -67,11 +70,11 @@
         packages = {
           default = pkgs.buildGoModule {
             pname = "aeye";
-            version = "0.1.0";
+            version = releaseVersion;
             src = ./.;
             vendorHash = "sha256-ImWcsetzrpP7ydHoCSM2/aj6lZvJ4gJMPEh0kVBNiiE=";
             doCheck = true;
-            ldflags = ["-X main.version=0.1.0-${rev}"];
+            ldflags = ["-X main.buildSuffix=${rev}"];
             meta = {
               description = "tmux/kitty image carousel for coding agents";
               mainProgram = "aeye";

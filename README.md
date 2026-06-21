@@ -118,6 +118,8 @@ session reads/writes/screenshots images.
 | `z` `+` `=` / `Z` `-` `_` | Zoom in / out |
 | `Enter` / `o` | Open in the default app |
 | `O` | Open the containing folder |
+| `y` | Copy the selected image to the clipboard |
+| `d` | Drag the selected image out (`ripdrag`/`dragon` on Linux; falls back to clipboard copy) |
 | `r` | Reload the manifest |
 | `q` / `Ctrl-C` | Quit |
 
@@ -155,6 +157,11 @@ so it uses chafa today and would upgrade automatically if that lands.
 
 \* Crisp real-pixel rendering on wezterm/iTerm2 (sixel / OSC 1337) is tracked
 separately.
+
+**Optional — drag-out (`d` key):** on Linux, `d` opens a native drag window via
+[`ripdrag`](https://github.com/nik012003/ripdrag) or
+[`dragon`](https://github.com/mwh/dragon) (whichever is on PATH). Without
+either, `d` falls back to copying the image to the clipboard. X11/Wayland only.
 
 ## Architecture
 

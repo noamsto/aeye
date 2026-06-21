@@ -121,6 +121,27 @@ func TestSymbolsArgs(t *testing.T) {
 	}
 }
 
+func TestRasterArgs(t *testing.T) {
+	cases := []struct {
+		format string
+		want   []string
+	}{
+		{formatITerm, []string{"-f", "iterm", "--size", "20x10", "/a/b.png"}},
+		{formatSixel, []string{"-f", "sixels", "--size", "20x10", "/a/b.png"}},
+	}
+	for _, c := range cases {
+		got := rasterArgs(c.format, "/a/b.png", 20, 10)
+		if len(got) != len(c.want) {
+			t.Fatalf("%s: len = %d, want %d: %v", c.format, len(got), len(c.want), got)
+		}
+		for i := range c.want {
+			if got[i] != c.want[i] {
+				t.Errorf("%s: arg %d = %q, want %q", c.format, i, got[i], c.want[i])
+			}
+		}
+	}
+}
+
 func TestComputeLayout(t *testing.T) {
 	l := computeLayout(120, 50)
 	if l.previewW > maxCellDim || l.previewH > maxCellDim || l.stripW > maxCellDim || l.stripH > maxCellDim {

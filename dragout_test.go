@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -71,8 +70,9 @@ func TestDragSelected(t *testing.T) {
 		fakeBins(t) // no helper, and no clipboard tool on this PATH either
 		m := &galleryModel{images: []imageEntry{{Path: "/x/a.png"}}}
 		m.dragSelected()
-		if !strings.Contains(m.status, "ripdrag/dragon") {
-			t.Fatalf("status missing drag-out hint: %q", m.status)
+		want := "copy failed: no clipboard tool found (install wl-clipboard or xclip) (drag-out needs kitty or ripdrag/dragon)"
+		if m.status != want {
+			t.Fatalf("got %q, want %q", m.status, want)
 		}
 	})
 	t.Run("no images is a no-op", func(t *testing.T) {

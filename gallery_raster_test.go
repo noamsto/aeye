@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -51,5 +53,23 @@ func TestPaintRasterAtEmpty(t *testing.T) {
 	paintRasterAt(&b, rect{x: 1, y: 1, w: 4, h: 4}, "")
 	if b.String() != "" {
 		t.Errorf("paintRasterAt with empty payload wrote %q, want nothing", b.String())
+	}
+}
+
+// renderRaster with formatITerm must emit an OSC 1337 inline-image payload with the
+// cursor-toggle wrappers stripped. Skipped when chafa is unavailable.
+func TestRenderRasterITerm(t *testing.T) {
+	if _, err := exec.LookPath("chafa"); err != nil {
+		t.Skip("chafa not on PATH")
+	}
+	src := filepath.Join(t.TempDir(), "shot.png")
+	writeTestImage(t, src, 32, 32)
+
+	got := renderRaster(formatITerm, src, 8, 4)
+	if !strings.HasPrefix(got, "\x1b]1337;File=") {
+		t.Errorf("iterm payload does not start with OSC 1337 marker: %q", got[:min(40, len(got))])
+	}
+	if strings.Contains(got, "\x1b[?25l") || strings.Contains(got, "\x1b[?25h") {
+		t.Errorf("cursor wrappers not stripped: %q", got)
 	}
 }

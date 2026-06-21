@@ -65,31 +65,31 @@ two active mechanisms. Detection mirrors the existing `probeSixel`
 
 ### Capability detection
 
-The OSC 72 probe and the existing sixel probe both work by writing a query and
-reading the `/dev/tty` reply to the DA1 `c` terminator under one raw-mode
-window. **Fold them into a single probe** rather than opening `/dev/tty` and
-toggling raw mode twice at startup (which also risks the two replies
-interleaving): write the OSC 72 query *then* the DA1 request, read once, and
-parse both capabilities from the same stream.
+A **standalone** `probeDragProtocol() bool` modeled on `probeSixel`: open
+`/dev/tty`, `term.MakeRaw`, write the OSC 72 query then a DA1 request, read the
+reply to the DA1 `c` terminator under a ~150ms deadline, and drain fully so a
+late reply can't leak onto bubbletea's stdin.
 
 ```
 write: \x1b]72;t=q\x1b\\   then   \x1b[c
 read : drain to the DA1 'c' terminator
 ```
 
-DnD support = an `OSC 72 ; t=q` response (`\x1b]72;...`) appears in the stream
-**before** the DA1 `c`. If `c` arrives first (or timeout / no tty), DnD is
-unsupported. Sixel parsing reads the DA1 attributes from the same reply,
-unchanged. The reply parser is pure and table-tested; the tty I/O stays
+DnD support = an `OSC 72` response (`\x1b]72;…`) appears in the stream **before**
+the DA1 `c`. If `c` arrives first (or timeout / no tty), unsupported. The race
+is a pure, table-tested `parseDragDA(resp string) bool`; the tty I/O stays
 untested like `probeSixel`.
 
-Concretely: generalize the current single-purpose `probeSixel` into a probe that
-returns both flags (or have `chooseGridBackend` and the new `dragNative` field
-share one probe result). Probed **once at startup** in `newGalleryModel` and
-cached as `dragNative bool` — re-probing per drag would flicker raw mode
-mid-session. If reusing one probe proves awkward, a standalone
-`probeDragProtocol()` modeled on `probeSixel` is the fallback, accepting the
-second raw-mode toggle.
+**Not folded into the sixel probe** (an earlier idea, rejected during planning):
+`chooseGridBackend` probes sixel only on the in-tmux/unknown path and *never on
+kitty*, but OSC 72 exists only on kitty — the two probes fire on disjoint
+terminals, so sharing one saves nothing and couples unrelated checks. DA1 comes
+back instantly on every real terminal, so a standalone probe adds no perceptible
+latency. The probe runs once at startup **only when `termName()` indicates kitty**
+(the sole OSC 72 implementer today) — the query still confirms the running
+version actually supports it, so this gates *latency*, not *trust*. Result
+cached on the model as `dragNative bool`; re-probing per drag would flicker raw
+mode mid-session. This probe is built in the native stage, not Stage 1.
 
 ### Tier 2 — GUI helper
 

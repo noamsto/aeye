@@ -508,7 +508,7 @@ func (m galleryModel) renderView() string {
 	// preview's top border instead (see above).
 	hintStyle := lipgloss.NewStyle().Foreground(hintFg)
 	navKeys := "h/l move · n/p page · g/G ends · z/Z zoom · hjkl pan · 0 reset"
-	actionKeys := "↵ open · O folder · y copy · r reload · q quit"
+	actionKeys := "↵ open · O folder · y copy · d drag · r reload · q quit"
 	// A transient message (e.g. copy result) takes over the action row until the
 	// next keypress; the keys reappear right after.
 	second := hintStyle.Render(truncateToWidth(actionKeys, m.width))

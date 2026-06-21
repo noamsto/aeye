@@ -19,6 +19,21 @@ func fakeBins(t *testing.T, names ...string) {
 	t.Setenv("PATH", dir)
 }
 
+func TestRunDragHelper(t *testing.T) {
+	t.Run("returns name and launches when present", func(t *testing.T) {
+		fakeBins(t, "ripdrag") // the fake is a no-op #!/bin/sh that exits immediately
+		if name := runDragHelper("/x/a.png"); name != "ripdrag" {
+			t.Fatalf("got %q, want ripdrag", name)
+		}
+	})
+	t.Run("empty when no helper installed", func(t *testing.T) {
+		fakeBins(t)
+		if name := runDragHelper("/x/a.png"); name != "" {
+			t.Fatalf("got %q, want empty", name)
+		}
+	})
+}
+
 func TestDragHelper(t *testing.T) {
 	t.Run("prefers ripdrag when both present", func(t *testing.T) {
 		fakeBins(t, "ripdrag", "dragon")

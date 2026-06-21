@@ -34,11 +34,18 @@ On a drag request for the selected image, aeye uses the first available path:
 |------|-----------|----------------|
 | 1 | Native OSC 72 drag-out | terminal answers the OSC 72 capability query (kitty ≥ 0.47, not inside tmux) |
 | 2 | `ripdrag` / `dragon` GUI helper | OSC 72 unavailable **and** a helper is on `PATH` (Linux + GUI session) |
-| 3 | Clipboard copy + status hint | neither above — reuses existing `copySelected`, status: `drag-out needs kitty or ripdrag/dragon` |
+| 3 | Best-effort clipboard, else status hint | neither above — try `copySelected`; show `drag-out needs kitty or ripdrag/dragon` |
 
-The tier is chosen by capability, not by guessing the terminal name. Inside
-tmux the OSC 72 query won't round-trip, so tier 1 naturally falls through to the
-helper — no special-casing needed.
+The tier is chosen by capability, not by guessing the terminal name. tmux
+doesn't reflect the OSC 72 query back (it forwards DCS-wrapped output but
+doesn't understand `OSC 72`), so the probe gets no reply and tier 1 falls
+through to the helper — no special-casing needed.
+
+**Tier 3 caveat:** `copySelected` → `copyImageToClipboard` is Linux-only today
+(`wl-copy`/`xclip`); on **non-kitty macOS** it returns "no clipboard tool found",
+so tier 3 there degrades to *just the status hint* — no working drag-out. Wiring
+`pbcopy` into the clipboard path would fix that but is a separate concern
+(tracked in [#86](https://github.com/noamsto/aeye/issues/86), out of scope here).
 
 ### Platform coverage (consequence of the ladder)
 
@@ -47,7 +54,7 @@ helper — no special-casing needed.
 | Linux + kitty ≥ 0.47 (no tmux) | 1 — native |
 | Linux + anything else | 2 — helper (if installed) else 3 |
 | macOS + kitty ≥ 0.47 (no tmux) | 1 — native |
-| macOS + anything else | 3 — clipboard (no GUI helper exists) |
+| macOS + anything else | 3 — status hint only (no GUI helper exists; clipboard path is Linux-only) |
 
 ## Architecture
 
@@ -56,24 +63,33 @@ two active mechanisms. Detection mirrors the existing `probeSixel`
 (gallery_raster.go); the helper shell-out mirrors `clipboardTool`/`copyImageToClipboard`
 (clipboard.go). Wiring into the model stays in `gallery.go`.
 
-### Capability detection — `probeDragProtocol() bool`
+### Capability detection
 
-Models `probeSixel` exactly: open `/dev/tty`, `term.MakeRaw`, write the OSC 72
-query followed by a DA1 request, read the reply in a goroutine with a ~150ms
-deadline, and fully drain so a late reply can't leak onto bubbletea's stdin.
+The OSC 72 probe and the existing sixel probe both work by writing a query and
+reading the `/dev/tty` reply to the DA1 `c` terminator under one raw-mode
+window. **Fold them into a single probe** rather than opening `/dev/tty` and
+toggling raw mode twice at startup (which also risks the two replies
+interleaving): write the OSC 72 query *then* the DA1 request, read once, and
+parse both capabilities from the same stream.
 
 ```
 write: \x1b]72;t=q\x1b\\   then   \x1b[c
+read : drain to the DA1 'c' terminator
 ```
 
-Race the two replies: if an `OSC 72 ; t=q` response (`\x1b]72;...`) arrives
-**before** the DA1 terminator `c`, the terminal supports DnD → `true`. If the
-`c` arrives first (or we time out / there's no tty), → `false`. This is the
-detection method the spec prescribes.
+DnD support = an `OSC 72 ; t=q` response (`\x1b]72;...`) appears in the stream
+**before** the DA1 `c`. If `c` arrives first (or timeout / no tty), DnD is
+unsupported. Sixel parsing reads the DA1 attributes from the same reply,
+unchanged. The reply parser is pure and table-tested; the tty I/O stays
+untested like `probeSixel`.
 
-Probed **once at startup** (alongside the existing backend selection in
-`newGalleryModel`) and cached on the model as `dragNative bool`. Re-probing per
-drag would flicker raw mode mid-session.
+Concretely: generalize the current single-purpose `probeSixel` into a probe that
+returns both flags (or have `chooseGridBackend` and the new `dragNative` field
+share one probe result). Probed **once at startup** in `newGalleryModel` and
+cached as `dragNative bool` — re-probing per drag would flicker raw mode
+mid-session. If reusing one probe proves awkward, a standalone
+`probeDragProtocol()` modeled on `probeSixel` is the fallback, accepting the
+second raw-mode toggle.
 
 ### Tier 2 — GUI helper
 
@@ -83,7 +99,10 @@ with `exec.Command(name, args...)` on the selected image's path. `ripdrag`/`drag
 daemonize to hold the drag window, so the call returns promptly.
 
 - `ripdrag <path>`
-- `dragon --and-exit <path>` (dragon exits after one drop)
+- `dragon -x <path>` (`-x`/`--and-exit`: exit after one drop)
+
+Exact flags are confirmed against the installed binaries at implementation —
+both tools' CLIs are small and stable, but versions differ.
 
 Helper presence (`lookPath`) is checked at drag time, not startup — cheap, and
 keeps the status message accurate if the user installs one mid-session.
@@ -94,10 +113,10 @@ The runtime handshake is interactive and bidirectional, unlike aeye's existing
 one-shot graphics escapes:
 
 ```
-app  → OSC 72 ; t=o:x=1 ; <machine-id> ST     "arm a drag"
+app  → OSC 72 ; t=o:x=1 ; <machine-id> ST     "arm a drag" (machine-id optional)
       (user performs the mouse drag gesture; terminal notifies app)
 app  → OSC 72 ; t=o:o=3 ; text/uri-list ST    offer copy|move of a file URI
-app  → OSC 72 ; t=p:x=0 ; <base64 file://path> ST   pre-send data (chunked, m=0 = done)
+app  → OSC 72 ; t=p:x=0 ; <base64 file://path> ST   send data (chunked, m=0 = done)
 app  → OSC 72 ; t=P:x=-1                       initiate the OS drag
 term → OSC 72 ; t=E ; OK                        (or POSIX error)
 ```
@@ -105,13 +124,33 @@ term → OSC 72 ; t=E ; OK                        (or POSIX error)
 We offer a single `text/uri-list` payload — the `file://` URI of the selected
 image — which is what file managers and chat apps accept for a dropped file.
 
-**Key open risk to validate in a spike before full implementation:** capturing
-the *inbound* OSC 72 events while bubbletea owns stdin. bubbletea v2 (v2.0.7,
-on ultraviolet) must surface unrecognized OSC sequences as a message we can
-match in `Update`; if it does, inbound events route through a new
-`dragEventMsg` case. If it does **not**, the native tier is deferred and the
-ladder ships with tiers 2–3 only (the probe simply returns the model to the
-helper path). Outbound sequences reuse the existing `tmuxPassthrough` writer.
+**The entire native tier is the project's main risk and is gated on a spike**
+(see staging below). The above sequence is the protocol's shape, but two things
+must be confirmed against a live kitty ≥ 0.47 before committing to it:
+
+1. **Inbound capture** — can we read the terminal's OSC 72 events (drag-gesture
+   notification, `t=E` result) while bubbletea v2 (v2.0.7, on ultraviolet) owns
+   stdin? It must surface unrecognized OSC sequences as a message we can match
+   in `Update` (routed to a new `dragEventMsg`). If not, native is deferred.
+2. **Exact ordering & arming semantics** — when the data is sent relative to the
+   gesture notification, what `t=o:x=1` arming does to bubbletea's normal mouse
+   capture, and the precise field meanings. The summary above is from the spec
+   prose and is not yet validated end-to-end.
+
+Outbound sequences reuse the existing `tmuxPassthrough` writer.
+
+### Implementation staging
+
+Native is gated, so build in this order — each step ships value independently:
+
+1. **Probe + tiers 2–3** (low risk): combined capability probe, `dragHelper`,
+   the `d` keybinding, `dragSelected` ladder, status messages, tests, README.
+   This alone delivers working drag-out on Linux + a graceful hint everywhere
+   else.
+2. **Native spike** (timeboxed): a throwaway prove-out of inbound OSC 72 capture
+   under bubbletea v2 against live kitty ≥ 0.47.
+3. **Native tier** — only if the spike succeeds. Otherwise file a follow-up and
+   ship with 1.
 
 ### Trigger and model wiring
 
@@ -132,8 +171,9 @@ helper path). Outbound sequences reuse the existing `tmuxPassthrough` writer.
 Pure, injectable functions so the suite stays hermetic (the existing convention —
 `chooseGridBackend` takes `probeSixel` as a parameter):
 
-- `parseDragQueryReply` — given raw probe bytes, returns supported/not for the
-  OSC-72-before-`c` race (table test: OSC72-first, DA1-first, garbage, empty).
+- Probe reply parser — given the raw combined reply, returns DnD supported/not
+  for the OSC-72-before-`c` race **and** leaves sixel parsing intact (table test:
+  OSC72-then-DA1, DA1-only, garbage, empty).
 - `dragHelper` — with `lookPath` injected: ripdrag present, dragon present,
   neither, both (prefers ripdrag).
 - OSC 72 sequence builders (arm / offer / data / initiate) — assert exact bytes
@@ -141,8 +181,8 @@ Pure, injectable functions so the suite stays hermetic (the existing convention 
 - Tier selection — `dragNative` true vs false × helper present vs absent →
   expected tier, asserted on the resulting status string.
 
-Live terminal I/O (`probeDragProtocol`, the inbound event loop) is not unit-tested,
-matching `probeSixel`, which is also untested.
+Live terminal I/O (the combined probe's tty read, the inbound event loop) is not
+unit-tested, matching `probeSixel`, which is also untested.
 
 ## Out of scope
 

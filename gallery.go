@@ -81,26 +81,27 @@ func stripStart(cursor, stripCols, n int) int {
 // ---------------------------------------------------------------------------
 
 type galleryModel struct {
-	pane       string
-	images     []imageEntry
-	backend    gridBackend
-	theme      string
-	l          layout
-	cursor     int // selected image index
-	width      int
-	height     int
-	tty        *os.File // raw graphics sink (bypasses bubbletea's stdout)
-	mtime      int64    // manifest mtime at last load (for auto-refresh)
-	ready      bool
-	pinned     bool        // follow the newest image until the user first navigates
-	crop       cropFrac    // visible sub-rectangle of the source (fullCrop = fit)
-	curImg     image.Image // decoded source of the current selection
-	curImgPath string      // path curImg was decoded from
-	regions    *regionTree // parsed lazily for the current d2 entry; nil when none
-	regionPath []string    // current drill level (container path components); empty = root
-	regionIdx  int         // focused sibling index at the current level; -1 = not in region mode
-	vecGen     uint64      // debounce generation: only the latest scheduled vector kick fires
-	rasterGen  uint64      // debounce generation for the post-render sixel repaint
+	pane         string
+	images       []imageEntry
+	backend      gridBackend
+	rasterFormat string // chafa -f value when backend == backendRaster (formatSixel/formatITerm)
+	theme        string
+	l            layout
+	cursor       int // selected image index
+	width        int
+	height       int
+	tty          *os.File // raw graphics sink (bypasses bubbletea's stdout)
+	mtime        int64    // manifest mtime at last load (for auto-refresh)
+	ready        bool
+	pinned       bool        // follow the newest image until the user first navigates
+	crop         cropFrac    // visible sub-rectangle of the source (fullCrop = fit)
+	curImg       image.Image // decoded source of the current selection
+	curImgPath   string      // path curImg was decoded from
+	regions      *regionTree // parsed lazily for the current d2 entry; nil when none
+	regionPath   []string    // current drill level (container path components); empty = root
+	regionIdx    int         // focused sibling index at the current level; -1 = not in region mode
+	vecGen       uint64      // debounce generation: only the latest scheduled vector kick fires
+	rasterGen    uint64      // debounce generation for the post-render sixel repaint
 
 	// Transient one-line feedback (e.g. copy result), cleared on the next key.
 	status string
@@ -558,16 +559,18 @@ func runGallery(pane string) error {
 	tty, _ := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
 	theme := detectTheme()
 	images := resolveThemeVariants(loadManifest(pane), theme)
+	backend, rasterFmt := chooseGridBackend(termName(), os.Getenv("TMUX") != "", os.Getenv("TERM_PROGRAM"), os.Getenv("LC_TERMINAL"), os.Getenv("WEZTERM_PANE"), os.Getenv("TERM"), probeSixel)
 	m := galleryModel{
-		pane:    pane,
-		images:  images,
-		backend: chooseGridBackend(termName(), os.Getenv("TMUX") != "", os.Getenv("WEZTERM_PANE"), os.Getenv("TERM"), probeSixel),
-		theme:   theme,
-		tty:     tty,
-		mtime:   manifestMtime(pane),
-		cursor:  max(0, len(images)-1),
-		pinned:  true,
-		crop:    fullCrop(),
+		pane:         pane,
+		images:       images,
+		backend:      backend,
+		rasterFormat: rasterFmt,
+		theme:        theme,
+		tty:          tty,
+		mtime:        manifestMtime(pane),
+		cursor:       max(0, len(images)-1),
+		pinned:       true,
+		crop:         fullCrop(),
 	}
 	// Decode the initial selection now so zoom works on the first keystroke
 	// (otherwise curImg is nil until the first refresh tick).

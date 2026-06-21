@@ -158,7 +158,7 @@ so it uses chafa today and would upgrade automatically if that lands.
 \* Crisp real-pixel rendering on wezterm/iTerm2 (sixel / OSC 1337) is tracked
 separately.
 
-**Optional — drag-out (`d` key):** on Linux, `d` opens a native drag window via
+**Optional — drag-out (`d` key):** on Linux, `d` opens a small drag window via
 [`ripdrag`](https://github.com/nik012003/ripdrag) or
 [`dragon`](https://github.com/mwh/dragon) (whichever is on PATH). Without
 either, `d` falls back to copying the image to the clipboard. X11/Wayland only.

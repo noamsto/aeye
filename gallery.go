@@ -397,8 +397,7 @@ func (m *galleryModel) copySelected() {
 
 // dragSelected hands the selected image to an external GUI drag-source so it can
 // be dropped into another app, falling back to the clipboard with a hint when no
-// helper is installed. Native OSC 72 drag-out is prepended to this ladder in a
-// later stage. Records a one-line result in m.status for the footer.
+// helper is installed. Records a one-line result in m.status for the footer.
 func (m *galleryModel) dragSelected() {
 	if len(m.images) == 0 {
 		return

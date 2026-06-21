@@ -49,6 +49,15 @@ func TestDragHelper(t *testing.T) {
 			t.Fatalf("got (%q, %v), want dragon -x", name, args)
 		}
 	})
+	t.Run("recognizes dragon-drop and xdragon (nixpkgs/Debian names)", func(t *testing.T) {
+		for _, bin := range []string{"dragon-drop", "xdragon"} {
+			fakeBins(t, bin)
+			name, args := dragHelper()
+			if name != bin || len(args) != 1 || args[0] != "-x" {
+				t.Fatalf("got (%q, %v), want %s -x", name, args, bin)
+			}
+		}
+	})
 	t.Run("empty when neither present", func(t *testing.T) {
 		fakeBins(t)
 		if name, _ := dragHelper(); name != "" {

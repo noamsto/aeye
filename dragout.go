@@ -10,8 +10,12 @@ func dragHelper() (string, []string) {
 	if _, ok := lookPath("ripdrag"); ok {
 		return "ripdrag", nil
 	}
-	if _, ok := lookPath("dragon"); ok {
-		return "dragon", []string{"-x"} // -x: exit after one drop
+	// mwh/dragon ships under different binary names: upstream "dragon", but
+	// Debian and nixpkgs rename it to "dragon-drop" and also provide "xdragon".
+	for _, d := range []string{"dragon", "dragon-drop", "xdragon"} {
+		if _, ok := lookPath(d); ok {
+			return d, []string{"-x"} // -x: exit after one drop
+		}
 	}
 	return "", nil
 }

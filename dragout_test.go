@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -53,6 +54,33 @@ func TestDragHelper(t *testing.T) {
 		fakeBins(t)
 		if name, _ := dragHelper(); name != "" {
 			t.Fatalf("got %q, want empty", name)
+		}
+	})
+}
+
+func TestDragSelected(t *testing.T) {
+	t.Run("uses helper when present", func(t *testing.T) {
+		fakeBins(t, "ripdrag")
+		m := &galleryModel{images: []imageEntry{{Path: "/x/a.png"}}}
+		m.dragSelected()
+		if m.status != "Opened drag window (ripdrag)" {
+			t.Fatalf("status = %q", m.status)
+		}
+	})
+	t.Run("falls back to clipboard with hint when no helper", func(t *testing.T) {
+		fakeBins(t) // no helper, and no clipboard tool on this PATH either
+		m := &galleryModel{images: []imageEntry{{Path: "/x/a.png"}}}
+		m.dragSelected()
+		if !strings.Contains(m.status, "ripdrag/dragon") {
+			t.Fatalf("status missing drag-out hint: %q", m.status)
+		}
+	})
+	t.Run("no images is a no-op", func(t *testing.T) {
+		fakeBins(t, "ripdrag")
+		m := &galleryModel{}
+		m.dragSelected()
+		if m.status != "" {
+			t.Fatalf("status = %q, want empty", m.status)
 		}
 	})
 }

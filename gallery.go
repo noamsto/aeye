@@ -393,6 +393,22 @@ func (m *galleryModel) copySelected() {
 	m.status = "Copied image to clipboard"
 }
 
+// dragSelected hands the selected image to an external GUI drag-source so it can
+// be dropped into another app, falling back to the clipboard with a hint when no
+// helper is installed. Native OSC 72 drag-out is prepended to this ladder in a
+// later stage. Records a one-line result in m.status for the footer.
+func (m *galleryModel) dragSelected() {
+	if len(m.images) == 0 {
+		return
+	}
+	if name := runDragHelper(m.images[m.cursor].Path); name != "" {
+		m.status = "Opened drag window (" + name + ")"
+		return
+	}
+	m.copySelected()
+	m.status += " (drag-out needs kitty or ripdrag/dragon)"
+}
+
 func (m galleryModel) View() tea.View {
 	content := "Loading..."
 	if m.ready {

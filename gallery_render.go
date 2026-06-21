@@ -176,25 +176,43 @@ const (
 	backendRaster
 )
 
-// chooseGridBackend picks the grid renderer. The kitty backend needs unicode
-// PLACEHOLDERS (not just kitty graphics), which has no capability query and which
-// wezterm lacks despite speaking graphics — so kitty stays a termname allowlist,
-// never a probe. Otherwise: a standalone (no tmux) host identified by env gets
-// sixel with no probe latency; everything else (notably in-tmux, where the only
-// reliable signal is whether THIS tmux passes sixel) falls to the DA1 probe.
-// probeSixel is injected so this stays a pure, testable function and is invoked
-// lazily — only on the probe branch.
-func chooseGridBackend(termname string, inTmux bool, weztermPane, term string, probeSixel func() bool) gridBackend {
+// chafa output formats for backendRaster. iterm = OSC 1337 inline image (true
+// color, iTerm2/wezterm); sixels = palette-indexed sixel (foot, tmux passthrough).
+const (
+	formatSixel = "sixels"
+	formatITerm = "iterm"
+)
+
+// chooseGridBackend picks the grid renderer and, for backendRaster, the chafa
+// format. kitty needs unicode PLACEHOLDERS (not just kitty graphics), which has no
+// capability query and which wezterm lacks despite speaking graphics — so kitty
+// stays a termname allowlist, never a probe. Standalone hosts identified by env get
+// a real-pixel raster: OSC 1337 for iTerm2/wezterm (true color), sixel for foot.
+// Everything else (notably in-tmux, where the only reliable signal is whether THIS
+// tmux passes sixel) falls to the DA1 probe. probeSixel is injected so this stays a
+// pure, testable function and is invoked lazily — only on the probe branch.
+func chooseGridBackend(termname string, inTmux bool, termProgram, lcTerminal, weztermPane, term string, probeSixel func() bool) (gridBackend, string) {
 	if strings.HasPrefix(termname, "xterm-kitty") || strings.HasPrefix(termname, "xterm-ghostty") {
-		return backendKitty
+		return backendKitty, ""
 	}
-	if !inTmux && (weztermPane != "" || strings.HasPrefix(term, "foot")) {
-		return backendRaster
+	// OSC 1337 / sixel hosts are only identifiable standalone: inside tmux,
+	// TERM_PROGRAM becomes "tmux" and WEZTERM_PANE isn't forwarded, so fall to the
+	// DA1 probe (which reflects tmux's own sixel capability).
+	if !inTmux {
+		if termProgram == "iTerm.app" || lcTerminal == "iTerm2" {
+			return backendRaster, formatITerm
+		}
+		if termProgram == "WezTerm" || weztermPane != "" {
+			return backendRaster, formatITerm
+		}
+		if strings.HasPrefix(term, "foot") {
+			return backendRaster, formatSixel
+		}
 	}
 	if probeSixel() {
-		return backendRaster
+		return backendRaster, formatSixel
 	}
-	return backendSymbols
+	return backendSymbols, ""
 }
 
 // tmuxPassthrough wraps an escape sequence so tmux forwards it to the outer

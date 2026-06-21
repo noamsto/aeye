@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -36,20 +38,38 @@ func TestBlankBlock(t *testing.T) {
 	}
 }
 
-func TestPaintSixelAt(t *testing.T) {
+func TestPaintRasterAt(t *testing.T) {
 	var b strings.Builder
-	paintSixelAt(&b, rect{x: 4, y: 2, w: 8, h: 4}, "SIXELDATA")
+	paintRasterAt(&b, rect{x: 4, y: 2, w: 8, h: 4}, "SIXELDATA")
 	// Cursor coords are 1-based: row = y+1 = 3, col = x+1 = 5.
 	want := "\x1b7\x1b[3;5HSIXELDATA\x1b8"
 	if b.String() != want {
-		t.Errorf("paintSixelAt =\n%q\nwant\n%q", b.String(), want)
+		t.Errorf("paintRasterAt =\n%q\nwant\n%q", b.String(), want)
 	}
 }
 
-func TestPaintSixelAtEmpty(t *testing.T) {
+func TestPaintRasterAtEmpty(t *testing.T) {
 	var b strings.Builder
-	paintSixelAt(&b, rect{x: 1, y: 1, w: 4, h: 4}, "")
+	paintRasterAt(&b, rect{x: 1, y: 1, w: 4, h: 4}, "")
 	if b.String() != "" {
-		t.Errorf("paintSixelAt with empty payload wrote %q, want nothing", b.String())
+		t.Errorf("paintRasterAt with empty payload wrote %q, want nothing", b.String())
+	}
+}
+
+// renderRaster with formatITerm must emit an OSC 1337 inline-image payload with the
+// cursor-toggle wrappers stripped. Skipped when chafa is unavailable.
+func TestRenderRasterITerm(t *testing.T) {
+	if _, err := exec.LookPath("chafa"); err != nil {
+		t.Skip("chafa not on PATH")
+	}
+	src := filepath.Join(t.TempDir(), "shot.png")
+	writeTestImage(t, src, 32, 32)
+
+	got := renderRaster(formatITerm, src, 8, 4)
+	if !strings.HasPrefix(got, "\x1b]1337;File=") {
+		t.Errorf("iterm payload does not start with OSC 1337 marker: %q", got[:min(40, len(got))])
+	}
+	if strings.Contains(got, "\x1b[?25l") || strings.Contains(got, "\x1b[?25h") {
+		t.Errorf("cursor wrappers not stripped: %q", got)
 	}
 }

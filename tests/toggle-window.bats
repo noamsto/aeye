@@ -5,7 +5,7 @@
 setup() {
 	export CLAUDE_STATUS_DIR="$BATS_TEST_TMPDIR/state"
 	# Clean slate: no host signals unless a test opts in.
-	unset TMUX KITTY_LISTEN_ON WEZTERM_PANE GHOSTTY_RESOURCES_DIR TERM
+	unset TMUX KITTY_LISTEN_ON WEZTERM_PANE GHOSTTY_RESOURCES_DIR TERM TERM_PROGRAM
 	export CLAUDE_CODE_SESSION_ID="sess-123"
 	mkdir -p "$CLAUDE_STATUS_DIR/images"
 	# Non-empty manifest so launch tests get past the "no images yet" guard.
@@ -47,6 +47,24 @@ STUB
 exit 1
 STUB
 	chmod +x "$STUB_BIN/ghostty" "$STUB_BIN/open" "$STUB_BIN/uname" "$STUB_BIN/pgrep"
+	# osascript stub: logs args; a split echoes a session id; a close is logged
+	# only; anything else is the liveness query → echoes 1 when $STUB_ITERM_ALIVE.
+	export OSASCRIPT_LOG="$BATS_TEST_TMPDIR/osascript.log"
+	: >"$OSASCRIPT_LOG"
+	cat >"$STUB_BIN/osascript" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >>"$OSASCRIPT_LOG"
+args="$*"
+# Discriminate by the AppleScript verb in the -e args; coupling to iterm_split/iterm_close text is intentional.
+if [[ $args == *"split horizontally"* ]]; then
+	echo "${STUB_ITERM_SESSION:-iterm-sess-1}"
+elif [[ $args == *"to close"* ]]; then
+	:
+else
+	[[ -n ${STUB_ITERM_ALIVE:-} ]] && echo 1 || echo 0
+fi
+STUB
+	chmod +x "$STUB_BIN/osascript"
 	export PATH="$STUB_BIN:$PATH"
 }
 
@@ -146,4 +164,43 @@ STUB
 	wait "$pid" 2>/dev/null || true # reap first; kill -0 on a zombie is a false positive
 	run kill -0 "$pid"
 	[ "$status" -ne 0 ]
+}
+
+@test "resolve: iterm when TERM_PROGRAM=iTerm.app" {
+	export TERM_PROGRAM=iTerm.app
+	run bash "$APP" --resolve
+	[ "$status" -eq 0 ]
+	[ "$(echo "$output" | cut -f1)" = iterm ]
+	[ "$(echo "$output" | cut -f3)" = "$CLAUDE_STATUS_DIR/images/sess-123.jsonl" ]
+}
+
+@test "iterm: split opens a viewer and records the session id" {
+	export TERM_PROGRAM=iTerm.app
+	unset STUB_ITERM_ALIVE
+	export STUB_ITERM_SESSION=ABC-123
+	run bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q "split horizontally" "$OSASCRIPT_LOG"
+	[ "$(cat "$CLAUDE_STATUS_DIR/images/$CLAUDE_CODE_SESSION_ID.iterm-session")" = ABC-123 ]
+}
+
+@test "iterm: bare toggle closes the live session" {
+	export TERM_PROGRAM=iTerm.app
+	printf 'ABC-123\n' >"$CLAUDE_STATUS_DIR/images/$CLAUDE_CODE_SESSION_ID.iterm-session"
+	export STUB_ITERM_ALIVE=1
+	run bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q "to close" "$OSASCRIPT_LOG"
+	[ ! -f "$CLAUDE_STATUS_DIR/images/$CLAUDE_CODE_SESSION_ID.iterm-session" ]
+}
+
+@test "iterm: --ensure-open with a live session does not split again" {
+	export TERM_PROGRAM=iTerm.app
+	printf 'ABC-123\n' >"$CLAUDE_STATUS_DIR/images/$CLAUDE_CODE_SESSION_ID.iterm-session"
+	export STUB_ITERM_ALIVE=1
+	run bash "$APP" --ensure-open
+	[ "$status" -eq 0 ]
+	grep -q "targetId" "$OSASCRIPT_LOG"
+	run grep -c "split horizontally" "$OSASCRIPT_LOG"
+	[ "$output" = 0 ]
 }

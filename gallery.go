@@ -14,6 +14,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 )
 
 const (
@@ -109,11 +110,27 @@ type galleryModel struct {
 	dragging             bool
 	lastDragX, lastDragY int
 
+	// Native kitty OSC 72 drag-out: dragNative is probed once at startup and the
+	// terminal is armed as a drag source; dragInFlight stops a second drag from
+	// being initiated while one is already running.
+	dragNative   bool
+	dragInFlight bool
+
 	// Theme colors, resolved once at startup (tmux options are session-invariant).
 	selColor, dimColor, hintFg, textFg imgcolor.Color
 }
 
-func (m galleryModel) Init() tea.Cmd { return galleryTickCmd() }
+func (m galleryModel) Init() tea.Cmd {
+	if m.dragNative && m.tty != nil {
+		// Register as a drag source up front so a plain mouse drag exports the
+		// image — no key to press. The terminal reports each gesture via OSC 72.
+		return tea.Batch(galleryTickCmd(), func() tea.Msg {
+			m.tty.WriteString(dragArmSeq())
+			return nil
+		})
+	}
+	return galleryTickCmd()
+}
 
 type galleryTickMsg struct{}
 
@@ -310,6 +327,11 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m, cmd = m.handleMouse(msg)
 		return m, tea.Batch(cmd, m.schedulePaint())
+	case uv.UnknownOscEvent:
+		// Native drag-out: the terminal's OSC 72 frames arrive here (bubbletea
+		// passes events it doesn't model through verbatim).
+		m.handleDragEvent(string(msg))
+		return m, nil
 	case vectorKickMsg:
 		// Stale tick: a later keystroke superseded this one. Drop it; only the
 		// latest generation gets to kick resvg.
@@ -402,12 +424,74 @@ func (m *galleryModel) dragSelected() {
 	if len(m.images) == 0 {
 		return
 	}
+	if m.dragNative {
+		// Native kitty: dragging the image already exports it (armed at startup);
+		// the d key just surfaces that for anyone who reaches for a key.
+		m.status = "Drag the image out with your mouse"
+		return
+	}
 	if name := runDragHelper(m.images[m.cursor].Path); name != "" {
 		m.status = "Opened drag window (" + name + ")"
 		return
 	}
 	m.copySelected()
 	m.status += " (drag-out needs kitty or ripdrag/dragon)"
+}
+
+// handleDragEvent drives the OSC 72 round-trip from inbound terminal events
+// (delivered as uv.UnknownOscEvent). When the user starts dragging after the d
+// key armed us, we answer the gesture with the MIME offer, the file:// URI data,
+// and the initiate; the terminal's t=E reply ends it. Every inbound payload is
+// logged so a first live test reveals kitty's actual frames if tuning is needed.
+func (m *galleryModel) handleDragEvent(payload string) {
+	if !m.dragNative {
+		return
+	}
+	switch {
+	case isDragGesture(payload):
+		// Zoomed in, a mouse drag pans the image (gallery_mouse.go), so leave the
+		// gesture alone. Only the preview is draggable, and dragInFlight keeps a
+		// second drag from starting mid-drag.
+		if m.dragInFlight || !m.crop.isFull() || !m.gestureOverPreview(payload) {
+			return
+		}
+		if m.tty != nil && len(m.images) > 0 {
+			if m.curImg == nil {
+				m.ensureDecoded()
+			}
+			m.dragInFlight = true
+			m.tty.WriteString(dragOfferSeq())
+			m.tty.WriteString(dragDataSeq(fileURI(m.images[m.cursor].Path)))
+			for _, f := range dragIconFrames(m.curImg) {
+				m.tty.WriteString(f)
+			}
+			m.tty.WriteString(dragInitiateSeq())
+			m.status = "Dragging out…"
+		}
+	case isDragFinished(payload):
+		m.dragInFlight = false
+		if dragWasCancelled(payload) {
+			m.status = "Drag cancelled"
+		} else {
+			m.status = "Dragged out"
+		}
+	case isDragError(payload):
+		m.dragInFlight = false
+		m.status = "Drag failed: " + payload
+	}
+}
+
+// gestureOverPreview reports whether a drag gesture's cell coordinates land on
+// the preview image, so dragging the filmstrip or margins doesn't export the
+// selection. If the coordinates can't be parsed, it allows the drag rather than
+// silently swallowing it.
+func (m galleryModel) gestureOverPreview(payload string) bool {
+	x, okx := oscInt(payload, "x=")
+	y, oky := oscInt(payload, "y=")
+	if !okx || !oky {
+		return true
+	}
+	return m.previewRect().contains(x, y)
 }
 
 func (m galleryModel) View() tea.View {
@@ -585,6 +669,9 @@ func runGallery(pane string) error {
 		cursor:  max(0, len(images)-1),
 		pinned:  true,
 		crop:    fullCrop(),
+		// OSC 72 can't cross tmux and only kitty implements it; probe only there,
+		// where the query still confirms the running version actually supports it.
+		dragNative: os.Getenv("TMUX") == "" && strings.HasPrefix(termName(), "xterm-kitty") && probeDragProtocol(),
 	}
 	// Decode the initial selection now so zoom works on the first keystroke
 	// (otherwise curImg is nil until the first refresh tick).

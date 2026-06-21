@@ -4,9 +4,9 @@
 
 **Goal:** Render crisp images on iTerm2 (and higher-fidelity on wezterm) via the OSC 1337 inline-image protocol, reusing the existing `backendRaster` lifecycle.
 
-**Architecture:** Keep the single `backendRaster` enum; add a `rasterFormat` field ("sixels" | "iterm") that selects the chafa `-f` flag. `chooseGridBackend` returns `(backend, format)` and gains non-tmux branches for iTerm2/wezterm. The entire out-of-band paint lifecycle (blank holes, debounced repaint, cursor-positioned paint, ClearScreen teardown) is unchanged.
+**Architecture:** Two layers. **Render** (Tasks 1–3): keep the single `backendRaster` enum; add a `rasterFormat` field ("sixels" | "iterm") that selects the chafa `-f` flag. `chooseGridBackend` returns `(backend, format)` and gains non-tmux branches for iTerm2/wezterm. The entire out-of-band paint lifecycle (blank holes, debounced repaint, cursor-positioned paint, ClearScreen teardown) is unchanged. **Launch** (Task 4): add a `MODE=iterm` standalone mode to `scripts/tmux-claude-images.sh` driven by AppleScript (`osascript`), so iTerm2 is actually launchable — otherwise its render path is dead code.
 
-**Tech Stack:** Go, charm.land/bubbletea v2, chafa (external, emits both sixel and OSC 1337).
+**Tech Stack:** Go, charm.land/bubbletea v2, chafa (external, emits both sixel and OSC 1337), bash + AppleScript (`osascript`) for the macOS launch mode, bats for the launcher tests.
 
 **Spec:** `docs/superpowers/specs/2026-06-18-osc1337-iterm-backend-design.md`
 
@@ -336,7 +336,217 @@ git commit -m "test: smoke-test chafa OSC 1337 output (#60)"
 
 ---
 
-### Task 4: Verify, document, and open the PR
+### Task 4: iTerm2 launch mode (script + bats)
+
+Adds `MODE=iterm` to the launcher so standalone iTerm2 actually opens the viewer. iTerm2's only stable IPC is AppleScript, so spawn/toggle go through `osascript`: split the current session running the viewer, persist the new session's unique id, close by id on toggle. macOS-only at runtime; tested here with a stubbed `osascript`.
+
+**Files:**
+- Modify: `scripts/tmux-claude-images.sh` (`resolve_target`, new `launch_iterm` + 3 `osascript` helpers, `main` guard + message, header doc comment)
+- Test: `tests/toggle-window.bats` (`setup`: unset `TERM_PROGRAM`, add `osascript` stub; new iTerm2 `@test` group)
+
+- [ ] **Step 1: Extend the bats `setup()` with an `osascript` stub**
+
+In `tests/toggle-window.bats`, add `TERM_PROGRAM` to the `unset` line (line 8) so a stray host env can't leak in:
+
+```bash
+	unset TMUX KITTY_LISTEN_ON WEZTERM_PANE GHOSTTY_RESOURCES_DIR TERM TERM_PROGRAM
+```
+
+Then, just before the final `export PATH="$STUB_BIN:$PATH"` (line 50), add the stub. It logs args, echoes a fake session id for a split, no-ops a close, and reports liveness from `$STUB_ITERM_ALIVE` (the split/close/alive scripts are distinguishable by the literal AppleScript text they contain):
+
+```bash
+	# osascript stub: logs args; a split echoes a session id; a close is logged
+	# only; anything else is the liveness query → echoes 1 when $STUB_ITERM_ALIVE.
+	export OSASCRIPT_LOG="$BATS_TEST_TMPDIR/osascript.log"
+	: >"$OSASCRIPT_LOG"
+	cat >"$STUB_BIN/osascript" <<'STUB'
+#!/usr/bin/env bash
+echo "$*" >>"$OSASCRIPT_LOG"
+args="$*"
+if [[ $args == *"split horizontally"* ]]; then
+	echo "${STUB_ITERM_SESSION:-iterm-sess-1}"
+elif [[ $args == *"to close"* ]]; then
+	:
+else
+	[[ -n ${STUB_ITERM_ALIVE:-} ]] && echo 1 || echo 0
+fi
+STUB
+	chmod +x "$STUB_BIN/osascript"
+```
+
+- [ ] **Step 2: Write the failing iTerm2 bats tests**
+
+Append this `@test` group to the end of `tests/toggle-window.bats`:
+
+```bash
+@test "resolve: iterm when TERM_PROGRAM=iTerm.app" {
+	export TERM_PROGRAM=iTerm.app
+	run bash "$APP" --resolve
+	[ "$status" -eq 0 ]
+	[ "$(echo "$output" | cut -f1)" = iterm ]
+	[ "$(echo "$output" | cut -f3)" = "$CLAUDE_STATUS_DIR/images/sess-123.jsonl" ]
+}
+
+@test "iterm: split opens a viewer and records the session id" {
+	export TERM_PROGRAM=iTerm.app
+	unset STUB_ITERM_ALIVE
+	export STUB_ITERM_SESSION=ABC-123
+	run bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q "split horizontally" "$OSASCRIPT_LOG"
+	[ "$(cat "$CLAUDE_STATUS_DIR/images/$CLAUDE_CODE_SESSION_ID.iterm-session")" = ABC-123 ]
+}
+
+@test "iterm: bare toggle closes the live session" {
+	export TERM_PROGRAM=iTerm.app
+	printf 'ABC-123\n' >"$CLAUDE_STATUS_DIR/images/$CLAUDE_CODE_SESSION_ID.iterm-session"
+	export STUB_ITERM_ALIVE=1
+	run bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q "to close" "$OSASCRIPT_LOG"
+	[ ! -f "$CLAUDE_STATUS_DIR/images/$CLAUDE_CODE_SESSION_ID.iterm-session" ]
+}
+
+@test "iterm: --ensure-open with a live session does not split again" {
+	export TERM_PROGRAM=iTerm.app
+	printf 'ABC-123\n' >"$CLAUDE_STATUS_DIR/images/$CLAUDE_CODE_SESSION_ID.iterm-session"
+	export STUB_ITERM_ALIVE=1
+	run bash "$APP" --ensure-open
+	[ "$status" -eq 0 ]
+	run grep -c "split horizontally" "$OSASCRIPT_LOG"
+	[ "$output" = 0 ]
+}
+```
+
+- [ ] **Step 3: Run the new tests to verify they fail**
+
+Run: `bats tests/toggle-window.bats`
+Expected: the four `iterm:` / `resolve: iterm` tests FAIL — `--resolve` prints `none` (no iterm branch yet) and a bare run hits the `MODE=none` message, so no `osascript` is logged and no `.iterm-session` file is written.
+
+- [ ] **Step 4: Add the `resolve_target` iTerm2 branch**
+
+In `scripts/tmux-claude-images.sh`, add a doc line to the header block (after the `MODE=ghostty` line, ~line 23):
+
+```sh
+#   MODE=iterm   + KEY=<cc session id>  outside tmux, in iTerm2 (macOS, AppleScript)
+```
+
+Then insert the branch in `resolve_target`, between the ghostty `elif` and the final `else` (~line 49):
+
+```sh
+	elif [[ ${TERM_PROGRAM:-} == iTerm.app ]]; then
+		MODE=iterm
+		KEY="${CLAUDE_CODE_SESSION_ID:-}"
+		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
+```
+
+- [ ] **Step 5: Add `launch_iterm` and its `osascript` helpers**
+
+In `scripts/tmux-claude-images.sh`, immediately after `launch_ghostty()` (~line 153), add the helpers and launcher. Each helper builds its script from repeated `-e` lines (no HEREDOC, keeping shellcheck quiet) and passes the argument via `-- "$1"` to `on run argv`, so shell values never enter the AppleScript text:
+
+```sh
+# iTerm2's only stable IPC is AppleScript. We split the current session to run the
+# viewer, persist the new session's unique id (keyed by cc session id), and close by
+# id on toggle. pgrep-on-viewer (ghostty's trick) can kill the viewer but not reliably
+# close the split pane — that depends on the profile's "When session ends" setting.
+iterm_split() {
+	osascript \
+		-e 'on run argv' \
+		-e 'tell application "iTerm2"' \
+		-e 'tell current session of current window' \
+		-e 'set s to (split horizontally with default profile command (item 1 of argv))' \
+		-e 'end tell' \
+		-e 'return id of s' \
+		-e 'end tell' \
+		-e 'end run' \
+		-- "$1"
+}
+
+iterm_alive() {
+	local r
+	r="$(osascript \
+		-e 'on run argv' \
+		-e 'set targetId to item 1 of argv' \
+		-e 'tell application "iTerm2"' \
+		-e 'repeat with w in windows' \
+		-e 'repeat with t in tabs of w' \
+		-e 'repeat with s in sessions of t' \
+		-e 'if (id of s) is targetId then return "1"' \
+		-e 'end repeat' \
+		-e 'end repeat' \
+		-e 'end repeat' \
+		-e 'end tell' \
+		-e 'return "0"' \
+		-e 'end run' \
+		-- "$1" 2>/dev/null)"
+	[[ $r == 1 ]]
+}
+
+iterm_close() {
+	osascript \
+		-e 'on run argv' \
+		-e 'set targetId to item 1 of argv' \
+		-e 'tell application "iTerm2"' \
+		-e 'repeat with w in windows' \
+		-e 'repeat with t in tabs of w' \
+		-e 'repeat with s in sessions of t' \
+		-e 'if (id of s) is targetId then tell s to close' \
+		-e 'end repeat' \
+		-e 'end repeat' \
+		-e 'end repeat' \
+		-e 'end tell' \
+		-e 'end run' \
+		-- "$1" >/dev/null 2>&1 || true
+}
+
+launch_iterm() {
+	local idfile="$IMAGES_DIR/$KEY.iterm-session" session=""
+	[[ -f $idfile ]] && session="$(<"$idfile")"
+	if [[ -n $session ]] && iterm_alive "$session"; then
+		[[ -n $ENSURE_OPEN ]] && return # already open; ensure-open is a no-op
+		iterm_close "$session"
+		rm -f "$idfile"
+		return
+	fi
+	# command runs under iTerm2's app environment (never saw our env), so forward the
+	# state dir explicitly — same as the wezterm/ghostty paths.
+	session="$(iterm_split "env AEYE_DIR=$STATE_DIR CLAUDE_STATUS_DIR=$STATE_DIR $VIEWER_BIN $KEY")"
+	printf '%s\n' "$session" >"$idfile"
+}
+```
+
+- [ ] **Step 6: Add `iterm` to the `main` guard and the no-host message**
+
+In `scripts/tmux-claude-images.sh` `main()` (~lines 164–167), extend the `MODE=none` message and the session-id guard group:
+
+```sh
+	none)
+		echo "image carousel needs tmux, kitty remote control, wezterm, ghostty, or iTerm2" >&2
+		exit 0
+		;;
+	kitty | wezterm | ghostty | iterm)
+```
+
+- [ ] **Step 7: Run the tests to verify they pass**
+
+Run: `bats tests/toggle-window.bats`
+Expected: PASS — all four new tests plus the existing wezterm/ghostty/none tests.
+
+- [ ] **Step 8: Lint the script**
+
+Run: `shellcheck scripts/tmux-claude-images.sh`
+Expected: no output (clean). Fix any warning before committing.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add scripts/tmux-claude-images.sh tests/toggle-window.bats
+git commit -m "feat: launch the carousel in standalone iTerm2 (#60)"
+```
+
+---
+
+### Task 5: Verify, document, and open the PR
 
 **Files:**
 - Modify: spec/issue references as needed (no code).
@@ -344,21 +554,34 @@ git commit -m "test: smoke-test chafa OSC 1337 output (#60)"
 - [ ] **Step 1: Full check via the dev shell**
 
 Run: `direnv exec . go test ./... -count=1`
-Expected: PASS. Also run `direnv exec . gofmt -l .` — expect no output.
+Expected: PASS. Also run `direnv exec . gofmt -l .` (expect no output), `direnv exec . bats tests/` (expect all bats green), and `shellcheck scripts/tmux-claude-images.sh` (expect clean).
 
 - [ ] **Step 2: Live wezterm verification (manual)**
 
 In the `.#verify` devShell (wezterm, added in #59), launch the gallery on a manifest
 with at least one photo and one diagram. Confirm: preview + filmstrip render crisp
 (true color, no sixel banding), arrow-key navigation repaints correctly, terminal
-resize reflows, and quitting leaves no image residue. iTerm2 is macOS-only and not
-verified here — note that in the PR.
+resize reflows, and quitting leaves no image residue.
 
-- [ ] **Step 3: Push and open the PR**
+- [ ] **Step 3: Manual iTerm2 pass (best-effort, on a Mac)**
+
+There is no macOS in CI or on the dev host, so the launch mode + OSC 1337 render path
+are unverified by automation. If a Mac is available: in standalone iTerm2 (no tmux),
+trigger the toggle and confirm a split opens running the viewer, images render crisp
+(OSC 1337), and toggling again closes the split. If no Mac is available, state plainly
+in the PR that iTerm2 is covered only by the stub/unit tests.
+
+- [ ] **Step 4: Push and open the PR**
 
 ```bash
 git push -u origin feat/60-osc1337-iterm
-gh pr create --assignee @me --title "feat: OSC 1337 raster rendering for iTerm2/wezterm (#60)" --body "Closes #60. Adds an OSC 1337 (\`chafa -f iterm\`) path to backendRaster: iTerm2 and standalone wezterm now render crisp true-color instead of block-art (iTerm2) / quantized sixel (wezterm). foot and in-tmux keep sixel. Verified live on wezterm; iTerm2 unverified (macOS-only)."
+gh pr create --assignee @me --title "feat: OSC 1337 rendering + iTerm2 launch mode (#60)" --body "Closes #60.
+
+**Render:** adds an OSC 1337 (\`chafa -f iterm\`) path to backendRaster. iTerm2 and standalone wezterm now render crisp instead of block-art (iTerm2) / quantized sixel (wezterm, now true-color). foot and in-tmux keep sixel.
+
+**Launch:** adds a \`MODE=iterm\` standalone mode to the toggle script (AppleScript via osascript: split current session, persist session id, close by id), so iTerm2 is actually launchable.
+
+**Verification:** Go unit tests pin backend/format selection; bats (stubbed osascript) cover resolve + spawn/toggle/ensure-open; wezterm verified live via .#verify. iTerm2 itself is macOS-only — no macOS in CI or on the dev host, so its AppleScript launch + OSC 1337 render are covered only by stub/unit tests (+ a manual Mac pass if available)."
 ```
 
 ---
@@ -371,9 +594,14 @@ gh pr create --assignee @me --title "feat: OSC 1337 raster rendering for iTerm2/
 - `renderRaster` + `rasterArgs` seam → Task 2 ✓
 - `TestChooseGridBackend` matrix → Task 1 ✓; `TestRasterArgs` → Task 2 ✓; optional chafa smoke test → Task 3 ✓
 - Teardown unchanged (no `deleteAll` for raster) → no task needed, confirmed in spec ✓
-- Live wezterm verification → Task 4 ✓
+- Launch layer: `resolve_target` iTerm2 branch (`TERM_PROGRAM=iTerm.app`), `launch_iterm` + `iterm_split`/`iterm_alive`/`iterm_close`, `main` guard + message → Task 4 ✓
+- Launch tests: resolve seam, spawn (records id), toggle-off (closes + removes id file), ensure-open no-op → Task 4 Steps 1–2 ✓
+- `shellcheck` clean → Task 4 Step 8, Task 5 Step 1 ✓
+- Live wezterm verification → Task 5 ✓; best-effort manual iTerm2 pass → Task 5 ✓
 - No per-image fallback / param footgun → documented in spec; no code action ✓
 
 **Placeholder scan:** none — every code step shows complete code.
 
-**Type consistency:** `chooseGridBackend` returns `(gridBackend, string)` consistently across Task 1 signature, test, and call site. `formatSixel`/`formatITerm` defined in Task 1 Step 3, used in Tasks 1–3. `rasterFormat` field defined Task 1 Step 4, read in Task 2 Step 3. `renderRaster(format, pngPath, cols, rows)` signature matches between definition (Task 2) and callers (Task 2) and smoke test (Task 3).
+**Type consistency:**
+- Render: `chooseGridBackend` returns `(gridBackend, string)` consistently across Task 1 signature, test, and call site. `formatSixel`/`formatITerm` defined in Task 1 Step 3, used in Tasks 1–3. `rasterFormat` field defined Task 1 Step 4, read in Task 2 Step 3. `renderRaster(format, pngPath, cols, rows)` signature matches between definition (Task 2), callers (Task 2), and smoke test (Task 3).
+- Launch: `MODE=iterm` set in `resolve_target` (Task 4 Step 4) dispatches to `launch_iterm` (Task 4 Step 5) via the existing `launch_$MODE`; guard group lists `iterm` (Step 6). State file `$KEY.iterm-session` written by `launch_iterm` and asserted by the bats tests (Step 2). The `osascript` stub keys on the literal strings `split horizontally` / `to close` that `iterm_split` / `iterm_close` actually emit (Steps 1, 5) — stub and script agree.

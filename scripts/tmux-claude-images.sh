@@ -190,7 +190,7 @@ iterm_alive() {
 		-e 'end tell' \
 		-e 'return "0"' \
 		-e 'end run' \
-		-- "$1" 2>/dev/null)"
+		-- "$1" 2>/dev/null)" || return 1
 	[[ $r == 1 ]]
 }
 
@@ -221,8 +221,12 @@ launch_iterm() {
 		return
 	fi
 	# command runs under iTerm2's app environment (never saw our env), so forward the
-	# state dir explicitly — same as the wezterm/ghostty paths.
-	session="$(iterm_split "env AEYE_DIR=$STATE_DIR CLAUDE_STATUS_DIR=$STATE_DIR $VIEWER_BIN $KEY")"
+	# state dir explicitly — same as the wezterm/ghostty paths. printf '%q' (bash-3.2
+	# safe) quotes each value so the command string survives iTerm2's shell re-parsing
+	# a path with spaces (e.g. /Users/Jane Doe/...).
+	local cmd
+	cmd="env AEYE_DIR=$(printf '%q' "$STATE_DIR") CLAUDE_STATUS_DIR=$(printf '%q' "$STATE_DIR") $(printf '%q' "$VIEWER_BIN") $(printf '%q' "$KEY")"
+	session="$(iterm_split "$cmd")"
 	printf '%s\n' "$session" >"$idfile"
 }
 

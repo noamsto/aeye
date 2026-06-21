@@ -55,6 +55,7 @@ STUB
 #!/usr/bin/env bash
 echo "$*" >>"$OSASCRIPT_LOG"
 args="$*"
+# Discriminate by the AppleScript verb in the -e args; coupling to iterm_split/iterm_close text is intentional.
 if [[ $args == *"split horizontally"* ]]; then
 	echo "${STUB_ITERM_SESSION:-iterm-sess-1}"
 elif [[ $args == *"to close"* ]]; then
@@ -199,6 +200,7 @@ STUB
 	export STUB_ITERM_ALIVE=1
 	run bash "$APP" --ensure-open
 	[ "$status" -eq 0 ]
+	grep -q "targetId" "$OSASCRIPT_LOG"
 	run grep -c "split horizontally" "$OSASCRIPT_LOG"
 	[ "$output" = 0 ]
 }

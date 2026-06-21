@@ -126,15 +126,15 @@ func renderRaster(format, pngPath string, cols, rows int) string {
 	return strings.TrimRight(s, "\n")
 }
 
-// paintSixelAt writes a sixel payload at rect r's top-left, bracketed by
-// save/restore-cursor so the out-of-band paint never disturbs bubbletea's cursor.
-// Cursor coordinates are 1-based; rects are 0-based (origin top-left). No-op on
-// an empty payload (chafa failed / nothing to draw).
-func paintSixelAt(w io.Writer, r rect, sixel string) {
-	if sixel == "" {
+// paintRasterAt writes a raw terminal graphics payload (sixel or OSC 1337) at rect r's
+// top-left, bracketed by save/restore-cursor so the out-of-band paint never disturbs
+// bubbletea's cursor. Cursor coordinates are 1-based; rects are 0-based (origin
+// top-left). No-op on an empty payload (chafa failed / nothing to draw).
+func paintRasterAt(w io.Writer, r rect, payload string) {
+	if payload == "" {
 		return
 	}
-	fmt.Fprintf(w, "\x1b7\x1b[%d;%dH%s\x1b8", r.y+1, r.x+1, sixel)
+	fmt.Fprintf(w, "\x1b7\x1b[%d;%dH%s\x1b8", r.y+1, r.x+1, payload)
 }
 
 // paintPreview paints the selected image into the preview rect, honoring the
@@ -150,7 +150,7 @@ func (m *galleryModel) paintPreview() {
 	} else {
 		src = cachedPNG(m.images[m.cursor].Path, r.w, r.h)
 	}
-	paintSixelAt(m.tty, r, renderRaster(m.rasterFormat, src, r.w, r.h))
+	paintRasterAt(m.tty, r, renderRaster(m.rasterFormat, src, r.w, r.h))
 }
 
 // paintStrip paints each visible filmstrip thumbnail into the inner area of its
@@ -160,7 +160,7 @@ func (m *galleryModel) paintStrip() {
 	for i, cell := range m.filmstripCellRects() {
 		inner := rect{x: cell.x + 1, y: cell.y + 1, w: m.l.stripW, h: m.l.stripH}
 		png := cachedPNG(m.images[start+i].Path, inner.w, inner.h)
-		paintSixelAt(m.tty, inner, renderRaster(m.rasterFormat, png, inner.w, inner.h))
+		paintRasterAt(m.tty, inner, renderRaster(m.rasterFormat, png, inner.w, inner.h))
 	}
 }
 

@@ -1,4 +1,4 @@
-# OSC 1337 raster rendering (iTerm2 / wezterm) — design
+# OSC 1337 raster rendering (iTerm2 / wezterm) + iTerm2 launch mode — design
 
 Issue: [#60](https://github.com/noamsto/aeye/issues/60) — follow-up. The sixel half
 landed in `8fc9d61` (PR #66); this is the remaining OSC 1337 half.
@@ -28,6 +28,12 @@ Add an OSC 1337 rendering path so:
 
 foot (sixel-only) and the in-tmux DA1-probe path keep sixel. kitty/ghostty unchanged.
 Alacritty (no graphics protocol) stays on block-art — out of scope.
+
+The render path alone makes **wezterm** true-color today (it is already launchable,
+`MODE=wezterm` from #59). **iTerm2 has no launch mode**, so its render path would be
+dead code — `scripts/tmux-claude-images.sh` falls to `MODE=none` and never opens. So
+this also adds an iTerm2 launch mode (see "Launch layer"), making iTerm2 work
+end-to-end.
 
 ## Key realization: OSC 1337 reuses the entire raster lifecycle
 
@@ -140,6 +146,76 @@ blank-hole path need **no** change — they're already format-agnostic.
 Unchanged. `deleteAll()` is kitty-only; OSC 1337 leaves no persistent store, so the
 existing `tea.ClearScreen` raster teardown covers it (same as sixel).
 
+## Launch layer (iTerm2 standalone) — `scripts/tmux-claude-images.sh`
+
+The render layer makes iTerm2 *render* OSC 1337, but iTerm2 is never *launched*: the
+launcher resolves `MODE=none` for it. This adds a `MODE=iterm` standalone mode,
+parallel to the wezterm/ghostty modes added in #58/#59.
+
+### Detection — `resolve_target`
+
+Append an iTerm2 branch after ghostty (priority `tmux → kitty → wezterm → ghostty →
+iterm → none`; the chain is `elif`, so tmux always wins — iTerm2 is only reached when
+`$TMUX` is unset, which is exactly the standalone case OSC 1337 needs):
+
+```sh
+elif [[ ${TERM_PROGRAM:-} == iTerm.app ]]; then
+    MODE=iterm
+    KEY="${CLAUDE_CODE_SESSION_ID:-}"
+    MANIFEST="$IMAGES_DIR/$KEY.jsonl"
+```
+
+Detection is `$TERM_PROGRAM == iTerm.app` only (not `$LC_TERMINAL`, which the *render*
+layer also honors). `osascript` drives the **local** iTerm2 app, so the local signal
+is the right one; `LC_TERMINAL=iTerm2` is set on the *remote* side of an ssh hop where
+osascript can't reach the terminal. Update the "Adding a terminal" contract comment and
+the `MODE=none` doc line in the header block.
+
+### `launch_iterm`
+
+iTerm2's only stable IPC is AppleScript. Unlike wezterm (`cli split-pane`/`kill-pane`)
+and ghostty (no IPC → `pgrep` the viewer), iTerm2 needs `osascript` for both spawn and
+toggle. The `pgrep`-on-viewer trick ghostty uses can *kill* the viewer but cannot
+reliably *close the split pane* — that depends on the profile's "When session ends"
+setting. So we persist the split's unique session id and close **by id**, mirroring
+wezterm's persisted-pane-id shape:
+
+```sh
+launch_iterm() {
+    local idfile="$IMAGES_DIR/$KEY.iterm-session" session=""
+    [[ -f $idfile ]] && session="$(<"$idfile")"
+    if [[ -n $session ]] && iterm_alive "$session"; then
+        [[ -n $ENSURE_OPEN ]] && return        # already open; ensure-open no-op
+        iterm_close "$session"
+        rm -f "$idfile"
+        return
+    fi
+    session="$(iterm_split "env AEYE_DIR=$STATE_DIR CLAUDE_STATUS_DIR=$STATE_DIR $VIEWER_BIN $KEY")"
+    printf '%s\n' "$session" >"$idfile"
+}
+```
+
+Three `osascript` helpers, each built from repeated `-e` lines (no HEREDOC) with the
+argument passed via `-- "$arg"` to `on run argv` (avoids embedding shell values in the
+AppleScript string):
+
+- **`iterm_split <cmd>`** — `tell current session of current window` →
+  `split horizontally with default profile command (item 1 of argv)`; returns `id of`
+  the new session. The `command` runs under iTerm2's app environment (never saw our
+  env), so the viewer command is `env AEYE_DIR=… CLAUDE_STATUS_DIR=… <viewer> <key>` —
+  the same explicit forwarding the wezterm/ghostty paths use.
+- **`iterm_alive <id>`** — iterate `sessions of tabs of windows`; exit 0 if a session's
+  `id` matches (stale id → exit 1 → fresh split, mirroring the wezterm liveness gate).
+- **`iterm_close <id>`** — same iteration; `tell s to close` on the match.
+
+### `main`
+
+- Add `iterm` to the session-id guard group: `kitty | wezterm | ghostty | iterm)`.
+- Extend the `MODE=none` message: "…wezterm, ghostty, or iTerm2".
+- `launch_$MODE` dispatch already routes `launch_iterm`; no change.
+
+macOS-only by nature (`osascript`); no `uname` branch — iTerm2 exists only on macOS.
+
 ## Testing
 
 - **`TestChooseGridBackend`** (`gallery_test.go:44`) — update for the new signature
@@ -162,13 +238,26 @@ existing `tea.ClearScreen` raster teardown covers it (same as sixel).
   absent via `exec.LookPath("chafa")` (precedent: the d2 skip at
   `gallery_regions_test.go:82`). Nice-to-have, not load-bearing — `TestRasterArgs`
   already pins the format.
+- **`tests/toggle-window.bats`** (the non-tmux suite from #59, stub-based) — add an
+  iTerm2 group mirroring the wezterm one:
+  - resolve seam: `TERM_PROGRAM=iTerm.app` (no tmux) → `MODE=iterm`.
+  - spawn: stub `osascript` so the split returns a fake id → assert the split was
+    invoked and `$KEY.iterm-session` holds the id.
+  - toggle-off: id file present, stubbed `osascript` reports that id alive → assert
+    the close was invoked and the id file removed.
+  - ensure-open no-op: stubbed `osascript` reports alive → no split invoked.
+  `shellcheck scripts/tmux-claude-images.sh` stays clean.
 - **Live verification** — wezterm via the `.#verify` devShell (added in #59): confirm
   OSC 1337 renders crisp and that navigation/scroll/clear still behave. iTerm2 itself
-  is macOS-only and not verified locally; we trust the OSC 1337 format spec + chafa.
+  is macOS-only: there is **no macOS in CI and none on this Linux host**, so the launch
+  layer (AppleScript) and the iTerm2 render path are verified **only** by the stub/unit
+  tests here plus a manual pass on a Mac. The PR must call this out.
 
 ## Out of scope
 
 - OSC 1337 through tmux passthrough (in-tmux iTerm2/wezterm keep sixel-or-symbols).
+- An iTerm2 *split-direction* / placement option, or a separate-window launch mode —
+  one horizontal split next to the agent, matching the wezterm default.
 - Animated/video/GIF playback.
 - Alacritty and other no-graphics terminals (chafa block-art stays their path).
 - Live iTerm2 verification (no macOS host).

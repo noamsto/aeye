@@ -293,6 +293,8 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.openSelected("dir")
 		case "y":
 			m.copySelected()
+		case "d":
+			m.dragSelected()
 		case "r":
 			m.reload()
 		default:

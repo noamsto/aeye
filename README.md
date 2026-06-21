@@ -119,7 +119,7 @@ session reads/writes/screenshots images.
 | `Enter` / `o` | Open in the default app |
 | `O` | Open the containing folder |
 | `y` | Copy the selected image to the clipboard |
-| `d` | Drag the selected image out (`ripdrag`/`dragon` on Linux; falls back to clipboard copy) |
+| `d` | Drag the selected image out — in kitty just drag it with the mouse; `d` opens a `ripdrag`/`dragon` window elsewhere, else copies to the clipboard |
 | `r` | Reload the manifest |
 | `q` / `Ctrl-C` | Quit |
 
@@ -158,10 +158,13 @@ so it uses chafa today and would upgrade automatically if that lands.
 \* Crisp real-pixel rendering on wezterm/iTerm2 (sixel / OSC 1337) is tracked
 separately.
 
-**Optional — drag-out (`d` key):** on Linux, `d` opens a small drag window via
+**Drag-out.** In **kitty ≥ 0.47** (outside tmux) you drag the selected image
+straight out of the preview with the mouse — a thumbnail follows the cursor —
+using kitty's [OSC 72](https://sw.kovidgoyal.net/kitty/dnd-protocol/) protocol;
+no key needed. Everywhere else, the `d` key opens a small drag window via
 [`ripdrag`](https://github.com/nik012003/ripdrag) or
-[`dragon`](https://github.com/mwh/dragon) (whichever is on PATH). Without
-either, `d` falls back to copying the image to the clipboard. X11/Wayland only.
+[`dragon`](https://github.com/mwh/dragon) if one is on PATH (Linux/X11/Wayland),
+and otherwise copies the image to the clipboard.
 
 ## Architecture
 

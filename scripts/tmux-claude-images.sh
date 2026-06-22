@@ -2,27 +2,31 @@
 # Open the Claude image carousel for the invoking session.
 #   - Inside tmux: toggle a split pane (runnable by Claude via a Bash call;
 #     also bound to prefix+I if the host tmux config provides that bind).
-#     Keyed by $TMUX_PANE.
-#   - Outside tmux, in kitty with remote control: toggle a split window via
-#     `kitty @ launch`. Keyed by $CLAUDE_CODE_SESSION_ID.
-#   - Outside tmux, in wezterm: toggle a real split via `wezterm cli split-pane`.
-#   - Outside tmux, in ghostty: toggle a separate window via `ghostty +new-window`
-#     (Linux) / `open -na ghostty` (macOS). Keyed by $CLAUDE_CODE_SESSION_ID.
-# The carousel binary ($AEYE_BIN, default `aeye` on PATH)
-# and manifest format are shared.
+#   - In kitty with remote control: toggle a split window via `kitty @ launch`.
+#   - In wezterm: toggle a real split via `wezterm cli split-pane`.
+#   - In ghostty: toggle a separate window via `ghostty +new-window`
+#     (Linux) / `open -na ghostty` (macOS).
+# AEYE_HOST=<mode> overrides auto-detection. The useful case is AEYE_HOST=kitty
+# from inside tmux: it opens a vsplit in the enclosing kitty window over the RC
+# socket, falling back to a tmux split if that socket is unreachable.
+# The manifest is keyed by $TMUX_PANE (else $CLAUDE_CODE_SESSION_ID) regardless
+# of mode, so capture and viewer always agree. The carousel binary ($AEYE_BIN,
+# default `aeye` on PATH) and manifest format are shared.
 set -euo pipefail
 
 STATE_DIR="${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}"
 IMAGES_DIR="$STATE_DIR/images"
 ENSURE_OPEN=""
 
-# resolve_target sets MODE/KEY/MANIFEST from the environment.
-#   MODE=tmux    + KEY=<pane id>        inside tmux
-#   MODE=kitty   + KEY=<cc session id>  outside tmux, kitty remote control up
-#   MODE=wezterm + KEY=<cc session id>  outside tmux, in wezterm
-#   MODE=ghostty + KEY=<cc session id>  outside tmux, in ghostty
-#   MODE=iterm   + KEY=<cc session id>  outside tmux, in iTerm2 (macOS, AppleScript)
-#   MODE=none                           no host available
+# resolve_target sets MODE/KEY/MANIFEST from the environment. KEY is always
+# ${TMUX_PANE:-cc session id} (the capture hook's key), independent of MODE.
+#   MODE=tmux       inside tmux
+#   MODE=kitty      kitty remote control up (or AEYE_HOST=kitty from inside tmux)
+#   MODE=wezterm    in wezterm
+#   MODE=ghostty    in ghostty
+#   MODE=iterm      in iTerm2 (macOS, AppleScript)
+#   MODE=none       no host available
+# AEYE_HOST=<mode> forces MODE, bypassing the auto-detection below.
 #
 # Adding a terminal:
 #   1. Detect it here by a distinct env var; set MODE/KEY/MANIFEST.
@@ -31,27 +35,32 @@ ENSURE_OPEN=""
 #      (U+10EEEE) — add the $TERM prefix to chooseGridBackend in
 #      gallery_render.go. Without them the host falls back to chafa.
 resolve_target() {
+	# Key the manifest exactly as the capture hook (adapters/.../images.sh) does —
+	# pane id inside tmux, else the Claude session id — INDEPENDENT of launch MODE.
+	# That way capture and viewer always read the same file even when AEYE_HOST
+	# sends a tmux user down the kitty launch path.
+	KEY="${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}"
+	MANIFEST="$IMAGES_DIR/${KEY#%}.jsonl"
+
+	# AEYE_HOST forces the launcher; unset = auto-detect. Only `kitty` is useful
+	# from inside tmux (it can open a split over the RC socket); other values are
+	# honored but sensible only outside tmux, and degrade via launch_kitty's
+	# fallback / main's mode guard.
+	if [[ -n ${AEYE_HOST:-} ]]; then
+		MODE="$AEYE_HOST"
+		return
+	fi
 	if [[ -n ${TMUX:-} ]]; then
 		MODE=tmux
-		KEY="${TMUX_PANE:-$(tmux display-message -p '#{pane_id}')}"
-		MANIFEST="$IMAGES_DIR/${KEY#%}.jsonl"
 	elif [[ -n ${KITTY_LISTEN_ON:-} ]]; then
 		MODE=kitty
-		KEY="${CLAUDE_CODE_SESSION_ID:-}"
-		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
 	elif [[ -n ${WEZTERM_PANE:-} ]]; then
 		MODE=wezterm
-		KEY="${CLAUDE_CODE_SESSION_ID:-}"
-		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
 	# TERM can be overridden in a user's shell; GHOSTTY_RESOURCES_DIR is a reliable fallback.
 	elif [[ ${TERM:-} == xterm-ghostty* || -n ${GHOSTTY_RESOURCES_DIR:-} ]]; then
 		MODE=ghostty
-		KEY="${CLAUDE_CODE_SESSION_ID:-}"
-		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
 	elif [[ ${TERM_PROGRAM:-} == iTerm.app ]]; then
 		MODE=iterm
-		KEY="${CLAUDE_CODE_SESSION_ID:-}"
-		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
 	else
 		MODE=none
 	fi
@@ -80,6 +89,19 @@ launch_tmux() {
 }
 
 launch_kitty() {
+	# A bare `kitty @ ls` lists windows iff the remote-control socket is reachable
+	# (distinct from the toggle's `@ ls --match`, which also fails on no match).
+	# Inside tmux the socket usually isn't reachable, so degrade to a tmux split
+	# rather than failing; outside tmux there's nothing to fall back to.
+	if ! kitty @ ls >/dev/null 2>&1; then
+		if [[ -n ${TMUX:-} ]]; then
+			echo "aeye: kitty remote control unreachable from tmux; using a tmux split (see README: kitty-pane mode)" >&2
+			launch_tmux
+			return
+		fi
+		echo "aeye: kitty remote control unreachable (enable allow_remote_control + listen_on)" >&2
+		exit 1
+	fi
 	# Toggle: a viewer window is tagged with user_var claude_img_src=$KEY.
 	# `kitty @ ls --match` exits non-zero when nothing matches.
 	if kitty @ ls --match "var:claude_img_src=$KEY" >/dev/null 2>&1; then
@@ -101,6 +123,12 @@ launch_kitty() {
 	if [[ -n ${KITTY_WINDOW_ID:-} ]]; then
 		kitty @ goto-layout --match "window_id:$KITTY_WINDOW_ID" splits >/dev/null 2>&1 || true
 		placement=(--match "window_id:$KITTY_WINDOW_ID" --location=vsplit --next-to "id:$KITTY_WINDOW_ID" --keep-focus)
+	else
+		# Inside tmux, KITTY_WINDOW_ID isn't propagated, so anchor to the active
+		# window: switch it to the splits layout, then vsplit beside it. Assumes the
+		# active kitty window hosts tmux as a single window (the normal setup).
+		kitty @ goto-layout splits >/dev/null 2>&1 || true
+		placement=(--location=vsplit --keep-focus)
 	fi
 	kitty @ launch --type=window ${placement[@]+"${placement[@]}"} --var claude_img_src="$KEY" \
 		--env AEYE_DIR="$STATE_DIR" \

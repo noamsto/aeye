@@ -166,6 +166,27 @@ no key needed. Everywhere else, the `d` key opens a small drag window via
 [`dragon`](https://github.com/mwh/dragon) if one is on PATH (Linux/X11/Wayland),
 and otherwise copies the image to the clipboard.
 
+### Enable kitty-pane mode (native drag-out inside tmux)
+
+Native drag-out needs a real kitty pane — tmux can't carry the protocol. To make
+the viewer open as a kitty split instead of a tmux split while you work in tmux:
+
+1. **kitty** — allow remote control on a stable socket (`kitty.conf`):
+   ```
+   allow_remote_control yes
+   listen_on unix:/tmp/kitty-{kitty_pid}
+   ```
+2. **tmux** — let panes see kitty's socket and the mode flag (`tmux.conf`):
+   ```
+   set -ga update-environment "KITTY_LISTEN_ON AEYE_HOST"
+   ```
+3. **Opt in** — `export AEYE_HOST=kitty`.
+
+If the socket isn't reachable, aeye falls back to a tmux split (drag-out then
+uses `ripdrag`/`dragon` or the clipboard). Moving focus between the kitty split
+and your tmux panes with one keymap (e.g. Ctrl+hjkl) is a terminal-config
+concern — see smart-splits.nvim or a kitty `neighboring_window` mapping.
+
 ## Architecture
 
 <picture>

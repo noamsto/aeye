@@ -5,7 +5,7 @@
 setup() {
 	export CLAUDE_STATUS_DIR="$BATS_TEST_TMPDIR/state"
 	# Clean slate: no host signals unless a test opts in.
-	unset TMUX KITTY_LISTEN_ON WEZTERM_PANE GHOSTTY_RESOURCES_DIR TERM TERM_PROGRAM
+	unset TMUX TMUX_PANE KITTY_LISTEN_ON WEZTERM_PANE GHOSTTY_RESOURCES_DIR TERM TERM_PROGRAM
 	export CLAUDE_CODE_SESSION_ID="sess-123"
 	mkdir -p "$CLAUDE_STATUS_DIR/images"
 	# Non-empty manifest so launch tests get past the "no images yet" guard.

@@ -102,19 +102,22 @@ environment, not the inherited shell's); then `export AEYE_HOST=kitty`.
 
 ## Testing
 
-`tests/*.bats` already exercises the launcher (see `toggle.bats`). Resolution
-isn't printable, so assert on **which launch path ran** via PATH-stubbed `kitty`
-and `tmux` that log their invocation (argv + the `$KEY` passed to the viewer) to
-a temp file the test reads — the same stubbing the existing toggle tests use:
+`tests/*.bats` already exercises the launcher (see `toggle.bats`: PATH-stub
+`tmux`/`kitty`/`aeye` that log calls, then assert on the log). Two seams:
 
-- `AEYE_HOST=kitty` with `$TMUX` set + a `kitty @ ls` stub that succeeds → the
-  `kitty @ launch` stub is called, and the `$KEY` it carries is the **tmux pane
-  id**, not the session id (the decoupling guard).
-- `AEYE_HOST` unset → detection unchanged (tmux env → `tmux split-window`; bare
-  kitty → `kitty @ launch`).
-- `AEYE_HOST=kitty` with a bare `kitty @ ls` stub that **fails** → `tmux
-  split-window` is called instead (fallback), stub `kitty @ launch` never runs.
-- An invalid `AEYE_HOST` value → ignored, detection used.
+**Resolution** — the script already has a `--resolve` flag that prints
+`MODE<TAB>KEY<TAB>MANIFEST` and exits before launching. Assert directly on it:
+- `AEYE_HOST=kitty` with `$TMUX`+`$TMUX_PANE` set → `MODE=kitty` **and** `KEY` is
+  the tmux pane id, not the session id (the decoupling guard).
+- `AEYE_HOST` unset, in tmux → `MODE=tmux`; unset, bare kitty → `MODE=kitty`.
+- An unknown `AEYE_HOST` value → still forced as `MODE` (the script doesn't
+  validate; `main`'s `case` already exits cleanly for unknown modes), so the
+  test asserts detection is *skipped* when `AEYE_HOST` is set.
+
+**Fallback** (dispatch, not resolution) — stub `kitty` so a bare `kitty @ ls`
+exits non-zero; run the script (no `--resolve`) with `AEYE_HOST=kitty` + `$TMUX`
+set → assert the `tmux` stub's log shows `split-window` and the `kitty` stub was
+never asked to `launch`.
 
 A `shellcheck` pass on the edited script is part of done (project convention).
 

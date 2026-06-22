@@ -56,6 +56,7 @@ resolve_target() {
 		MODE=kitty
 	elif [[ -n ${WEZTERM_PANE:-} ]]; then
 		MODE=wezterm
+	# TERM can be overridden in a user's shell; GHOSTTY_RESOURCES_DIR is a reliable fallback.
 	elif [[ ${TERM:-} == xterm-ghostty* || -n ${GHOSTTY_RESOURCES_DIR:-} ]]; then
 		MODE=ghostty
 	elif [[ ${TERM_PROGRAM:-} == iTerm.app ]]; then

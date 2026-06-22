@@ -54,7 +54,7 @@ STUB
 }
 
 @test "AEYE_HOST is honored over auto-detection" {
-	# shellcheck disable=SC2031
+	# shellcheck disable=SC2030,SC2031
 	export AEYE_HOST=ghostty
 	run bash "$APP" --resolve
 	[ "$(printf '%s' "$output" | cut -f1)" = "ghostty" ]
@@ -66,4 +66,14 @@ STUB
 	run bash "$APP" --resolve
 	[ "$(printf '%s' "$output" | cut -f1)" = "kitty" ]
 	[ "$(printf '%s' "$output" | cut -f2)" = "sess123" ]
+}
+
+@test "kitty launch from inside tmux opens a vsplit (no KITTY_WINDOW_ID)" {
+	# shellcheck disable=SC2031
+	export AEYE_HOST=kitty
+	unset KITTY_WINDOW_ID
+	run bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q "launch" "$KITTY_LOG"
+	grep -q -- "--location=vsplit" "$KITTY_LOG"
 }

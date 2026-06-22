@@ -105,6 +105,12 @@ launch_kitty() {
 	if [[ -n ${KITTY_WINDOW_ID:-} ]]; then
 		kitty @ goto-layout --match "window_id:$KITTY_WINDOW_ID" splits >/dev/null 2>&1 || true
 		placement=(--match "window_id:$KITTY_WINDOW_ID" --location=vsplit --next-to "id:$KITTY_WINDOW_ID" --keep-focus)
+	else
+		# Inside tmux, KITTY_WINDOW_ID isn't propagated, so anchor to the active
+		# window: switch it to the splits layout, then vsplit beside it. Assumes the
+		# active kitty window hosts tmux as a single window (the normal setup).
+		kitty @ goto-layout splits >/dev/null 2>&1 || true
+		placement=(--location=vsplit --keep-focus)
 	fi
 	kitty @ launch --type=window ${placement[@]+"${placement[@]}"} --var claude_img_src="$KEY" \
 		--env AEYE_DIR="$STATE_DIR" \

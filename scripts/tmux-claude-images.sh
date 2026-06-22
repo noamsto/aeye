@@ -21,6 +21,7 @@ ENSURE_OPEN=""
 #   MODE=kitty   + KEY=<cc session id>  outside tmux, kitty remote control up
 #   MODE=wezterm + KEY=<cc session id>  outside tmux, in wezterm
 #   MODE=ghostty + KEY=<cc session id>  outside tmux, in ghostty
+#   MODE=iterm   + KEY=<cc session id>  outside tmux, in iTerm2 (macOS, AppleScript)
 #   MODE=none                           no host available
 #
 # Adding a terminal:
@@ -45,6 +46,10 @@ resolve_target() {
 	# TERM can be overridden in a user's shell; GHOSTTY_RESOURCES_DIR is a reliable fallback.
 	elif [[ ${TERM:-} == xterm-ghostty* || -n ${GHOSTTY_RESOURCES_DIR:-} ]]; then
 		MODE=ghostty
+		KEY="${CLAUDE_CODE_SESSION_ID:-}"
+		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
+	elif [[ ${TERM_PROGRAM:-} == iTerm.app ]]; then
+		MODE=iterm
 		KEY="${CLAUDE_CODE_SESSION_ID:-}"
 		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
 	else
@@ -152,6 +157,79 @@ launch_ghostty() {
 	esac
 }
 
+# iTerm2's only stable IPC is AppleScript. We split the current session to run the
+# viewer, persist the new session's unique id (keyed by cc session id), and close by
+# id on toggle. pgrep-on-viewer (ghostty's trick) can kill the viewer but not reliably
+# close the split pane — that depends on the profile's "When session ends" setting.
+iterm_split() {
+	osascript \
+		-e 'on run argv' \
+		-e 'tell application "iTerm2"' \
+		-e 'tell current session of current window' \
+		-e 'set s to (split horizontally with default profile command (item 1 of argv))' \
+		-e 'end tell' \
+		-e 'return id of s' \
+		-e 'end tell' \
+		-e 'end run' \
+		-- "$1"
+}
+
+iterm_alive() {
+	local r
+	r="$(osascript \
+		-e 'on run argv' \
+		-e 'set targetId to item 1 of argv' \
+		-e 'tell application "iTerm2"' \
+		-e 'repeat with w in windows' \
+		-e 'repeat with t in tabs of w' \
+		-e 'repeat with s in sessions of t' \
+		-e 'if (id of s) is targetId then return "1"' \
+		-e 'end repeat' \
+		-e 'end repeat' \
+		-e 'end repeat' \
+		-e 'end tell' \
+		-e 'return "0"' \
+		-e 'end run' \
+		-- "$1" 2>/dev/null)" || return 1
+	[[ $r == 1 ]]
+}
+
+iterm_close() {
+	osascript \
+		-e 'on run argv' \
+		-e 'set targetId to item 1 of argv' \
+		-e 'tell application "iTerm2"' \
+		-e 'repeat with w in windows' \
+		-e 'repeat with t in tabs of w' \
+		-e 'repeat with s in sessions of t' \
+		-e 'if (id of s) is targetId then tell s to close' \
+		-e 'end repeat' \
+		-e 'end repeat' \
+		-e 'end repeat' \
+		-e 'end tell' \
+		-e 'end run' \
+		-- "$1" >/dev/null 2>&1 || true
+}
+
+launch_iterm() {
+	local idfile="$IMAGES_DIR/$KEY.iterm-session" session=""
+	[[ -f $idfile ]] && session="$(<"$idfile")"
+	if [[ -n $session ]] && iterm_alive "$session"; then
+		[[ -n $ENSURE_OPEN ]] && return # already open; ensure-open is a no-op
+		iterm_close "$session"
+		rm -f "$idfile"
+		return
+	fi
+	# command runs under iTerm2's app environment (never saw our env), so forward the
+	# state dir explicitly — same as the wezterm/ghostty paths. printf '%q' (bash-3.2
+	# safe) quotes each value so the command string survives iTerm2's shell re-parsing
+	# a path with spaces (e.g. /Users/Jane Doe/...).
+	local cmd
+	cmd="env AEYE_DIR=$(printf '%q' "$STATE_DIR") CLAUDE_STATUS_DIR=$(printf '%q' "$STATE_DIR") $(printf '%q' "$VIEWER_BIN") $(printf '%q' "$KEY")"
+	session="$(iterm_split "$cmd")"
+	printf '%s\n' "$session" >"$idfile"
+}
+
 main() {
 	resolve_target
 	[[ ${1:-} == --ensure-open ]] && ENSURE_OPEN=1
@@ -161,10 +239,10 @@ main() {
 	fi
 	case $MODE in
 	none)
-		echo "image carousel needs tmux, kitty remote control, wezterm, or ghostty" >&2
+		echo "image carousel needs tmux, kitty remote control, wezterm, ghostty, or iTerm2" >&2
 		exit 0
 		;;
-	kitty | wezterm | ghostty)
+	kitty | wezterm | ghostty | iterm)
 		[[ -n $KEY ]] || {
 			echo "no CLAUDE_CODE_SESSION_ID; cannot locate images" >&2
 			exit 0

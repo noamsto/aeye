@@ -48,21 +48,28 @@ func TestChooseGridBackend(t *testing.T) {
 		name        string
 		term        string
 		inTmux      bool
+		termProgram string
+		lcTerminal  string
 		weztermPane string
 		envTerm     string
 		probe       func() bool
 		want        gridBackend
+		wantFmt     string
 	}{
-		{"kitty termname", "xterm-kitty", false, "", "xterm-kitty", nil, backendKitty},
-		{"ghostty termname", "xterm-ghostty", false, "", "xterm-ghostty", nil, backendKitty},
-		{"kitty suffix", "xterm-kitty-direct", false, "", "foot", nil, backendKitty},
-		{"wezterm standalone", "xterm-256color", false, "1", "xterm-256color", nil, backendRaster},
-		{"foot standalone", "foot", false, "", "foot", nil, backendRaster},
-		{"in tmux, probe yes", "tmux-256color", true, "", "tmux-256color", yes, backendRaster},
-		{"in tmux, probe no", "tmux-256color", true, "", "tmux-256color", no, backendSymbols},
-		{"leaked weztermpane in tmux still probes", "tmux-256color", true, "1", "tmux-256color", no, backendSymbols},
-		{"unknown standalone, probe yes", "xterm-256color", false, "", "xterm-256color", yes, backendRaster},
-		{"unknown standalone, probe no", "xterm-256color", false, "", "xterm-256color", no, backendSymbols},
+		{"kitty termname", "xterm-kitty", false, "", "", "", "xterm-kitty", nil, backendKitty, ""},
+		{"ghostty termname", "xterm-ghostty", false, "", "", "", "xterm-ghostty", nil, backendKitty, ""},
+		{"kitty suffix", "xterm-kitty-direct", false, "", "", "", "foot", nil, backendKitty, ""},
+		{"iterm by TERM_PROGRAM", "xterm-256color", false, "iTerm.app", "", "", "xterm-256color", nil, backendRaster, formatITerm},
+		{"iterm by LC_TERMINAL", "xterm-256color", false, "", "iTerm2", "", "xterm-256color", nil, backendRaster, formatITerm},
+		{"wezterm by TERM_PROGRAM", "xterm-256color", false, "WezTerm", "", "", "xterm-256color", nil, backendRaster, formatITerm},
+		{"wezterm by WEZTERM_PANE", "xterm-256color", false, "", "", "1", "xterm-256color", nil, backendRaster, formatITerm},
+		{"foot standalone", "foot", false, "", "", "", "foot", nil, backendRaster, formatSixel},
+		{"in tmux, probe yes", "tmux-256color", true, "tmux", "", "", "tmux-256color", yes, backendRaster, formatSixel},
+		{"in tmux, probe no", "tmux-256color", true, "tmux", "", "", "tmux-256color", no, backendSymbols, ""},
+		{"leaked weztermpane in tmux still probes", "tmux-256color", true, "", "", "1", "tmux-256color", no, backendSymbols, ""},
+		{"leaked iterm env in tmux still probes", "tmux-256color", true, "iTerm.app", "iTerm2", "", "tmux-256color", yes, backendRaster, formatSixel},
+		{"unknown standalone, probe yes", "xterm-256color", false, "", "", "", "xterm-256color", yes, backendRaster, formatSixel},
+		{"unknown standalone, probe no", "xterm-256color", false, "", "", "", "xterm-256color", no, backendSymbols, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -70,9 +77,9 @@ func TestChooseGridBackend(t *testing.T) {
 			if probe == nil {
 				probe = func() bool { t.Fatal("probe must not run on a fast-path"); return false }
 			}
-			got := chooseGridBackend(c.term, c.inTmux, c.weztermPane, c.envTerm, probe)
-			if got != c.want {
-				t.Errorf("chooseGridBackend = %v, want %v", got, c.want)
+			got, fmt := chooseGridBackend(c.term, c.inTmux, c.termProgram, c.lcTerminal, c.weztermPane, c.envTerm, probe)
+			if got != c.want || fmt != c.wantFmt {
+				t.Errorf("chooseGridBackend = (%v, %q), want (%v, %q)", got, fmt, c.want, c.wantFmt)
 			}
 		})
 	}
@@ -110,6 +117,27 @@ func TestSymbolsArgs(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("arg %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestRasterArgs(t *testing.T) {
+	cases := []struct {
+		format string
+		want   []string
+	}{
+		{formatITerm, []string{"-f", "iterm", "--size", "20x10", "/a/b.png"}},
+		{formatSixel, []string{"-f", "sixels", "--size", "20x10", "/a/b.png"}},
+	}
+	for _, c := range cases {
+		got := rasterArgs(c.format, "/a/b.png", 20, 10)
+		if len(got) != len(c.want) {
+			t.Fatalf("%s: len = %d, want %d: %v", c.format, len(got), len(c.want), got)
+		}
+		for i := range c.want {
+			if got[i] != c.want[i] {
+				t.Errorf("%s: arg %d = %q, want %q", c.format, i, got[i], c.want[i])
+			}
 		}
 	}
 }

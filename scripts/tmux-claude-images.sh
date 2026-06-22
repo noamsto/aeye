@@ -84,6 +84,19 @@ launch_tmux() {
 }
 
 launch_kitty() {
+	# A bare `kitty @ ls` lists windows iff the remote-control socket is reachable
+	# (distinct from the toggle's `@ ls --match`, which also fails on no match).
+	# Inside tmux the socket usually isn't reachable, so degrade to a tmux split
+	# rather than failing; outside tmux there's nothing to fall back to.
+	if ! kitty @ ls >/dev/null 2>&1; then
+		if [[ -n ${TMUX:-} ]]; then
+			echo "aeye: kitty remote control unreachable from tmux; using a tmux split (see README: kitty-pane mode)" >&2
+			launch_tmux
+			return
+		fi
+		echo "aeye: kitty remote control unreachable (enable allow_remote_control + listen_on)" >&2
+		exit 1
+	fi
 	# Toggle: a viewer window is tagged with user_var claude_img_src=$KEY.
 	# `kitty @ ls --match` exits non-zero when nothing matches.
 	if kitty @ ls --match "var:claude_img_src=$KEY" >/dev/null 2>&1; then

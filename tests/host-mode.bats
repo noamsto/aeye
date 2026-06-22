@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+bats_require_minimum_version 1.5.0
 
 setup() {
 	export CLAUDE_STATUS_DIR="$BATS_TEST_TMPDIR/state"
@@ -69,11 +70,21 @@ STUB
 }
 
 @test "kitty launch from inside tmux opens a vsplit (no KITTY_WINDOW_ID)" {
-	# shellcheck disable=SC2031
+	# shellcheck disable=SC2030,SC2031
 	export AEYE_HOST=kitty
 	unset KITTY_WINDOW_ID
 	run bash "$APP"
 	[ "$status" -eq 0 ]
 	grep -q "launch" "$KITTY_LOG"
 	grep -q -- "--location=vsplit" "$KITTY_LOG"
+}
+
+@test "kitty unreachable from tmux falls back to a tmux split" {
+	# shellcheck disable=SC2030,SC2031
+	export AEYE_HOST=kitty
+	export STUB_KITTY_REACHABLE=1
+	run bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q "split-window" "$TMUX_LOG"
+	run ! grep -q "launch" "$KITTY_LOG"
 }

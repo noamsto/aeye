@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.0](https://github.com/noamsto/aeye/compare/v0.7.1...v0.8.0) (2026-06-22)
+
+
+### Features
+
+* configurable kitty-pane launch mode (AEYE_HOST) ([#90](https://github.com/noamsto/aeye/issues/90)) ([#91](https://github.com/noamsto/aeye/issues/91)) ([999178e](https://github.com/noamsto/aeye/commit/999178e1275a1ade92ac97eada5bdebe6296ffec))
+* drag the selected image out — native kitty OSC 72 + helper/clipboard fallback ([#86](https://github.com/noamsto/aeye/issues/86)) ([#87](https://github.com/noamsto/aeye/issues/87)) ([2740711](https://github.com/noamsto/aeye/commit/27407113810db5fb6ac1a8acda47471c75bb9eda))
+* OSC 1337 rendering + iTerm2 launch mode ([#60](https://github.com/noamsto/aeye/issues/60)) ([#88](https://github.com/noamsto/aeye/issues/88)) ([729552d](https://github.com/noamsto/aeye/commit/729552db3ca8b4402c1b52c5ce88050c7d56d96c))
+
 ## [0.7.1](https://github.com/noamsto/aeye/compare/v0.7.0...v0.7.1) (2026-06-18)
 
 

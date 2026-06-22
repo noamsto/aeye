@@ -43,6 +43,11 @@ Out of scope (the user's nix-config, documented but not implemented):
 one of those values, it forces `MODE` and detection is skipped. Unset = today's
 behavior. So `AEYE_HOST=kitty` makes a tmux user get the kitty split.
 
+`kitty` is the only value that meaningfully changes things *from inside tmux*
+(it's the one host that can open a split via a remote-control socket reachable
+across the multiplexer). Other forced values are honored but only sensible
+outside tmux; an unworkable combination degrades via the fallback (§4).
+
 ### 2. Decouple the manifest KEY from the MODE
 
 This is the subtle correctness point. The capture hook (`images.sh`) and the
@@ -71,30 +76,47 @@ no `--match`/`--next-to`), and `goto-layout splits` on the active window first s
 vsplit takes effect. The toggle (`kitty @ ls --match var:claude_img_src=$KEY`)
 already works socket-only, no `$KITTY_WINDOW_ID` needed.
 
+Assumption: the active kitty window/tab hosts the tmux client as a single kitty
+window (the normal "kitty runs tmux" setup), so `goto-layout splits` + vsplit
+just splits it and the viewer lands beside it. A tab the user has *already*
+split into multiple kitty windows could be rearranged by the layout switch —
+acceptable for an opt-in mode, noted in the README.
+
 ### 4. Graceful fallback
 
-`launch_kitty` requires a reachable socket. If `MODE=kitty` was reached by the
-`AEYE_HOST` override but `kitty @ ls` fails (no `KITTY_LISTEN_ON` / socket
-unreachable from tmux), fall back to `launch_tmux` and print a one-line stderr
-hint pointing at the README setup. Never hard-fails; a misconfigured override
-degrades to today's tmux split.
+`launch_kitty` requires a reachable socket. When `MODE=kitty` is reached via the
+`AEYE_HOST` override *while inside tmux*, probe reachability first with a bare
+`kitty @ ls` (lists windows iff the socket is up) — distinct from the toggle's
+`kitty @ ls --match …`, which also exits non-zero merely on *no match*. If the
+bare probe fails (no `KITTY_LISTEN_ON` / socket unreachable from tmux), fall back
+to `launch_tmux` and print a one-line stderr hint pointing at the README setup.
+Never hard-fails; a misconfigured override degrades to today's tmux split.
 
 ### 5. Prerequisite (documented, not implemented)
 
 README gains a short "Enable kitty-pane mode (native drag-out in tmux)" section:
 kitty `allow_remote_control yes` + stable `listen_on`; tmux
-`set -ga update-environment KITTY_LISTEN_ON`; then `export AEYE_HOST=kitty`.
+`set -ga update-environment KITTY_LISTEN_ON AEYE_HOST` (both — `AEYE_HOST` must
+reach the pane too, especially for the `prefix+I` binding which runs in tmux's
+environment, not the inherited shell's); then `export AEYE_HOST=kitty`.
 
 ## Testing
 
-`tests/*.bats` already exercises the launcher. Add a bats test for MODE/KEY
-resolution as a pure function of the environment (stub `kitty`/`tmux` as needed):
+`tests/*.bats` already exercises the launcher (see `toggle.bats`). Resolution
+isn't printable, so assert on **which launch path ran** via PATH-stubbed `kitty`
+and `tmux` that log their invocation (argv + the `$KEY` passed to the viewer) to
+a temp file the test reads — the same stubbing the existing toggle tests use:
 
-- `AEYE_HOST=kitty` with `$TMUX` set → `MODE=kitty`, `KEY` = the tmux pane id
-  (not the session id) — the decoupling guard.
-- `AEYE_HOST` unset → detection unchanged (tmux → tmux, bare kitty → kitty).
-- `AEYE_HOST=kitty` but `kitty @ ls` stub fails → falls back to the tmux path.
+- `AEYE_HOST=kitty` with `$TMUX` set + a `kitty @ ls` stub that succeeds → the
+  `kitty @ launch` stub is called, and the `$KEY` it carries is the **tmux pane
+  id**, not the session id (the decoupling guard).
+- `AEYE_HOST` unset → detection unchanged (tmux env → `tmux split-window`; bare
+  kitty → `kitty @ launch`).
+- `AEYE_HOST=kitty` with a bare `kitty @ ls` stub that **fails** → `tmux
+  split-window` is called instead (fallback), stub `kitty @ launch` never runs.
 - An invalid `AEYE_HOST` value → ignored, detection used.
+
+A `shellcheck` pass on the edited script is part of done (project convention).
 
 Manual: in kitty+tmux with the prerequisite config + `AEYE_HOST=kitty`, toggle →
 viewer opens in a kitty split → drag the image out → it drops.

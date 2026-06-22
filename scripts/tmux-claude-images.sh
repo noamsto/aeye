@@ -31,27 +31,31 @@ ENSURE_OPEN=""
 #      (U+10EEEE) — add the $TERM prefix to chooseGridBackend in
 #      gallery_render.go. Without them the host falls back to chafa.
 resolve_target() {
+	# Key the manifest exactly as the capture hook (adapters/.../images.sh) does —
+	# pane id inside tmux, else the Claude session id — INDEPENDENT of launch MODE.
+	# That way capture and viewer always read the same file even when AEYE_HOST
+	# sends a tmux user down the kitty launch path.
+	KEY="${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}"
+	MANIFEST="$IMAGES_DIR/${KEY#%}.jsonl"
+
+	# AEYE_HOST forces the launcher; unset = auto-detect. Only `kitty` is useful
+	# from inside tmux (it can open a split over the RC socket); other values are
+	# honored but sensible only outside tmux, and degrade via launch_kitty's
+	# fallback / main's mode guard.
+	if [[ -n ${AEYE_HOST:-} ]]; then
+		MODE="$AEYE_HOST"
+		return
+	fi
 	if [[ -n ${TMUX:-} ]]; then
 		MODE=tmux
-		KEY="${TMUX_PANE:-$(tmux display-message -p '#{pane_id}')}"
-		MANIFEST="$IMAGES_DIR/${KEY#%}.jsonl"
 	elif [[ -n ${KITTY_LISTEN_ON:-} ]]; then
 		MODE=kitty
-		KEY="${CLAUDE_CODE_SESSION_ID:-}"
-		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
 	elif [[ -n ${WEZTERM_PANE:-} ]]; then
 		MODE=wezterm
-		KEY="${CLAUDE_CODE_SESSION_ID:-}"
-		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
-	# TERM can be overridden in a user's shell; GHOSTTY_RESOURCES_DIR is a reliable fallback.
 	elif [[ ${TERM:-} == xterm-ghostty* || -n ${GHOSTTY_RESOURCES_DIR:-} ]]; then
 		MODE=ghostty
-		KEY="${CLAUDE_CODE_SESSION_ID:-}"
-		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
 	elif [[ ${TERM_PROGRAM:-} == iTerm.app ]]; then
 		MODE=iterm
-		KEY="${CLAUDE_CODE_SESSION_ID:-}"
-		MANIFEST="$IMAGES_DIR/$KEY.jsonl"
 	else
 		MODE=none
 	fi

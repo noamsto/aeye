@@ -2,27 +2,31 @@
 # Open the Claude image carousel for the invoking session.
 #   - Inside tmux: toggle a split pane (runnable by Claude via a Bash call;
 #     also bound to prefix+I if the host tmux config provides that bind).
-#     Keyed by $TMUX_PANE.
-#   - Outside tmux, in kitty with remote control: toggle a split window via
-#     `kitty @ launch`. Keyed by $CLAUDE_CODE_SESSION_ID.
-#   - Outside tmux, in wezterm: toggle a real split via `wezterm cli split-pane`.
-#   - Outside tmux, in ghostty: toggle a separate window via `ghostty +new-window`
-#     (Linux) / `open -na ghostty` (macOS). Keyed by $CLAUDE_CODE_SESSION_ID.
-# The carousel binary ($AEYE_BIN, default `aeye` on PATH)
-# and manifest format are shared.
+#   - In kitty with remote control: toggle a split window via `kitty @ launch`.
+#   - In wezterm: toggle a real split via `wezterm cli split-pane`.
+#   - In ghostty: toggle a separate window via `ghostty +new-window`
+#     (Linux) / `open -na ghostty` (macOS).
+# AEYE_HOST=<mode> overrides auto-detection. The useful case is AEYE_HOST=kitty
+# from inside tmux: it opens a vsplit in the enclosing kitty window over the RC
+# socket, falling back to a tmux split if that socket is unreachable.
+# The manifest is keyed by $TMUX_PANE (else $CLAUDE_CODE_SESSION_ID) regardless
+# of mode, so capture and viewer always agree. The carousel binary ($AEYE_BIN,
+# default `aeye` on PATH) and manifest format are shared.
 set -euo pipefail
 
 STATE_DIR="${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}"
 IMAGES_DIR="$STATE_DIR/images"
 ENSURE_OPEN=""
 
-# resolve_target sets MODE/KEY/MANIFEST from the environment.
-#   MODE=tmux    + KEY=<pane id>        inside tmux
-#   MODE=kitty   + KEY=<cc session id>  outside tmux, kitty remote control up
-#   MODE=wezterm + KEY=<cc session id>  outside tmux, in wezterm
-#   MODE=ghostty + KEY=<cc session id>  outside tmux, in ghostty
-#   MODE=iterm   + KEY=<cc session id>  outside tmux, in iTerm2 (macOS, AppleScript)
-#   MODE=none                           no host available
+# resolve_target sets MODE/KEY/MANIFEST from the environment. KEY is always
+# ${TMUX_PANE:-cc session id} (the capture hook's key), independent of MODE.
+#   MODE=tmux       inside tmux
+#   MODE=kitty      kitty remote control up (or AEYE_HOST=kitty from inside tmux)
+#   MODE=wezterm    in wezterm
+#   MODE=ghostty    in ghostty
+#   MODE=iterm      in iTerm2 (macOS, AppleScript)
+#   MODE=none       no host available
+# AEYE_HOST=<mode> forces MODE, bypassing the auto-detection below.
 #
 # Adding a terminal:
 #   1. Detect it here by a distinct env var; set MODE/KEY/MANIFEST.

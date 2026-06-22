@@ -75,8 +75,10 @@ STUB
 	unset KITTY_WINDOW_ID
 	run bash "$APP"
 	[ "$status" -eq 0 ]
-	grep -q "launch" "$KITTY_LOG"
-	grep -q -- "--location=vsplit" "$KITTY_LOG"
+	run grep -q -- "@ launch" "$KITTY_LOG"
+	[ "$status" -eq 0 ]
+	run grep -q -- "--location=vsplit" "$KITTY_LOG"
+	[ "$status" -eq 0 ]
 }
 
 @test "kitty unreachable from tmux falls back to a tmux split" {
@@ -85,6 +87,8 @@ STUB
 	export STUB_KITTY_REACHABLE=1
 	run bash "$APP"
 	[ "$status" -eq 0 ]
-	grep -q "split-window" "$TMUX_LOG"
-	run ! grep -q "launch" "$KITTY_LOG"
+	run grep -q -- "split-window" "$TMUX_LOG"
+	[ "$status" -eq 0 ]
+	run grep -q -- "@ launch" "$KITTY_LOG"
+	[ "$status" -ne 0 ]
 }

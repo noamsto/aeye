@@ -21,3 +21,4 @@ jobs:
       - uses: actions/checkout@v6
       - uses: DeterminateSystems/nix-installer-action@v22
       - run: nix build .#default # catches stale vendorHash on dependency changes
+      - run: nix develop -c bats tests/ # adapter/hook/diagram integration tests

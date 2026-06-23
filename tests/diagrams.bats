@@ -63,11 +63,14 @@ run_app() { # $1 = fixture name
 	[[ $png == "$DIAGRAMS"/*.png ]]
 }
 
-@test "the hook invokes aeye render-diagram with the source and png" {
+@test "the hook invokes aeye render-diagram for both theme variants" {
 	run_app hook-write-d2.json
 	png="$(jq -r '.path' "$MANIFEST")"
-	run cat "$RENDER_LOG"
-	[[ $output == "render-diagram $DOTD2 $png" ]]
+	# both themes render off one source; the manifest records the dark variant
+	run grep -cx "render-diagram $DOTD2 ${png%-dark.png}-light.png" "$RENDER_LOG"
+	[ "$output" -eq 1 ]
+	run grep -cx "render-diagram $DOTD2 $png" "$RENDER_LOG"
+	[ "$output" -eq 1 ]
 }
 
 @test "a relative .d2 file_path is resolved against cwd" {
@@ -86,12 +89,32 @@ run_app() { # $1 = fixture name
 	[ "$output" -eq 1 ]
 }
 
-@test "editing the .d2 (new content) -> a second manifest line" {
+@test "editing the .d2 supersedes the prior render: one line, old files pruned" {
 	run_app hook-write-d2.json
+	old="$(jq -r '.path' "$MANIFEST")"
 	printf 'a -> b -> c\n' >"$DOTD2"
 	run_app hook-edit-d2.json
+	new="$(jq -r '.path' "$MANIFEST")"
 	run wc -l <"$MANIFEST"
-	[ "$output" -eq 2 ]
+	[ "$output" -eq 1 ]
+	[ "$old" != "$new" ]
+	# the new render is shown; the superseded one is gone from disk (both themes)
+	[ -f "$new" ]
+	[ ! -f "$old" ]
+	[ ! -f "${old%-dark.png}-light.png" ]
+}
+
+@test "a render still referenced by another pane's manifest survives pruning" {
+	run_app hook-write-d2.json
+	old="$(jq -r '.path' "$MANIFEST")"
+	# a second pane's manifest references the same render
+	printf '{"type":"image","path":"%s"}\n' "$old" >"$CLAUDE_STATUS_DIR/images/9.jsonl"
+	printf 'a -> b -> c\n' >"$DOTD2"
+	run_app hook-edit-d2.json
+	# pruned from this pane's manifest, but the file stays — pane 9 still shows it
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 1 ]
+	[ -f "$old" ]
 }
 
 @test "a non-.d2 file_path is ignored (fast-bail)" {
@@ -122,7 +145,7 @@ run_app() { # $1 = fixture name
 	[ ! -f "$DIAGRAMS/render-errors.log" ]
 }
 
-@test "a markdown node (<foreignObject> in the rendered svg) warns the agent, logs it, and still renders" {
+@test "a markdown node (<foreignObject>) is suppressed: warned, logged, not shown" {
 	printf 'a: "ok"\nb: |md\n  blank\n|\na -> b\n' >"$DOTD2"
 	run run_app hook-write-d2.json
 	[ "$status" -eq 0 ]
@@ -133,8 +156,23 @@ run_app() { # $1 = fixture name
 	# logged for diagnostics
 	run grep -c 'WARN markdown' "$DIAGRAMS/render-errors.log"
 	[ "$output" -ge 1 ]
-	# the diagram still renders — the other nodes are fine
+	# the blank render is NOT added to the manifest, the carousel is NOT opened,
+	# and the blank files are swept from disk
+	[ ! -f "$MANIFEST" ]
+	[ ! -s "$TOGGLE_LOG" ]
+	[ -z "$(ls "$DIAGRAMS"/*.png 2>/dev/null)" ]
+}
+
+@test "fixing the |md to a plain label renders and appears" {
+	printf 'b: |md\n  blank\n|\n' >"$DOTD2"
+	run_app hook-write-d2.json
+	[ ! -f "$MANIFEST" ]
+	# rewrite the body as a plain quoted label
+	printf 'b: "blank"\n' >"$DOTD2"
+	run_app hook-edit-d2.json
 	[ -f "$MANIFEST" ]
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 1 ]
 }
 
 @test "no markdown (no <foreignObject>) -> no warning on stdout" {

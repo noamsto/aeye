@@ -90,6 +90,15 @@ _d2_render_fail() {
 	rm -f "$base.svg" "$base.err" "$png"
 }
 
+# d2_rm_render_set DARK_PNG -> remove both theme variants (png/svg/err) of one
+# render. The manifest records the dark png; the light sibling and the .err files
+# share the <hash> prefix, so strip the -dark.png suffix and sweep the lot.
+d2_rm_render_set() {
+	local base="${1%-dark.png}"
+	rm -f "$base-dark.png" "$base-dark.svg" "$base-dark.err" \
+		"$base-light.png" "$base-light.svg" "$base-light.err"
+}
+
 # d2_render SRC DIAGRAMS_DIR -> renders both theme variants of SRC (each only if
 # absent) and echoes the canonical (dark) png path for the manifest; the carousel
 # swaps the suffix to the live theme at view time. Returns 1 (no output) when the

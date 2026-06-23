@@ -38,15 +38,19 @@ d2_render "$candidate" "$DIAGRAMS_DIR" >/dev/null || exit 0
 # d2 emits |md / |markdown bodies as an HTML <foreignObject>, which resvg can't
 # paint — those nodes rasterize blank while d2 exits 0, a silent failure that
 # looks like a missing entity. Detect it on the rendered SVG (exact: no
-# source-grep false positives, catches every markdown syntax) and warn the agent.
-# Non-blocking — the rest of the diagram still renders.
+# source-grep false positives, catches every markdown syntax). Suppress the blank
+# render entirely — drop it from disk, never add it to the manifest or open the
+# carousel — and warn the agent so the corrected re-render is the only one shown.
+# Deleting it also re-arms this check, since the fixed re-render renders fresh.
 if [[ $was_missing -eq 1 ]] && grep -q '<foreignObject' "$svg"; then
+	d2_rm_render_set "$png"
 	printf -v now '%(%FT%T%z)T' -1
-	printf '%s\t%s\tWARN markdown block(s) render blank in resvg (<foreignObject>)\n' \
+	printf '%s\t%s\tWARN markdown block(s) render blank in resvg (<foreignObject>) — suppressed\n' \
 		"$now" "$(basename "$candidate")" >>"$DIAGRAMS_DIR/render-errors.log"
-	warn="$(basename "$candidate") contains markdown (|md / |markdown) block(s) that render BLANK in the carousel: resvg can't paint the HTML <foreignObject> that D2 emits for markdown. Rewrite those node bodies as plain quoted labels (use \\n for line breaks)."
+	warn="$(basename "$candidate") contains markdown (|md / |markdown) block(s) that render BLANK in the carousel: resvg can't paint the HTML <foreignObject> that D2 emits for markdown. The diagram was NOT shown. Rewrite those node bodies as plain quoted labels (use \\n for line breaks) — this applies to title: too — then it renders and appears."
 	jq -nc --arg ctx "$warn" \
 		'{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}'
+	exit 0
 fi
 
 # Self-heal against tmux pane-id reuse: a manifest last written by a different
@@ -68,9 +72,37 @@ if [[ -f $manifest ]] &&
 	exit 0
 fi
 
+name="$(basename "$candidate" .d2)"
+
+# Prune renders this edit supersedes: an edited .d2 hashes to a new png, so the
+# prior hash would otherwise linger forever in the manifest and on disk. Drop
+# same-name/different-path entries from this manifest, then GC their files —
+# unless another pane's manifest still references the render (panes share the
+# content-hashed dir, so a file in use elsewhere must survive).
+if [[ -f $manifest ]]; then
+	while IFS= read -r stale; do
+		[[ -n $stale ]] || continue
+		keep=
+		for other in "$IMAGES_DIR"/*.jsonl; do
+			[[ $other == "$manifest" || ! -e $other ]] && continue
+			grep -qF "$stale" "$other" && {
+				keep=1
+				break
+			}
+		done
+		[[ -n $keep ]] || d2_rm_render_set "$stale"
+	done < <(jq -r --arg n "$name" --arg p "$png" \
+		'select(.name == $n and .path != $p) | .path' "$manifest" 2>/dev/null)
+
+	tmp="$manifest.tmp"
+	jq -c --arg n "$name" --arg p "$png" \
+		'select((.name == $n and .path != $p) | not)' "$manifest" >"$tmp" &&
+		mv "$tmp" "$manifest"
+fi
+
 mtime="$(stat -c %Y "$png" 2>/dev/null || echo 0)"
 printf -v now '%(%FT%T%z)T' -1
-jq -nc --arg path "$png" --arg vector "$svg" --arg source "d2" --arg name "$(basename "$candidate" .d2)" --arg ts "$now" --argjson mtime "$mtime" \
+jq -nc --arg path "$png" --arg vector "$svg" --arg source "d2" --arg name "$name" --arg ts "$now" --argjson mtime "$mtime" \
 	'{type:"image", path:$path, vector:$vector, source:$source, name:$name, ts:$ts, mtime:$mtime}' >>"$manifest"
 
 # Proactively surface the carousel on every new diagram. Reached only when a

@@ -1,13 +1,31 @@
 #!/usr/bin/env bats
+# shellcheck disable=SC2030,SC2031  # bats wraps each @test in a subshell; export is intentional
+# shellcheck disable=SC2016  # the tmux stub writes literal $vars into a script on purpose
 
 setup() {
 	export CLAUDE_STATUS_DIR="$BATS_TEST_TMPDIR/state"
 	export TMUX_PANE="%7"
 	unset CLAUDE_CODE_SESSION_ID
+	# Detach from any real tmux server the test runner sits in, so the GC sweep
+	# has no live-pane list unless a test opts in with a tmux stub.
+	unset TMUX
 	APP="$(dirname "$BATS_TEST_DIRNAME")/adapters/claude-code/plugin/scripts/session-reset.sh"
 	MANIFEST="$CLAUDE_STATUS_DIR/images/7.jsonl"
 	mkdir -p "$CLAUDE_STATUS_DIR/images"
 	printf '{"type":"image","path":"/x.png"}\n' >"$MANIFEST"
+}
+
+# Run the hook with a stubbed `tmux list-panes` reporting LIVE (a space list of
+# bare pane numbers) and $TMUX set, so the GC sweep trusts the live list.
+run_with_live_panes() { # $1=live nums  $2=stdin json
+	local stub="$BATS_TEST_TMPDIR/bin"
+	mkdir -p "$stub"
+	{
+		echo '#!/usr/bin/env bash'
+		echo 'for p in '"$1"'; do echo "%$p"; done'
+	} >"$stub/tmux"
+	chmod +x "$stub/tmux"
+	PATH="$stub:$PATH" TMUX="fake,1,0" bash "$APP" <<<"$2"
 }
 
 @test "source=startup removes the manifest" {
@@ -68,4 +86,60 @@ setup() {
 	run bash "$APP" <<<''
 	[ "$status" -eq 0 ]
 	[ -f "$MANIFEST" ]
+}
+
+@test "resume into a pane owned by a different session clears the manifest" {
+	export CLAUDE_CODE_SESSION_ID="sess-new"
+	printf 'sess-old' >"$CLAUDE_STATUS_DIR/images/7.owner"
+	run bash "$APP" <<<'{"source":"resume"}'
+	[ "$status" -eq 0 ]
+	[ ! -f "$MANIFEST" ]
+	# ownership is re-stamped to this session
+	[ "$(cat "$CLAUDE_STATUS_DIR/images/7.owner")" = "sess-new" ]
+}
+
+@test "resume of the same session keeps the manifest" {
+	export CLAUDE_CODE_SESSION_ID="sess-A"
+	printf 'sess-A' >"$CLAUDE_STATUS_DIR/images/7.owner"
+	run bash "$APP" <<<'{"source":"resume"}'
+	[ "$status" -eq 0 ]
+	[ -f "$MANIFEST" ]
+}
+
+@test "resume with no recorded owner keeps the manifest (no proof it's foreign)" {
+	export CLAUDE_CODE_SESSION_ID="sess-A"
+	run bash "$APP" <<<'{"source":"resume"}'
+	[ "$status" -eq 0 ]
+	[ -f "$MANIFEST" ]
+}
+
+@test "startup stamps the owner for this session" {
+	export CLAUDE_CODE_SESSION_ID="sess-A"
+	run bash "$APP" <<<'{"source":"startup"}'
+	[ "$status" -eq 0 ]
+	[ "$(cat "$CLAUDE_STATUS_DIR/images/7.owner")" = "sess-A" ]
+}
+
+@test "GC sweeps manifests for tmux panes that no longer exist" {
+	export CLAUDE_CODE_SESSION_ID="sess-A"
+	printf 'sess-A' >"$CLAUDE_STATUS_DIR/images/7.owner" # keep the current pane
+	printf '{}\n' >"$CLAUDE_STATUS_DIR/images/8.jsonl"   # dead pane
+	printf '{}\n' >"$CLAUDE_STATUS_DIR/images/9.jsonl"   # live pane
+	run run_with_live_panes "7 9" '{"source":"resume"}'
+	[ "$status" -eq 0 ]
+	[ -f "$MANIFEST" ]                           # current pane, kept
+	[ -f "$CLAUDE_STATUS_DIR/images/9.jsonl" ]   # live, kept
+	[ ! -f "$CLAUDE_STATUS_DIR/images/8.jsonl" ] # dead, swept
+}
+
+@test "GC ages out a stale session-keyed manifest but keeps a fresh one" {
+	old="$CLAUDE_STATUS_DIR/images/sess-old.jsonl"
+	new="$CLAUDE_STATUS_DIR/images/sess-fresh.jsonl"
+	printf '{}\n' >"$old"
+	printf '{}\n' >"$new"
+	touch -d '8 days ago' "$old"
+	run bash "$APP" <<<'{"source":"startup"}'
+	[ "$status" -eq 0 ]
+	[ ! -f "$old" ]
+	[ -f "$new" ]
 }

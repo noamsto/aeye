@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.0](https://github.com/noamsto/aeye/compare/v0.8.0...v0.9.0) (2026-06-25)
+
+
+### Features
+
+* carousel follows tmux focus in kitty-pane mode (--reconcile) ([#101](https://github.com/noamsto/aeye/issues/101)) ([f982a0b](https://github.com/noamsto/aeye/commit/f982a0be5da1a34882989a89f6a5dadf1c7267cb))
+
+
+### Bug Fixes
+
+* **adapter:** engage carousel reconcile via KITTY_LISTEN_ON fallback ([#102](https://github.com/noamsto/aeye/issues/102)) ([9099ea6](https://github.com/noamsto/aeye/commit/9099ea69624502a073ea97fb0a8bb3a893546d0c))
+* **adapter:** stop carousel bleed on reused tmux pane ids + GC stale manifests ([#95](https://github.com/noamsto/aeye/issues/95)) ([4a7ff8f](https://github.com/noamsto/aeye/commit/4a7ff8f75adab022abd947e49399d5baedb88d5d)), closes [#94](https://github.com/noamsto/aeye/issues/94)
+* **diagrams:** suppress blank |md renders and prune superseded ones ([#93](https://github.com/noamsto/aeye/issues/93)) ([013d842](https://github.com/noamsto/aeye/commit/013d842ba42074e1d6310e240428589f8141782c)), closes [#92](https://github.com/noamsto/aeye/issues/92)
+
 ## [0.8.0](https://github.com/noamsto/aeye/compare/v0.7.1...v0.8.0) (2026-06-22)
 
 

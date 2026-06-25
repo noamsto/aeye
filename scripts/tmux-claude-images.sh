@@ -259,7 +259,88 @@ launch_iterm() {
 	printf '%s\n' "$session" >"$idfile"
 }
 
+# --reconcile (driven by tmux focus hooks): in kitty-pane mode, make carousel
+# windows track the visible tmux window — keep those whose pane is in the
+# on-screen window beside the host, stash the rest in a hidden tab. No-op unless
+# AEYE_HOST=kitty with a reachable RC socket. Idempotent and lock-serialized, so
+# it's safe to fire on every focus change; a tmux-split user pays only a fast exit.
+reconcile() {
+	[[ ${AEYE_HOST:-} == kitty ]] || return 0
+	command -v kitty >/dev/null 2>&1 || return 0
+	kitty @ ls >/dev/null 2>&1 || return 0
+	# Serialize overlapping hook firings; a run that can't take the lock is
+	# redundant — the holder reconciles the same state.
+	exec 9>"$STATE_DIR/.carousel-reconcile.lock"
+	flock -n 9 2>/dev/null || return 0
+	_reconcile_apply
+}
+
+# Diff carousel windows (tagged claude_img_src=<pane>) against the panes of the
+# visible tmux window: in-window + stashed -> bring back; off-window + shown ->
+# stash. A carousel is "stashed" when its tab holds the aeye_stash marker window.
+_reconcile_apply() {
+	local ls visible host_tab src in_stash touched=0
+	ls="$(kitty @ ls 2>/dev/null)" || return 0
+	visible="$(tmux list-panes -F '#{pane_id}' 2>/dev/null)"
+	# Host tab = where the tmux host lives: the active non-stash tab, or — since a
+	# prior stash may have left kitty focused on the stash tab — the first non-stash
+	# tab. Don't rely on "active" alone.
+	host_tab="$(jq -r '
+		[ .[].tabs[] | select((.windows | map(.user_vars.aeye_stash) | any) | not) ] as $hosts
+		| ($hosts[] | select(.is_active) | .id), ($hosts[0].id // empty)' <<<"$ls" | head -1)"
+	while IFS=$'\t' read -r src in_stash; do
+		[[ -n $src ]] || continue
+		if grep -qxF "$src" <<<"$visible"; then
+			if [[ $in_stash == true ]]; then
+				_carousel_unstash "$src" "$host_tab"
+				touched=1
+			fi
+		else
+			if [[ $in_stash != true ]]; then
+				_carousel_stash "$src"
+				touched=1
+			fi
+		fi
+	done < <(jq -r '
+		.[].tabs[] as $t
+		| ($t.windows | map(.user_vars.aeye_stash) | any) as $stash
+		| $t.windows[] | select(.user_vars.claude_img_src)
+		| [ .user_vars.claude_img_src, $stash ] | @tsv' <<<"$ls")
+	# detach-window pulls kitty focus to the target tab; the user is on the host
+	# tab, so restore it whenever we moved a window.
+	if [[ $touched -eq 1 && -n $host_tab ]]; then
+		kitty @ focus-tab --match "id:$host_tab" >/dev/null 2>&1 || true
+	fi
+	return 0
+}
+
+_carousel_stash() { # $1 = pane id (claude_img_src)
+	_ensure_stash_tab
+	kitty @ detach-window --match "var:claude_img_src=$1" --target-tab "var:aeye_stash=1" >/dev/null 2>&1 || true
+}
+
+# Detach back to the host tab; that tab is in the splits layout (we ensure it),
+# so kitty re-splits the window beside the host automatically — no reposition.
+_carousel_unstash() { # $1 = pane id   $2 = host tab id
+	[[ -n $2 ]] || return 0
+	kitty @ goto-layout --match "id:$2" splits >/dev/null 2>&1 || true
+	kitty @ detach-window --match "var:claude_img_src=$1" --target-tab "id:$2" >/dev/null 2>&1 || true
+}
+
+# Lazily create the hidden stash tab — a parked sleeper window carries the marker
+# var; --keep-focus so creating it never pulls the user away.
+_ensure_stash_tab() {
+	kitty @ ls 2>/dev/null |
+		jq -e '.[].tabs[] | select(.windows | map(.user_vars.aeye_stash) | any)' >/dev/null 2>&1 && return 0
+	kitty @ launch --type=tab --keep-focus --var aeye_stash=1 --title aeye-stash \
+		sh -c 'while :; do sleep 86400; done' >/dev/null 2>&1 || true
+}
+
 main() {
+	if [[ ${1:-} == --reconcile ]]; then
+		reconcile
+		return
+	fi
 	resolve_target
 	[[ ${1:-} == --ensure-open ]] && ENSURE_OPEN=1
 	if [[ ${1:-} == --resolve ]]; then # test seam: print resolution, no launch

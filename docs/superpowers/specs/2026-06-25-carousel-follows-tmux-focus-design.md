@@ -89,26 +89,29 @@ The vsplit-beside-host placement currently inlined in `launch_kitty` is
 refactored into a shared helper that both `launch_kitty` and the unstash branch
 call, so placement stays consistent.
 
-### 4. Stash mechanism — approach A (spike-gated), fallback B
+### 4. Stash mechanism — approach A (spike-validated 2026-06-25)
 
-**A. Live-stash to a hidden kitty tab.** A dedicated kitty tab (matched by a user
-var, e.g. `aeye_stash=1`), created lazily on first stash, kept out of the tab bar
-via kitty config. Stash = `kitty @ detach-window --match var:claude_img_src=X
---target-tab var:aeye_stash=1`; unstash = detach back to the active tab, then
-re-vsplit beside the host via the shared placement helper. The viewer process
-keeps running, so cursor / zoom / drill-in survive and return is instant with no
-re-render.
+**A. Live-stash to a hidden kitty tab — CHOSEN.** A dedicated kitty tab (tagged
+`aeye_stash=1`), created lazily on first stash, kept out of the tab bar via kitty
+config. Stash = `kitty @ detach-window --match var:claude_img_src=X --target-tab
+var:aeye_stash=1`. Unstash = `kitty @ detach-window --match var:claude_img_src=X
+--target-tab id:<host-tab>` after ensuring the host tab is in the `splits` layout.
 
-This is the **spike**: validate the `detach-window` round-trip and that the
-window can be re-placed as a vsplit beside the host over the live RC socket
-(`detach-window` appends to a tab; precise re-vsplit needs confirming). Validate
-before building the rest.
+Spike outcome (driven over a live RC socket): the round-trip preserves the
+window id — the viewer process stays alive, so cursor / zoom / drill-in survive
+and return is instant with no re-render. Crucially, `detach-window --target-tab`
+into a tab already in the `splits` layout **re-splits the window beside the
+existing one automatically** — no manual repositioning. Verified: launch →
+`splits` with two 60/60-col windows; stash → host tab back to one window, carousel
+alive in the stash tab; unstash → `splits` with two 60/60-col windows again, same
+window id. So `_unstash` only needs the detach + a `goto-layout splits` guard on
+the host tab; the shared placement helper's layout-switch is reused, but no
+`--location`/`--next-to` reposition is required.
 
-**B. Fallback — close + persist/restore viewer state.** If the spike shows
-repositioning is too fiddly: stash = kill the window; the aeye viewer persists
-its per-pane view state (cursor index, zoom, drill-in region) to a state file on
-exit/SIGTERM; relaunch restores it. No kitty-hide hackery and placement is always
-a clean fresh vsplit; the cost is a brief re-render on return. This is a Go change
+**B. Fallback — close + persist/restore viewer state (NOT needed).** Retained
+only as a record: kill on stash; the aeye viewer persists per-pane view state
+(cursor, zoom, region) and restores on relaunch. Avoided because A validated
+cleanly. This would have been a Go change
 to the viewer (extends the existing per-pane zoom scratch in `gallery_zoom.go`).
 
 ### 5. tmux hooks (lazytmux)

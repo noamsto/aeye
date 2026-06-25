@@ -262,10 +262,15 @@ launch_iterm() {
 # --reconcile (driven by tmux focus hooks): in kitty-pane mode, make carousel
 # windows track the visible tmux window — keep those whose pane is in the
 # on-screen window beside the host, stash the rest in a hidden tab. No-op unless
-# AEYE_HOST=kitty with a reachable RC socket. Idempotent and lock-serialized, so
-# it's safe to fire on every focus change; a tmux-split user pays only a fast exit.
+# kitty mode applies — AEYE_HOST=kitty or a reachable kitty RC socket. Idempotent
+# and lock-serialized, so it's safe to fire on every focus change; a tmux-split
+# user pays only a fast exit.
 reconcile() {
-	[[ ${AEYE_HOST:-} == kitty ]] || return 0
+	# AEYE_HOST=kitty is the explicit opt-in, but a run-shell hook only sees it
+	# when it's threaded into the tmux env; the socket fallback keeps the hook
+	# working without it. The kitty @ ls guard makes either path safe — a
+	# tmux-split carousel has no claude_img_src window to touch.
+	[[ ${AEYE_HOST:-} == kitty || -n ${KITTY_LISTEN_ON:-} ]] || return 0
 	command -v kitty >/dev/null 2>&1 || return 0
 	kitty @ ls >/dev/null 2>&1 || return 0
 	# Serialize overlapping hook firings; a run that can't take the lock is

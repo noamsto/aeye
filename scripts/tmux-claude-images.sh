@@ -88,6 +88,25 @@ launch_tmux() {
 	tmux set-option -p -t "$viewer" @claude_img_src "$KEY"
 }
 
+# Echo (NUL-separated) the `kitty @ launch` placement args for a vsplit beside
+# the tmux-hosting window. Anchors to Claude's kitty window via KITTY_WINDOW_ID
+# when it's in the env (--match selects that tab as the launch target; a bare
+# --location/--next-to is ignored across tabs); inside tmux KITTY_WINDOW_ID isn't
+# propagated, so anchor to the active window instead (assumes it hosts tmux as a
+# single window — the normal setup). vsplit only takes effect in the splits
+# layout, so switch the target tab to it first, else a stacking layout drops the
+# viewer in the bottom row. --keep-focus so it never steals focus. Shared by
+# launch_kitty and the reconcile unstash path so placement stays identical.
+kitty_place_args() {
+	if [[ -n ${KITTY_WINDOW_ID:-} ]]; then
+		kitty @ goto-layout --match "window_id:$KITTY_WINDOW_ID" splits >/dev/null 2>&1 || true
+		printf '%s\0' --match "window_id:$KITTY_WINDOW_ID" --location=vsplit --next-to "id:$KITTY_WINDOW_ID" --keep-focus
+	else
+		kitty @ goto-layout splits >/dev/null 2>&1 || true
+		printf '%s\0' --location=vsplit --keep-focus
+	fi
+}
+
 launch_kitty() {
 	# A bare `kitty @ ls` lists windows iff the remote-control socket is reachable
 	# (distinct from the toggle's `@ ls --match`, which also fails on no match).
@@ -109,27 +128,9 @@ launch_kitty() {
 		kitty @ close-window --match "var:claude_img_src=$KEY"
 		return
 	fi
-	# Anchor to Claude's kitty window (its id is in our inherited env) so the
-	# viewer opens in Claude's tab even if the user switched away, and not the
-	# active one. --match selects that tab as the launch target (a remote-control
-	# --location/--next-to is ignored across tabs without it); --location=vsplit
-	# opens the split to the right of Claude (mirroring the tmux split-window -h
-	# path); --next-to anchors it beside Claude; --keep-focus so opening it never
-	# steals focus. vsplit only takes effect in the splits layout, so switch
-	# Claude's tab to it first — otherwise a stacking layout (e.g. fat) drops the
-	# viewer in the bottom row. Verified over the live RC socket: the window lands
-	# in the target's tab to the right and leaves focus where it was.
+	# Placement (vsplit beside the tmux host) is shared with the reconcile path.
 	local placement=()
-	if [[ -n ${KITTY_WINDOW_ID:-} ]]; then
-		kitty @ goto-layout --match "window_id:$KITTY_WINDOW_ID" splits >/dev/null 2>&1 || true
-		placement=(--match "window_id:$KITTY_WINDOW_ID" --location=vsplit --next-to "id:$KITTY_WINDOW_ID" --keep-focus)
-	else
-		# Inside tmux, KITTY_WINDOW_ID isn't propagated, so anchor to the active
-		# window: switch it to the splits layout, then vsplit beside it. Assumes the
-		# active kitty window hosts tmux as a single window (the normal setup).
-		kitty @ goto-layout splits >/dev/null 2>&1 || true
-		placement=(--location=vsplit --keep-focus)
-	fi
+	mapfile -d '' placement < <(kitty_place_args)
 	kitty @ launch --type=window ${placement[@]+"${placement[@]}"} --var claude_img_src="$KEY" \
 		--env AEYE_DIR="$STATE_DIR" \
 		--env CLAUDE_STATUS_DIR="$STATE_DIR" \

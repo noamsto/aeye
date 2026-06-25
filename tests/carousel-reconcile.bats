@@ -35,11 +35,21 @@ T
 	FIX="$BATS_TEST_DIRNAME/fixtures"
 }
 
-@test "reconcile is a no-op unless AEYE_HOST=kitty" {
-	unset AEYE_HOST
+@test "reconcile is a no-op when neither AEYE_HOST nor a kitty socket is present" {
+	unset AEYE_HOST KITTY_LISTEN_ON
 	run bash "$APP" --reconcile
 	[ "$status" -eq 0 ]
 	[ ! -s "$KITTY_LOG" ] # never touched kitty
+}
+
+@test "reconcile engages via KITTY_LISTEN_ON when AEYE_HOST is unset" {
+	unset AEYE_HOST
+	export KITTY_LISTEN_ON=unix:/tmp/kitty-test
+	cp "$FIX/kitty-ls-active-9.json" "$KITTY_LS_JSON" # %9 shown, no stash tab
+	printf '%%5\n' >"$VISIBLE_PANES"                  # visible window has %5, not %9
+	run bash "$APP" --reconcile
+	[ "$status" -eq 0 ]
+	grep -q 'detach-window --match var:claude_img_src=%9 --target-tab var:aeye_stash=1' "$KITTY_LOG"
 }
 
 @test "a carousel whose pane is off-screen is stashed" {

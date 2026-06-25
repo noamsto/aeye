@@ -1,0 +1,19 @@
+[
+  {
+    "tabs": [
+      {
+        "id": 1,
+        "is_active": true,
+        "windows": [{ "id": 1, "user_vars": {} }]
+      },
+      {
+        "id": 2,
+        "is_active": false,
+        "windows": [
+          { "id": 3, "user_vars": { "aeye_stash": "1" } },
+          { "id": 2, "user_vars": { "claude_img_src": "%9" } }
+        ]
+      }
+    ]
+  }
+]

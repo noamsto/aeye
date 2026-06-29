@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -19,9 +20,15 @@ func TestNeighborForKey(t *testing.T) {
 }
 
 func TestKittyNeighbor(t *testing.T) {
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		if shell, err = exec.LookPath("bash"); err != nil {
+			t.Skip("no sh/bash available for stub")
+		}
+	}
 	dir := t.TempDir()
 	log := filepath.Join(dir, "args")
-	stub := "#!/usr/bin/env bash\necho \"$*\" >>\"" + log + "\"\n"
+	stub := "#!" + shell + "\necho \"$*\" >>\"" + log + "\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "kitty"), []byte(stub), 0o755); err != nil {
 		t.Fatal(err)
 	}

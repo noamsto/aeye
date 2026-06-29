@@ -333,10 +333,21 @@ _reconcile_apply() {
 		| ($t.windows | map(.user_vars.aeye_stash) | any) as $stash
 		| $t.windows[] | select(.user_vars.claude_img_src)
 		| [ .user_vars.claude_img_src, $stash ] | @tsv' <<<"$ls")
-	# detach-window pulls kitty focus to the target tab; the user is on the host
-	# tab, so restore it whenever we moved a window.
+	# detach-window leaves the moved carousel active in the host tab, so focus the
+	# tmux host window explicitly (the host-tab window with neither carousel nor
+	# stash var) — focus-tab alone would land on the carousel. host_win comes from
+	# the pre-move snapshot; the tmux host window never moves.
 	if [[ $touched -eq 1 && -n $host_tab ]]; then
-		kitty @ focus-tab --match "id:$host_tab" >/dev/null 2>&1 || true
+		local host_win
+		host_win="$(jq -r --arg t "$host_tab" '
+			.[].tabs[] | select((.id|tostring) == $t) | .windows[]
+			| select((.user_vars.claude_img_src // "") == "" and (.user_vars.aeye_stash // "") == "")
+			| .id' <<<"$ls" | head -1)"
+		if [[ -n $host_win ]]; then
+			kitty @ focus-window --match "id:$host_win" >/dev/null 2>&1 || true
+		else
+			kitty @ focus-tab --match "id:$host_tab" >/dev/null 2>&1 || true
+		fi
 	fi
 	return 0
 }

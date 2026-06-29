@@ -183,9 +183,15 @@ the viewer open as a kitty split instead of a tmux split while you work in tmux:
 3. **Opt in** — `export AEYE_HOST=kitty`.
 
 If the socket isn't reachable, aeye falls back to a tmux split (drag-out then
-uses `ripdrag`/`dragon` or the clipboard). Moving focus between the kitty split
-and your tmux panes with one keymap (e.g. Ctrl+hjkl) is a terminal-config
-concern — see smart-splits.nvim or a kitty `neighboring_window` mapping.
+uses `ripdrag`/`dragon` or the clipboard).
+
+**Seamless `Ctrl-hjkl`.** Once kitty-pane mode is on, the carousel viewer crosses
+back into tmux on `Ctrl-h/j/k/l` itself (via `kitty @ action neighboring_window`)
+— no kitty config needed. For the tmux→carousel direction, your tmux nav bindings
+must hand off to kitty at the pane edge. lazytmux ships this; for a hand-rolled
+`tmux.conf`, route `Ctrl-hjkl` through a helper that, at the edge with
+`KITTY_LISTEN_ON` set, runs `kitty @ action neighboring_window <dir>` instead of
+`select-pane` (see `lazytmux` `scripts/tmux-smart-nav.sh`).
 
 ## Architecture
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bats
 # shellcheck disable=SC2030,SC2031  # bats wraps each @test in a subshell; export is intentional
+bats_require_minimum_version 1.5.0
 
 setup() {
 	export CLAUDE_STATUS_DIR="$BATS_TEST_TMPDIR/state"
@@ -77,6 +78,18 @@ T
 	[ "$status" -eq 0 ]
 	grep -q 'goto-layout --match id:1 splits' "$KITTY_LOG" # host tab -> splits
 	grep -q 'detach-window --match var:claude_img_src=%9 --target-tab id:1' "$KITTY_LOG"
+}
+
+@test "revealing a stashed carousel focuses the tmux host window, not the carousel" {
+	export AEYE_HOST=kitty
+	cp "$FIX/kitty-ls-stashed-9.json" "$KITTY_LS_JSON" # %9 parked in the stash tab
+	printf '%%9\n' >"$VISIBLE_PANES"                   # visible window has %9 → unstash it
+	run bash "$APP" --reconcile
+	[ "$status" -eq 0 ]
+	# Focus must land on the host window (no claude_img_src / aeye_stash var),
+	# not on a focus-tab that leaves the carousel active.
+	grep -q 'focus-window --match id:' "$KITTY_LOG"
+	run ! grep -qE 'focus-tab' "$KITTY_LOG"
 }
 
 @test "a steady state mutates nothing (idempotent)" {

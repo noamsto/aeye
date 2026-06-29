@@ -107,6 +107,15 @@ kitty_place_args() {
 	fi
 }
 
+# True iff $KEY is a pane in the active window of an attached session — i.e. the
+# user is currently looking at it. Unlike reconcile's context-dependent query,
+# this runs in the capturing pane's context, so it must scan all panes (-a) and
+# filter explicitly rather than trust the calling pane as "current".
+_key_on_screen() {
+	tmux list-panes -a -F '#{pane_id} #{window_active} #{session_attached}' 2>/dev/null |
+		awk -v k="$KEY" '$1==k && $2==1 && $3>=1 {f=1} END{exit !f}'
+}
+
 launch_kitty() {
 	# A bare `kitty @ ls` lists windows iff the remote-control socket is reachable
 	# (distinct from the toggle's `@ ls --match`, which also fails on no match).
@@ -126,6 +135,19 @@ launch_kitty() {
 	if kitty @ ls --match "var:claude_img_src=$KEY" >/dev/null 2>&1; then
 		[[ -n $ENSURE_OPEN ]] && return # already open; ensure-open is a no-op
 		kitty @ close-window --match "var:claude_img_src=$KEY"
+		return
+	fi
+	# Auto-open for an off-screen pane: create it stashed so it never appears over
+	# the window the user is actually looking at; reconcile reveals it on focus.
+	# Deliberately bypasses kitty_place_args (no host goto-layout side effect) —
+	# placement is deferred to _carousel_unstash's `goto-layout … splits`.
+	if [[ -n $ENSURE_OPEN && -n ${TMUX:-} ]] && ! _key_on_screen; then
+		_ensure_stash_tab
+		kitty @ launch --type=window --match "var:aeye_stash=1" --keep-focus \
+			--var claude_img_src="$KEY" \
+			--env AEYE_DIR="$STATE_DIR" \
+			--env CLAUDE_STATUS_DIR="$STATE_DIR" \
+			"$VIEWER_BIN" "$KEY" >/dev/null
 		return
 	fi
 	# Placement (vsplit beside the tmux host) is shared with the reconcile path.
@@ -311,10 +333,21 @@ _reconcile_apply() {
 		| ($t.windows | map(.user_vars.aeye_stash) | any) as $stash
 		| $t.windows[] | select(.user_vars.claude_img_src)
 		| [ .user_vars.claude_img_src, $stash ] | @tsv' <<<"$ls")
-	# detach-window pulls kitty focus to the target tab; the user is on the host
-	# tab, so restore it whenever we moved a window.
+	# detach-window leaves the moved carousel active in the host tab, so focus the
+	# tmux host window explicitly (the host-tab window with neither carousel nor
+	# stash var) — focus-tab alone would land on the carousel. host_win comes from
+	# the pre-move snapshot; the tmux host window never moves.
 	if [[ $touched -eq 1 && -n $host_tab ]]; then
-		kitty @ focus-tab --match "id:$host_tab" >/dev/null 2>&1 || true
+		local host_win
+		host_win="$(jq -r --arg t "$host_tab" '
+			.[].tabs[] | select((.id|tostring) == $t) | .windows[]
+			| select((.user_vars.claude_img_src // "") == "" and (.user_vars.aeye_stash // "") == "")
+			| .id' <<<"$ls" | head -1)"
+		if [[ -n $host_win ]]; then
+			kitty @ focus-window --match "id:$host_win" >/dev/null 2>&1 || true
+		else
+			kitty @ focus-tab --match "id:$host_tab" >/dev/null 2>&1 || true
+		fi
 	fi
 	return 0
 }

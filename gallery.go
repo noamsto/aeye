@@ -235,6 +235,12 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l":
+			// Cross the tmux/kitty boundary: hand focus to the neighbouring kitty
+			// window (the tmux host). Focus leaves this window, so no repaint.
+			dir, _ := neighborForKey(msg.String())
+			kittyNeighbor(dir)
+			return m, nil
 		// When zoomed, hjkl and the arrows pan; otherwise they navigate the
 		// filmstrip. To move to another image while zoomed, use n/p/g/G (which
 		// reset the crop) or 0/esc first.
@@ -718,6 +724,32 @@ func manifestMtime(pane string) int64 {
 		return 0
 	}
 	return fi.ModTime().UnixNano()
+}
+
+// neighborForKey maps a ctrl+hjkl keypress to a kitty neighboring_window
+// direction. Bare h/l/j/k are gallery nav and are not handled here.
+func neighborForKey(key string) (string, bool) {
+	switch key {
+	case "ctrl+h":
+		return "left", true
+	case "ctrl+j":
+		return "down", true
+	case "ctrl+k":
+		return "up", true
+	case "ctrl+l":
+		return "right", true
+	}
+	return "", false
+}
+
+// kittyNeighbor moves kitty focus to the neighbouring window. Inert off-kitty:
+// KITTY_LISTEN_ON is set only for windows kitty launched with remote control, so
+// this is a no-op in tmux-split mode or any non-kitty host.
+func kittyNeighbor(dir string) {
+	if os.Getenv("KITTY_LISTEN_ON") == "" {
+		return
+	}
+	_ = exec.Command("kitty", "@", "action", "neighboring_window", dir).Run()
 }
 
 // digitKey maps "1".."9" to 1..9, else 0.

@@ -141,7 +141,7 @@ launch_kitty() {
 	# the window the user is actually looking at; reconcile reveals it on focus.
 	# Deliberately bypasses kitty_place_args (no host goto-layout side effect) —
 	# placement is deferred to _carousel_unstash's `goto-layout … splits`.
-	if [[ -n $ENSURE_OPEN ]] && ! _key_on_screen; then
+	if [[ -n $ENSURE_OPEN && -n ${TMUX:-} ]] && ! _key_on_screen; then
 		_ensure_stash_tab
 		kitty @ launch --type=window --match "var:aeye_stash=1" --keep-focus \
 			--var claude_img_src="$KEY" \

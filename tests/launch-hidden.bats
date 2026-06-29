@@ -6,7 +6,7 @@ setup() {
 	export CLAUDE_STATUS_DIR="$BATS_TEST_TMPDIR/state"
 	mkdir -p "$CLAUDE_STATUS_DIR/images"
 	APP="$(dirname "$BATS_TEST_DIRNAME")/scripts/tmux-claude-images.sh"
-	export AEYE_HOST=kitty TMUX_PANE='%9'
+	export AEYE_HOST=kitty TMUX_PANE='%9' TMUX='/tmp/fake-tmux,123,0'
 	# Non-empty manifest for %9 so launch gets past the "no images" guard.
 	echo '{"type":"image","path":"/x.png","source":"d2"}' >"$CLAUDE_STATUS_DIR/images/9.jsonl"
 
@@ -53,4 +53,15 @@ T
 	[ "$status" -eq 0 ]
 	grep -q 'launch --type=window .*--location=vsplit.*--keep-focus.*claude_img_src=%9' "$KITTY_LOG"
 	run ! grep -q 'launch --type=window --match var:aeye_stash=1 .*claude_img_src=%9' "$KITTY_LOG"
+}
+
+@test "ensure-open launches visible (not stashed) outside tmux even when pane is off-screen" {
+	# TMUX unset: outside tmux, reconcile can never reveal a stashed carousel.
+	# The guard should fall through to the visible vsplit regardless of on-screen state.
+	unset TMUX
+	printf '%%9 0 1\n' >"$VISIBLE_ROWS" # off-screen row — would trigger stash if TMUX were set
+	run bash "$APP" --ensure-open
+	[ "$status" -eq 0 ]
+	grep -q 'launch --type=window .*--location=vsplit.*--keep-focus.*claude_img_src=%9' "$KITTY_LOG"
+	run ! grep -q 'launch --type=window --match var:aeye_stash=1' "$KITTY_LOG"
 }

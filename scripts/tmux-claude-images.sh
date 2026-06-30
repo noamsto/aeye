@@ -89,18 +89,25 @@ launch_tmux() {
 }
 
 # Echo (NUL-separated) the `kitty @ launch` placement args for a vsplit beside
-# the tmux-hosting window. Anchors to Claude's kitty window via KITTY_WINDOW_ID
-# when it's in the env (--match selects that tab as the launch target; a bare
-# --location/--next-to is ignored across tabs); inside tmux KITTY_WINDOW_ID isn't
-# propagated, so anchor to the active window instead (assumes it hosts tmux as a
-# single window — the normal setup). vsplit only takes effect in the splits
-# layout, so switch the target tab to it first, else a stacking layout drops the
-# viewer in the bottom row. --keep-focus so it never steals focus. Shared by
-# launch_kitty and the reconcile unstash path so placement stays identical.
+# the tmux-hosting window. Inside tmux, KITTY_WINDOW_ID is frozen at whatever it
+# was when the tmux server started, so it can name a since-closed kitty window;
+# `kitty @ launch --match window_id:<gone>` then errors and kills the toggle. So
+# look the id up in `@ ls` first: when it resolves, pin its tab with --match (so
+# --next-to, otherwise ignored across tabs, anchors the viewer beside Claude even
+# when another tab is active); when it's stale or unset, fall back to the active
+# window. vsplit only takes effect in the splits layout, so switch the target tab
+# to it first, else a stacking layout drops the viewer in the bottom row.
+# --keep-focus so it never steals focus.
 kitty_place_args() {
+	local tab=""
 	if [[ -n ${KITTY_WINDOW_ID:-} ]]; then
-		kitty @ goto-layout --match "window_id:$KITTY_WINDOW_ID" splits >/dev/null 2>&1 || true
-		printf '%s\0' --match "window_id:$KITTY_WINDOW_ID" --location=vsplit --next-to "id:$KITTY_WINDOW_ID" --keep-focus
+		tab="$(kitty @ ls 2>/dev/null |
+			jq -r --argjson w "$KITTY_WINDOW_ID" \
+				'first(.[].tabs[] | select(any(.windows[]; .id == $w)) | .id) // empty')"
+	fi
+	if [[ -n $tab ]]; then
+		kitty @ goto-layout --match "id:$tab" splits >/dev/null 2>&1 || true
+		printf '%s\0' --match "id:$tab" --location=vsplit --next-to "id:$KITTY_WINDOW_ID" --keep-focus
 	else
 		kitty @ goto-layout splits >/dev/null 2>&1 || true
 		printf '%s\0' --location=vsplit --keep-focus

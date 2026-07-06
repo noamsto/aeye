@@ -2,15 +2,16 @@
 # SessionStart hook. Keeps the carousel from showing a different session's images
 # when a tmux pane id is reused (tmux renumbers panes from low values on every
 # server restart, and the manifest dir is shared machine-wide). Two jobs:
-#   1. This pane's manifest — clear it on a fresh start (startup|clear), or on any
-#      start whose recorded owner is a *different* session (a resume/compact that
-#      landed in a recycled pane id). Keep it when the owner is this same session
-#      (a genuine continuation — the backfill hook reconciles it). Then stamp the
-#      owner now, before the viewer reads, so a reader launched right after start
-#      sees a manifest that belongs to this session.
-#   2. GC — sweep manifests for tmux panes no longer in the server, and
-#      session-keyed manifests past a TTL, so the shared dir never grows without
-#      bound. Reads the hook JSON on stdin.
+#   1. This pane's manifest — clear it on a fresh start (startup|clear) and stamp
+#      the owner, before the viewer reads, so a reader launched right after start
+#      sees a manifest that belongs to this session. On compact (a same-session
+#      continuation) clear only a manifest proven foreign, then refresh ownership.
+#      On resume, do nothing: SessionStart hooks run in parallel, and the backfill
+#      hook is the sole writer of a resumed pane's manifest — it rebuilds it from
+#      the transcript, so racing it here would only reintroduce bleed.
+#   2. GC — sweep manifests (and their orphaned owner sidecars) for tmux panes no
+#      longer in the server, and session-keyed files past a TTL, so the shared dir
+#      never grows without bound. Reads the hook JSON on stdin.
 set -euo pipefail
 
 payload="$(cat)"
@@ -36,14 +37,21 @@ if [[ -n $pane_id && $pane_file =~ ^[A-Za-z0-9_@:.-]+$ ]]; then
 	case "$source" in
 	startup | clear)
 		clear_pane "$pane_file"
+		[[ -n $session ]] && printf '%s' "$session" >"$owner_file"
+		;;
+	resume)
+		# SessionStart hooks run in parallel; session-backfill is the sole writer
+		# of a resumed pane's manifest (it rebuilds it authoritatively from the
+		# transcript). Touching the manifest or owner here would just race it.
+		:
 		;;
 	*)
-		# resume/compact/unknown: clear only when the pane was last owned by a
-		# different session — the reused-pane-id bleed. Same session continues.
+		# compact/unknown: a same-session continuation. Clear only a manifest
+		# proven foreign (reused-pane-id bleed), then refresh ownership.
 		[[ -n $session && -n $owner && $owner != "$session" ]] && clear_pane "$pane_file"
+		[[ -n $session ]] && printf '%s' "$session" >"$owner_file"
 		;;
 	esac
-	[[ -n $session ]] && printf '%s' "$session" >"$owner_file"
 fi
 
 # --- GC the shared dir ---
@@ -55,18 +63,29 @@ live=""
 ttl=$((7 * 86400))
 printf -v now '%(%s)T' -1
 
-for m in "$IMAGES_DIR"/*.jsonl; do
+# Sweep both the manifest and its owner sidecar: an orphaned .owner (its .jsonl
+# already gone) would otherwise never be reaped, since clear_pane only fires on a
+# base the loop visits. Dedup the bases so a base with both files is handled once.
+declare -A gc_seen=()
+for m in "$IMAGES_DIR"/*.jsonl "$IMAGES_DIR"/*.owner; do
 	[[ -e $m ]] || continue
-	base="$(basename "$m" .jsonl)"
+	base="$(basename "$m")"
+	base="${base%.jsonl}"
+	base="${base%.owner}"
 	[[ $base == "$pane_file" ]] && continue # never GC the pane we just stamped
+	[[ -n ${gc_seen[$base]:-} ]] && continue
+	gc_seen[$base]=1
 	if [[ $base =~ ^[0-9]+$ ]]; then
-		# tmux pane manifest — GC only when we have a reliable live list and the
+		# tmux pane files — GC only when we have a reliable live list and the
 		# pane is not in it.
 		[[ -n $live ]] || continue
 		grep -qxF "$base" <<<"$live" || clear_pane "$base"
 	else
-		# session-keyed manifest — prune if untouched past the TTL.
-		mtime="$(stat -c %Y "$m" 2>/dev/null || echo "$now")"
+		# session-keyed files — prune if untouched past the TTL, aging off the
+		# newest of the two (either may be absent; the || true keeps a missing-file
+		# stat from tripping set -o pipefail and aborting the sweep).
+		mtime="$({ stat -c %Y "$IMAGES_DIR/$base.jsonl" "$IMAGES_DIR/$base.owner" 2>/dev/null || true; } | sort -rn | head -1)"
+		: "${mtime:=$now}"
 		((now - mtime > ttl)) && clear_pane "$base"
 	fi
 done

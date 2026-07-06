@@ -3,6 +3,11 @@
 # session transcript, so the carousel is populated after `claude --resume` instead
 # of empty. Replays each image/diagram-bearing transcript line as a synthetic hook
 # payload through the shared extractors. Reads the hook JSON on stdin.
+#
+# The transcript is authoritative: the manifest is rebuilt from scratch, so a
+# prior session's images left under a reused tmux pane id cannot bleed through.
+# This is the sole writer of a resumed pane's manifest — session-reset defers to
+# it on resume because SessionStart hooks run in parallel with no ordered turn.
 set -euo pipefail
 
 payload="$(cat)"
@@ -10,7 +15,6 @@ payload="$(cat)"
 [[ "$(jq -r '.source // empty' <<<"$payload" 2>/dev/null)" == resume ]] || exit 0
 
 transcript="$(jq -r '.transcript_path // empty' <<<"$payload" 2>/dev/null)"
-[[ -n $transcript && -r $transcript ]] || exit 0
 
 STATE_DIR="${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}"
 IMAGES_DIR="$STATE_DIR/images"
@@ -21,19 +25,30 @@ pane_id="${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}"
 pane_file="${pane_id#%}"
 [[ $pane_file =~ ^[A-Za-z0-9_@:.-]+$ ]] || exit 0
 
+manifest="$IMAGES_DIR/$pane_file.jsonl"
+owner_file="$IMAGES_DIR/$pane_file.owner"
+session="${CLAUDE_CODE_SESSION_ID:-}"
+mkdir -p "$IMAGES_DIR"
+
+# Without a readable transcript we can't rebuild. Drop a manifest we can't prove
+# belongs to this session (the reused-pane-id bleed); keep one this session owns
+# (a legit continuation whose transcript is unreadable) rather than blank it.
+if [[ -z $transcript || ! -r $transcript ]]; then
+	owner=""
+	[[ -f $owner_file ]] && owner="$(<"$owner_file")"
+	[[ -f $manifest && (-z $owner || $owner != "$session") ]] && rm -f "$manifest" "$owner_file"
+	exit 0
+fi
+
 # shellcheck source=lib/manifest-extract.sh disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/lib/manifest-extract.sh"
 
-manifest="$IMAGES_DIR/$pane_file.jsonl"
-mkdir -p "$IMAGES_DIR"
-
-# Seed the seen-set with paths already in the manifest, then track within-run
-# appends, so a kept-manifest resume and a repeated transcript path never double.
+# Authoritative rebuild: the transcript is the record of what this session
+# touched, so start from empty rather than merge into whatever the pane held —
+# on a reused pane id that's a prior session's images. seen dedups within this
+# replay only (a repeated transcript path).
+rm -f "$manifest"
 declare -A seen=()
-if [[ -f $manifest ]]; then
-	while IFS= read -r p; do [[ -n $p ]] && seen["$p"]=1; done \
-		< <(jq -r '.path // empty' "$manifest" 2>/dev/null)
-fi
 
 append_image() { # $1 path  $2 source  $3 ts
 	[[ -n ${seen["$1"]:-} ]] && return 0

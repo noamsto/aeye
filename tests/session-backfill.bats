@@ -68,6 +68,41 @@ run_app() { # $1 = source
 	[ "$output" -eq 1 ]
 }
 
+@test "resume drops a foreign entry not in the transcript (reused-pane bleed)" {
+	# A stale manifest from a prior session that reused this pane id. Its image is
+	# NOT in this session's transcript, so the authoritative rebuild must drop it.
+	mkdir -p "$CLAUDE_STATUS_DIR/images"
+	printf '{"type":"image","path":"/OLD-SESSION.png","source":"Read","ts":"old","mtime":0}\n' >"$MANIFEST"
+	printf 'sess-old' >"$OWNER"
+	run_app resume
+	run grep -c 'OLD-SESSION' "$MANIFEST"
+	[ "$output" -eq 0 ]
+	run grep -c "\"path\":\"$IMG\"" "$MANIFEST"
+	[ "$output" -eq 1 ]
+}
+
+@test "resume with unreadable transcript clears a foreign manifest" {
+	# No transcript to rebuild from and the manifest belongs to another session:
+	# drop it rather than bleed the prior session's images.
+	mkdir -p "$CLAUDE_STATUS_DIR/images"
+	printf '{"type":"image","path":"/OLD-SESSION.png"}\n' >"$MANIFEST"
+	printf 'sess-old' >"$OWNER"
+	run bash -c 'printf "%s" "{\"source\":\"resume\",\"transcript_path\":\"/no/such/file\"}" | bash "'"$APP"'"'
+	[ "$status" -eq 0 ]
+	[ ! -f "$MANIFEST" ]
+}
+
+@test "resume with unreadable transcript keeps a same-session manifest" {
+	# The manifest is this session's own (legit continuation whose transcript is
+	# unreadable) — keep it rather than blank the carousel.
+	mkdir -p "$CLAUDE_STATUS_DIR/images"
+	printf '{"type":"image","path":"/MINE.png"}\n' >"$MANIFEST"
+	printf 'sess-resume' >"$OWNER"
+	run bash -c 'printf "%s" "{\"source\":\"resume\",\"transcript_path\":\"/no/such/file\"}" | bash "'"$APP"'"'
+	[ "$status" -eq 0 ]
+	[ -f "$MANIFEST" ]
+}
+
 @test "non-resume source is a no-op" {
 	run_app startup
 	[ ! -f "$MANIFEST" ]

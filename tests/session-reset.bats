@@ -88,29 +88,33 @@ run_with_live_panes() { # $1=live nums  $2=stdin json
 	[ -f "$MANIFEST" ]
 }
 
-@test "resume into a pane owned by a different session clears the manifest" {
+@test "resume leaves the per-pane manifest untouched (backfill is the sole writer)" {
+	# SessionStart hooks run in parallel, so resume is handled entirely by
+	# session-backfill — reset must not race it by clearing or re-stamping here.
 	export CLAUDE_CODE_SESSION_ID="sess-new"
 	printf 'sess-old' >"$CLAUDE_STATUS_DIR/images/7.owner"
 	run bash "$APP" <<<'{"source":"resume"}'
 	[ "$status" -eq 0 ]
-	[ ! -f "$MANIFEST" ]
-	# ownership is re-stamped to this session
-	[ "$(cat "$CLAUDE_STATUS_DIR/images/7.owner")" = "sess-new" ]
+	[ -f "$MANIFEST" ]
+	# owner is left for backfill to re-stamp, not touched here
+	[ "$(cat "$CLAUDE_STATUS_DIR/images/7.owner")" = "sess-old" ]
 }
 
-@test "resume of the same session keeps the manifest" {
+@test "resume with no recorded owner leaves the manifest and stamps no owner" {
+	export CLAUDE_CODE_SESSION_ID="sess-A"
+	run bash "$APP" <<<'{"source":"resume"}'
+	[ "$status" -eq 0 ]
+	[ -f "$MANIFEST" ]
+	[ ! -f "$CLAUDE_STATUS_DIR/images/7.owner" ]
+}
+
+@test "compact keeps the manifest and refreshes ownership (same session)" {
 	export CLAUDE_CODE_SESSION_ID="sess-A"
 	printf 'sess-A' >"$CLAUDE_STATUS_DIR/images/7.owner"
-	run bash "$APP" <<<'{"source":"resume"}'
+	run bash "$APP" <<<'{"source":"compact"}'
 	[ "$status" -eq 0 ]
 	[ -f "$MANIFEST" ]
-}
-
-@test "resume with no recorded owner keeps the manifest (no proof it's foreign)" {
-	export CLAUDE_CODE_SESSION_ID="sess-A"
-	run bash "$APP" <<<'{"source":"resume"}'
-	[ "$status" -eq 0 ]
-	[ -f "$MANIFEST" ]
+	[ "$(cat "$CLAUDE_STATUS_DIR/images/7.owner")" = "sess-A" ]
 }
 
 @test "startup stamps the owner for this session" {
@@ -142,4 +146,15 @@ run_with_live_panes() { # $1=live nums  $2=stdin json
 	[ "$status" -eq 0 ]
 	[ ! -f "$old" ]
 	[ -f "$new" ]
+}
+
+@test "GC sweeps an orphan owner sidecar for a dead pane (no matching jsonl)" {
+	export CLAUDE_CODE_SESSION_ID="sess-A"
+	printf 'sess-A' >"$CLAUDE_STATUS_DIR/images/7.owner"    # keep the current pane
+	printf 'sess-dead' >"$CLAUDE_STATUS_DIR/images/8.owner" # dead pane, no jsonl
+	printf 'sess-live' >"$CLAUDE_STATUS_DIR/images/9.owner" # live pane, no jsonl
+	run run_with_live_panes "7 9" '{"source":"resume"}'
+	[ "$status" -eq 0 ]
+	[ -f "$CLAUDE_STATUS_DIR/images/9.owner" ]   # live, kept
+	[ ! -f "$CLAUDE_STATUS_DIR/images/8.owner" ] # dead, swept
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -17,6 +18,24 @@ func fakeBins(t *testing.T, names ...string) {
 		}
 	}
 	t.Setenv("PATH", dir)
+}
+
+func TestOpenTool(t *testing.T) {
+	if got := openTool("darwin"); got != "open" {
+		t.Errorf("openTool(darwin) = %q, want open", got)
+	}
+	if got := openTool("linux"); got != "xdg-open" {
+		t.Errorf("openTool(linux) = %q, want xdg-open", got)
+	}
+}
+
+func TestDragFallbackHint(t *testing.T) {
+	if got := dragFallbackHint("darwin"); strings.Contains(got, "ripdrag") {
+		t.Errorf("darwin hint should not mention Linux helpers: %q", got)
+	}
+	if got := dragFallbackHint("linux"); !strings.Contains(got, "ripdrag") {
+		t.Errorf("linux hint should mention ripdrag: %q", got)
+	}
 }
 
 func TestRunDragHelper(t *testing.T) {

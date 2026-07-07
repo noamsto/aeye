@@ -29,6 +29,19 @@
         # Single source of truth, bumped by release-please. The Go binary embeds
         # the same file (see main.go), so the derivation and the runtime agree.
         releaseVersion = (builtins.fromJSON (builtins.readFile ./.release-please-manifest.json)).".";
+        # d2 text rendering: fixFonts flattens d2's @font-face to this family
+        # name, which resvg then resolves from AEYE_D2_FONT_DIR. Shared by the
+        # devShell and the packaged binary's wrapper so a plain install renders
+        # diagram text without a matching system font (macOS ships neither).
+        # truetype/ = static Regular/Bold/Italic faces only; the parent dir also
+        # ships variable/ (same family name), which makes resvg's bold/italic
+        # face selection ambiguous. Keep it narrow.
+        d2FontName = "Source Sans 3";
+        d2FontDir = "${pkgs.source-sans}/share/fonts/truetype";
+        # Runtime tools the binary execs: resvg rasterizes d2 SVGs (render-diagram
+        # hook + the live sharp re-render); chafa paints the raster backend on
+        # non-kitty terminals.
+        aeyeRuntimeDeps = [pkgs.resvg pkgs.chafa];
       in {
         pre-commit.settings.hooks = {
           gofmt.enable = true;
@@ -46,11 +59,8 @@
 
         devShells.default = pkgs.mkShell {
           inherit (config.pre-commit) shellHook;
-          AEYE_D2_FONT = "Source Sans 3";
-          # truetype/ = static Regular/Bold/Italic faces only; the parent dir also
-          # ships variable/ (same family name), which makes resvg's bold/italic
-          # face selection ambiguous. Keep it narrow.
-          AEYE_D2_FONT_DIR = "${pkgs.source-sans}/share/fonts/truetype";
+          AEYE_D2_FONT = d2FontName;
+          AEYE_D2_FONT_DIR = d2FontDir;
           packages =
             config.pre-commit.settings.enabledPackages
             ++ [pkgs.go pkgs.gopls pkgs.gotools pkgs.golangci-lint pkgs.chafa pkgs.bats pkgs.goreleaser pkgs.gh pkgs.d2 pkgs.resvg pkgs.source-sans pkgs.source-code-pro pkgs.just];
@@ -75,6 +85,16 @@
             vendorHash = "sha256-ImWcsetzrpP7ydHoCSM2/aj6lZvJ4gJMPEh0kVBNiiE=";
             doCheck = true;
             ldflags = ["-X main.buildSuffix=${rev}"];
+            nativeBuildInputs = [pkgs.makeWrapper];
+            # Self-contained: pin the diagram font and carry resvg/chafa so the
+            # binary renders d2 text and rasters without a system font or PATH
+            # setup. --set-default leaves an explicit user env override the winner.
+            postInstall = ''
+              wrapProgram $out/bin/aeye \
+                --set-default AEYE_D2_FONT ${lib.escapeShellArg d2FontName} \
+                --set-default AEYE_D2_FONT_DIR ${d2FontDir} \
+                --prefix PATH : ${lib.makeBinPath aeyeRuntimeDeps}
+            '';
             meta = {
               description = "tmux/kitty image carousel for coding agents";
               mainProgram = "aeye";

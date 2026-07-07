@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.9.0](https://github.com/noamsto/aeye/compare/v0.8.0...v0.9.0) (2026-07-07)
+
+
+### Features
+
+* carousel follows tmux focus in kitty-pane mode (--reconcile) ([#101](https://github.com/noamsto/aeye/issues/101)) ([f982a0b](https://github.com/noamsto/aeye/commit/f982a0be5da1a34882989a89f6a5dadf1c7267cb))
+
+
+### Bug Fixes
+
+* **adapter:** engage carousel reconcile via KITTY_LISTEN_ON fallback ([#102](https://github.com/noamsto/aeye/issues/102)) ([9099ea6](https://github.com/noamsto/aeye/commit/9099ea69624502a073ea97fb0a8bb3a893546d0c))
+* **adapter:** rebuild resumed manifest from transcript to stop session ghosting ([#108](https://github.com/noamsto/aeye/issues/108)) ([#109](https://github.com/noamsto/aeye/issues/109)) ([4cdd43d](https://github.com/noamsto/aeye/commit/4cdd43d29b2be31cfe3ededc3534cd20fed373d4))
+* **adapter:** stop carousel bleed on reused tmux pane ids + GC stale manifests ([#95](https://github.com/noamsto/aeye/issues/95)) ([4a7ff8f](https://github.com/noamsto/aeye/commit/4a7ff8f75adab022abd947e49399d5baedb88d5d)), closes [#94](https://github.com/noamsto/aeye/issues/94)
+* **adapter:** tolerate a stale KITTY_WINDOW_ID in kitty vsplit placement ([#105](https://github.com/noamsto/aeye/issues/105)) ([57418d1](https://github.com/noamsto/aeye/commit/57418d18c38eb15b5ed74b21392e8516a44b9882))
+* **carousel:** launch hidden off-screen + seamless ctrl+hjkl ([#103](https://github.com/noamsto/aeye/issues/103)) ([#104](https://github.com/noamsto/aeye/issues/104)) ([1e16ab5](https://github.com/noamsto/aeye/commit/1e16ab5779e71c17cb91bebf8795357655d5ac3e))
+* **diagrams:** suppress blank |md renders and prune superseded ones ([#93](https://github.com/noamsto/aeye/issues/93)) ([013d842](https://github.com/noamsto/aeye/commit/013d842ba42074e1d6310e240428589f8141782c)), closes [#92](https://github.com/noamsto/aeye/issues/92)
+* **macos:** live d2 sharp render honors AEYE_D2_FONT_DIR ([#113](https://github.com/noamsto/aeye/issues/113)) ([f3b3298](https://github.com/noamsto/aeye/commit/f3b329848af53f2e273b996db6bedd26ff254412)), closes [#111](https://github.com/noamsto/aeye/issues/111)
+* **macos:** open/open-folder/copy/drag use native macOS tools ([#112](https://github.com/noamsto/aeye/issues/112)) ([3726801](https://github.com/noamsto/aeye/commit/3726801a5b1921229da605445f7efb093298bb7c))
+
 ## [0.8.0](https://github.com/noamsto/aeye/compare/v0.7.1...v0.8.0) (2026-06-22)
 
 

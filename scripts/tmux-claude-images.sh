@@ -88,6 +88,41 @@ launch_tmux() {
 	tmux set-option -p -t "$viewer" @claude_img_src "$KEY"
 }
 
+# Echo (NUL-separated) the `kitty @ launch` placement args for a vsplit beside
+# the tmux-hosting window. Inside tmux, KITTY_WINDOW_ID is frozen at whatever it
+# was when the tmux server started, so it can name a since-closed kitty window;
+# `kitty @ launch --match window_id:<gone>` then errors and kills the toggle. So
+# look the id up in `@ ls` first: when it resolves, pin its tab with --match (so
+# --next-to, otherwise ignored across tabs, anchors the viewer beside Claude even
+# when another tab is active); when it's stale or unset, fall back to the active
+# window. vsplit only takes effect in the splits layout, so switch the target tab
+# to it first, else a stacking layout drops the viewer in the bottom row.
+# --keep-focus so it never steals focus.
+kitty_place_args() {
+	local tab=""
+	if [[ -n ${KITTY_WINDOW_ID:-} ]]; then
+		tab="$(kitty @ ls 2>/dev/null |
+			jq -r --argjson w "$KITTY_WINDOW_ID" \
+				'first(.[].tabs[] | select(any(.windows[]; .id == $w)) | .id) // empty')"
+	fi
+	if [[ -n $tab ]]; then
+		kitty @ goto-layout --match "id:$tab" splits >/dev/null 2>&1 || true
+		printf '%s\0' --match "id:$tab" --location=vsplit --next-to "id:$KITTY_WINDOW_ID" --keep-focus
+	else
+		kitty @ goto-layout splits >/dev/null 2>&1 || true
+		printf '%s\0' --location=vsplit --keep-focus
+	fi
+}
+
+# True iff $KEY is a pane in the active window of an attached session — i.e. the
+# user is currently looking at it. Unlike reconcile's context-dependent query,
+# this runs in the capturing pane's context, so it must scan all panes (-a) and
+# filter explicitly rather than trust the calling pane as "current".
+_key_on_screen() {
+	tmux list-panes -a -F '#{pane_id} #{window_active} #{session_attached}' 2>/dev/null |
+		awk -v k="$KEY" '$1==k && $2==1 && $3>=1 {f=1} END{exit !f}'
+}
+
 launch_kitty() {
 	# A bare `kitty @ ls` lists windows iff the remote-control socket is reachable
 	# (distinct from the toggle's `@ ls --match`, which also fails on no match).
@@ -109,27 +144,22 @@ launch_kitty() {
 		kitty @ close-window --match "var:claude_img_src=$KEY"
 		return
 	fi
-	# Anchor to Claude's kitty window (its id is in our inherited env) so the
-	# viewer opens in Claude's tab even if the user switched away, and not the
-	# active one. --match selects that tab as the launch target (a remote-control
-	# --location/--next-to is ignored across tabs without it); --location=vsplit
-	# opens the split to the right of Claude (mirroring the tmux split-window -h
-	# path); --next-to anchors it beside Claude; --keep-focus so opening it never
-	# steals focus. vsplit only takes effect in the splits layout, so switch
-	# Claude's tab to it first — otherwise a stacking layout (e.g. fat) drops the
-	# viewer in the bottom row. Verified over the live RC socket: the window lands
-	# in the target's tab to the right and leaves focus where it was.
-	local placement=()
-	if [[ -n ${KITTY_WINDOW_ID:-} ]]; then
-		kitty @ goto-layout --match "window_id:$KITTY_WINDOW_ID" splits >/dev/null 2>&1 || true
-		placement=(--match "window_id:$KITTY_WINDOW_ID" --location=vsplit --next-to "id:$KITTY_WINDOW_ID" --keep-focus)
-	else
-		# Inside tmux, KITTY_WINDOW_ID isn't propagated, so anchor to the active
-		# window: switch it to the splits layout, then vsplit beside it. Assumes the
-		# active kitty window hosts tmux as a single window (the normal setup).
-		kitty @ goto-layout splits >/dev/null 2>&1 || true
-		placement=(--location=vsplit --keep-focus)
+	# Auto-open for an off-screen pane: create it stashed so it never appears over
+	# the window the user is actually looking at; reconcile reveals it on focus.
+	# Deliberately bypasses kitty_place_args (no host goto-layout side effect) —
+	# placement is deferred to _carousel_unstash's `goto-layout … splits`.
+	if [[ -n $ENSURE_OPEN && -n ${TMUX:-} ]] && ! _key_on_screen; then
+		_ensure_stash_tab
+		kitty @ launch --type=window --match "var:aeye_stash=1" --keep-focus \
+			--var claude_img_src="$KEY" \
+			--env AEYE_DIR="$STATE_DIR" \
+			--env CLAUDE_STATUS_DIR="$STATE_DIR" \
+			"$VIEWER_BIN" "$KEY" >/dev/null
+		return
 	fi
+	# Placement (vsplit beside the tmux host) is shared with the reconcile path.
+	local placement=()
+	mapfile -d '' placement < <(kitty_place_args)
 	kitty @ launch --type=window ${placement[@]+"${placement[@]}"} --var claude_img_src="$KEY" \
 		--env AEYE_DIR="$STATE_DIR" \
 		--env CLAUDE_STATUS_DIR="$STATE_DIR" \
@@ -258,7 +288,104 @@ launch_iterm() {
 	printf '%s\n' "$session" >"$idfile"
 }
 
+# --reconcile (driven by tmux focus hooks): in kitty-pane mode, make carousel
+# windows track the visible tmux window — keep those whose pane is in the
+# on-screen window beside the host, stash the rest in a hidden tab. No-op unless
+# kitty mode applies — AEYE_HOST=kitty or a reachable kitty RC socket. Idempotent
+# and lock-serialized, so it's safe to fire on every focus change; a tmux-split
+# user pays only a fast exit.
+reconcile() {
+	# AEYE_HOST=kitty is the explicit opt-in, but a run-shell hook only sees it
+	# when it's threaded into the tmux env; the socket fallback keeps the hook
+	# working without it. The kitty @ ls guard makes either path safe — a
+	# tmux-split carousel has no claude_img_src window to touch.
+	[[ ${AEYE_HOST:-} == kitty || -n ${KITTY_LISTEN_ON:-} ]] || return 0
+	command -v kitty >/dev/null 2>&1 || return 0
+	kitty @ ls >/dev/null 2>&1 || return 0
+	# Serialize overlapping hook firings; a run that can't take the lock is
+	# redundant — the holder reconciles the same state.
+	exec 9>"$STATE_DIR/.carousel-reconcile.lock"
+	flock -n 9 2>/dev/null || return 0
+	_reconcile_apply
+}
+
+# Diff carousel windows (tagged claude_img_src=<pane>) against the panes of the
+# visible tmux window: in-window + stashed -> bring back; off-window + shown ->
+# stash. A carousel is "stashed" when its tab holds the aeye_stash marker window.
+_reconcile_apply() {
+	local ls visible host_tab src in_stash touched=0
+	ls="$(kitty @ ls 2>/dev/null)" || return 0
+	visible="$(tmux list-panes -F '#{pane_id}' 2>/dev/null)"
+	# Host tab = where the tmux host lives: the active non-stash tab, or — since a
+	# prior stash may have left kitty focused on the stash tab — the first non-stash
+	# tab. Don't rely on "active" alone.
+	host_tab="$(jq -r '
+		[ .[].tabs[] | select((.windows | map(.user_vars.aeye_stash) | any) | not) ] as $hosts
+		| ($hosts[] | select(.is_active) | .id), ($hosts[0].id // empty)' <<<"$ls" | head -1)"
+	while IFS=$'\t' read -r src in_stash; do
+		[[ -n $src ]] || continue
+		if grep -qxF "$src" <<<"$visible"; then
+			if [[ $in_stash == true ]]; then
+				_carousel_unstash "$src" "$host_tab"
+				touched=1
+			fi
+		else
+			if [[ $in_stash != true ]]; then
+				_carousel_stash "$src"
+				touched=1
+			fi
+		fi
+	done < <(jq -r '
+		.[].tabs[] as $t
+		| ($t.windows | map(.user_vars.aeye_stash) | any) as $stash
+		| $t.windows[] | select(.user_vars.claude_img_src)
+		| [ .user_vars.claude_img_src, $stash ] | @tsv' <<<"$ls")
+	# detach-window leaves the moved carousel active in the host tab, so focus the
+	# tmux host window explicitly (the host-tab window with neither carousel nor
+	# stash var) — focus-tab alone would land on the carousel. host_win comes from
+	# the pre-move snapshot; the tmux host window never moves.
+	if [[ $touched -eq 1 && -n $host_tab ]]; then
+		local host_win
+		host_win="$(jq -r --arg t "$host_tab" '
+			.[].tabs[] | select((.id|tostring) == $t) | .windows[]
+			| select((.user_vars.claude_img_src // "") == "" and (.user_vars.aeye_stash // "") == "")
+			| .id' <<<"$ls" | head -1)"
+		if [[ -n $host_win ]]; then
+			kitty @ focus-window --match "id:$host_win" >/dev/null 2>&1 || true
+		else
+			kitty @ focus-tab --match "id:$host_tab" >/dev/null 2>&1 || true
+		fi
+	fi
+	return 0
+}
+
+_carousel_stash() { # $1 = pane id (claude_img_src)
+	_ensure_stash_tab
+	kitty @ detach-window --match "var:claude_img_src=$1" --target-tab "var:aeye_stash=1" >/dev/null 2>&1 || true
+}
+
+# Detach back to the host tab; that tab is in the splits layout (we ensure it),
+# so kitty re-splits the window beside the host automatically — no reposition.
+_carousel_unstash() { # $1 = pane id   $2 = host tab id
+	[[ -n $2 ]] || return 0
+	kitty @ goto-layout --match "id:$2" splits >/dev/null 2>&1 || true
+	kitty @ detach-window --match "var:claude_img_src=$1" --target-tab "id:$2" >/dev/null 2>&1 || true
+}
+
+# Lazily create the hidden stash tab — a parked sleeper window carries the marker
+# var; --keep-focus so creating it never pulls the user away.
+_ensure_stash_tab() {
+	kitty @ ls 2>/dev/null |
+		jq -e '.[].tabs[] | select(.windows | map(.user_vars.aeye_stash) | any)' >/dev/null 2>&1 && return 0
+	kitty @ launch --type=tab --keep-focus --var aeye_stash=1 --title aeye-stash \
+		sh -c 'while :; do sleep 86400; done' >/dev/null 2>&1 || true
+}
+
 main() {
+	if [[ ${1:-} == --reconcile ]]; then
+		reconcile
+		return
+	fi
 	resolve_target
 	[[ ${1:-} == --ensure-open ]] && ENSURE_OPEN=1
 	if [[ ${1:-} == --resolve ]]; then # test seam: print resolution, no launch

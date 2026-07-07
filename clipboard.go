@@ -2,18 +2,24 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
 // copyImageToClipboard puts the image file's bytes on the system clipboard so it
-// can be pasted straight into a chat or doc. It prefers wl-copy on Wayland and
-// falls back to xclip on X11 — the same Linux-only assumption openSelected makes
-// with xdg-open. Both tools daemonize to hold the selection, so Run returns once
-// the bytes are handed off.
+// can be pasted straight into a chat or doc. macOS drives the pasteboard through
+// osascript; elsewhere it prefers wl-copy on Wayland and falls back to xclip on
+// X11 (both daemonize to hold the selection, so Run returns once the bytes are
+// handed off).
 func copyImageToClipboard(path string) error {
+	if runtime.GOOS == "darwin" {
+		name, args := macClipboardCmd(path, mimeForPath(path))
+		return exec.Command(name, args...).Run()
+	}
 	name, args := clipboardTool(mimeForPath(path))
 	if name == "" {
 		return errors.New("no clipboard tool found (install wl-clipboard or xclip)")
@@ -26,6 +32,46 @@ func copyImageToClipboard(path string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Stdin = f
 	return cmd.Run()
+}
+
+// macClipboardCmd builds the osascript invocation that copies the image at path
+// onto the macOS pasteboard. Raster formats with a pasteboard class are read as
+// image data (so they paste into chats and docs); formats without one (svg,
+// webp) fall back to a file reference, which pastes as an attachment.
+func macClipboardCmd(path, mime string) (string, []string) {
+	var script string
+	if class, ok := macPasteboardClass(mime); ok {
+		script = fmt.Sprintf("set the clipboard to (read (POSIX file %s) as %s)", asQuote(path), class)
+	} else {
+		script = fmt.Sprintf("set the clipboard to POSIX file %s", asQuote(path))
+	}
+	return "osascript", []string{"-e", script}
+}
+
+// macPasteboardClass maps an image MIME type to its AppleScript four-char
+// pasteboard class, or reports false when the pasteboard has no image type for
+// it (svg, webp).
+func macPasteboardClass(mime string) (string, bool) {
+	switch mime {
+	case "image/png":
+		return "«class PNGf»", true
+	case "image/jpeg":
+		return "«class JPEG»", true
+	case "image/gif":
+		return "«class GIFf»", true
+	case "image/tiff":
+		return "«class TIFF»", true
+	}
+	return "", false
+}
+
+// asQuote wraps s in an AppleScript string literal, escaping backslashes and
+// quotes. AppleScript literals are byte-preserving, so UTF-8 paths pass through
+// unharmed (unlike Go's %q, which would emit \u escapes AppleScript can't read).
+func asQuote(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return `"` + s + `"`
 }
 
 // clipboardTool picks the clipboard command and its args for the given image

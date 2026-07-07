@@ -91,7 +91,8 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 			src = tmp
 		}
 	}
-	if err := exec.Command(bin, "--width", strconv.Itoa(targetW), src, out).Run(); err != nil {
+	args := append(resvgFontArgs(), "--width", strconv.Itoa(targetW), src, out)
+	if err := exec.Command(bin, args...).Run(); err != nil {
 		os.Remove(out)
 		return ""
 	}

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -235,6 +236,12 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l":
+			// Cross the tmux/kitty boundary: hand focus to the neighbouring kitty
+			// window (the tmux host). Focus leaves this window, so no repaint.
+			dir, _ := neighborForKey(msg.String())
+			kittyNeighbor(dir)
+			return m, nil
 		// When zoomed, hjkl and the arrows pan; otherwise they navigate the
 		// filmstrip. To move to another image while zoomed, use n/p/g/G (which
 		// reset the crop) or 0/esc first.
@@ -402,7 +409,16 @@ func (m galleryModel) openSelected(mode string) {
 	if mode == "dir" {
 		target = filepath.Dir(target)
 	}
-	_ = exec.Command("xdg-open", target).Start()
+	_ = exec.Command(openTool(runtime.GOOS), target).Start()
+}
+
+// openTool is the OS "open this path with its default app" launcher: macOS ships
+// open, everything else uses the freedesktop xdg-open.
+func openTool(goos string) string {
+	if goos == "darwin" {
+		return "open"
+	}
+	return "xdg-open"
 }
 
 // copySelected copies the current image onto the system clipboard and records a
@@ -436,7 +452,17 @@ func (m *galleryModel) dragSelected() {
 		return
 	}
 	m.copySelected()
-	m.status += " (drag-out needs kitty or ripdrag/dragon)"
+	m.status += dragFallbackHint(runtime.GOOS)
+}
+
+// dragFallbackHint explains why the d key copied instead of dragging. macOS has
+// no CLI drag-source helper, so only kitty offers native drag there; Linux also
+// has the ripdrag/dragon GTK helpers.
+func dragFallbackHint(goos string) string {
+	if goos == "darwin" {
+		return " (drag-out needs kitty; copied to clipboard)"
+	}
+	return " (drag-out needs kitty or ripdrag/dragon)"
 }
 
 // handleDragEvent drives the OSC 72 round-trip from inbound terminal events
@@ -718,6 +744,32 @@ func manifestMtime(pane string) int64 {
 		return 0
 	}
 	return fi.ModTime().UnixNano()
+}
+
+// neighborForKey maps a ctrl+hjkl keypress to a kitty neighboring_window
+// direction. Bare h/l/j/k are gallery nav and are not handled here.
+func neighborForKey(key string) (string, bool) {
+	switch key {
+	case "ctrl+h":
+		return "left", true
+	case "ctrl+j":
+		return "down", true
+	case "ctrl+k":
+		return "up", true
+	case "ctrl+l":
+		return "right", true
+	}
+	return "", false
+}
+
+// kittyNeighbor moves kitty focus to the neighbouring window. Inert off-kitty:
+// KITTY_LISTEN_ON is set only for windows kitty launched with remote control, so
+// this is a no-op in tmux-split mode or any non-kitty host.
+func kittyNeighbor(dir string) {
+	if os.Getenv("KITTY_LISTEN_ON") == "" {
+		return
+	}
+	_ = exec.Command("kitty", "@", "action", "neighboring_window", dir).Run()
 }
 
 // digitKey maps "1".."9" to 1..9, else 0.

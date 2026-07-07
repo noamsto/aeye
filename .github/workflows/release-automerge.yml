@@ -1,0 +1,32 @@
+name: release-automerge
+
+# Bounds how long a release-please PR can sit unmerged. A GITHUB_TOKEN merge
+# won't trigger release.yml on its own, so we dispatch it explicitly afterwards.
+on:
+  schedule:
+    - cron: "0 9 * * 1,4" # Mon & Thu, 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge pending release PR and cut the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" \
+            --label "autorelease: pending" --state open \
+            --json number --jq '.[0].number')
+          if [ -z "$pr" ]; then
+            echo "No pending release PR — nothing to merge."
+            exit 0
+          fi
+          echo "Merging release PR #$pr"
+          gh pr merge "$pr" --repo "$GITHUB_REPOSITORY" --squash
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY"

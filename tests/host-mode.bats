@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# shellcheck disable=SC2030,SC2031  # bats runs each @test in a subshell; export is intentional
 bats_require_minimum_version 1.5.0
 
 setup() {
@@ -29,7 +30,7 @@ STUB
 #!/usr/bin/env bash
 echo "$*" >>"$KITTY_LOG"
 case "$*" in
-"@ ls") exit "${STUB_KITTY_REACHABLE:-0}" ;;
+"@ ls") [[ -n ${STUB_KITTY_LS:-} ]] && printf '%s' "$STUB_KITTY_LS"; exit "${STUB_KITTY_REACHABLE:-0}" ;;
 "@ ls --match"*) exit "${STUB_KITTY_MATCH:-1}" ;;
 *) exit 0 ;;
 esac
@@ -79,6 +80,31 @@ STUB
 	[ "$status" -eq 0 ]
 	run grep -q -- "--location=vsplit" "$KITTY_LOG"
 	[ "$status" -eq 0 ]
+}
+
+@test "kitty launch resolves a live KITTY_WINDOW_ID to its host tab id" {
+	export AEYE_HOST=kitty
+	export KITTY_WINDOW_ID=21
+	export STUB_KITTY_LS='[{"tabs":[{"id":3,"windows":[{"id":21}]}]}]'
+	run bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q -- "--match id:3" "$KITTY_LOG"
+	grep -q -- "--next-to id:21" "$KITTY_LOG"
+}
+
+@test "kitty launch survives a stale KITTY_WINDOW_ID by falling back to the active window" {
+	# The tmux server env can carry a KITTY_WINDOW_ID naming a since-closed window;
+	# matching it would error and kill the toggle, so drop the match and place
+	# beside the active window instead.
+	export AEYE_HOST=kitty
+	export KITTY_WINDOW_ID=21
+	export STUB_KITTY_LS='[{"tabs":[{"id":3,"windows":[{"id":99}]}]}]' # no window 21
+	run bash "$APP"
+	[ "$status" -eq 0 ]
+	# The launch places beside the active window: vsplit, but no --match on a stale id.
+	launch="$(grep -- "@ launch" "$KITTY_LOG")"
+	[[ $launch == *"--location=vsplit"* ]]
+	[[ $launch != *"--match"* ]]
 }
 
 @test "kitty unreachable from tmux falls back to a tmux split" {

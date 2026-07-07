@@ -3,6 +3,10 @@ name: release
 on:
   push:
     branches: [main]
+  # Dispatched by release-automerge.yml after it merges the release PR: a
+  # GITHUB_TOKEN push does not trigger workflows, but workflow_dispatch is the
+  # documented exception, so this is what actually cuts the release.
+  workflow_dispatch:
 
 permissions:
   contents: write

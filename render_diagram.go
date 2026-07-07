@@ -128,14 +128,22 @@ func runRenderDiagram(in, out string) error {
 	if resvg == "" {
 		resvg = "resvg"
 	}
-	var args []string
-	if dir := os.Getenv("AEYE_D2_FONT_DIR"); dir != "" {
-		args = append(args, "--skip-system-fonts", "--use-fonts-dir", dir)
-	}
-	args = append(args, svgPath, out)
+	args := append(resvgFontArgs(), svgPath, out)
 	cmd := exec.Command(resvg, args...)
 	if stderr, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("resvg: %w: %s", err, stderr)
+	}
+	return nil
+}
+
+// resvgFontArgs pins resvg to the bundled font directory (AEYE_D2_FONT_DIR) so it
+// resolves the family fixFonts baked into the SVG. Every resvg call must use these
+// — the live sharp render as much as this hook — or the sharp render drops text
+// the cached raster kept, since the family (e.g. Source Sans 3) isn't a system
+// font on macOS. Empty when unset, so resvg falls back to system fonts.
+func resvgFontArgs() []string {
+	if dir := os.Getenv("AEYE_D2_FONT_DIR"); dir != "" {
+		return []string{"--skip-system-fonts", "--use-fonts-dir", dir}
 	}
 	return nil
 }

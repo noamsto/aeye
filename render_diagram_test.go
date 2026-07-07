@@ -35,6 +35,28 @@ func TestFixFonts(t *testing.T) {
 	}
 }
 
+func TestResvgFontArgs(t *testing.T) {
+	t.Run("pins the fonts dir when set", func(t *testing.T) {
+		t.Setenv("AEYE_D2_FONT_DIR", "/fonts")
+		want := []string{"--skip-system-fonts", "--use-fonts-dir", "/fonts"}
+		got := resvgFontArgs()
+		if len(got) != len(want) {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("got %v, want %v", got, want)
+			}
+		}
+	})
+	t.Run("empty when unset, so resvg uses system fonts", func(t *testing.T) {
+		t.Setenv("AEYE_D2_FONT_DIR", "")
+		if got := resvgFontArgs(); got != nil {
+			t.Fatalf("got %v, want nil", got)
+		}
+	})
+}
+
 func TestD2ThemeID(t *testing.T) {
 	// Point detectTheme at a scratch state dir so the test controls the mode.
 	state := t.TempDir()

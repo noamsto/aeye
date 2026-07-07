@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -408,7 +409,16 @@ func (m galleryModel) openSelected(mode string) {
 	if mode == "dir" {
 		target = filepath.Dir(target)
 	}
-	_ = exec.Command("xdg-open", target).Start()
+	_ = exec.Command(openTool(runtime.GOOS), target).Start()
+}
+
+// openTool is the OS "open this path with its default app" launcher: macOS ships
+// open, everything else uses the freedesktop xdg-open.
+func openTool(goos string) string {
+	if goos == "darwin" {
+		return "open"
+	}
+	return "xdg-open"
 }
 
 // copySelected copies the current image onto the system clipboard and records a
@@ -442,7 +452,17 @@ func (m *galleryModel) dragSelected() {
 		return
 	}
 	m.copySelected()
-	m.status += " (drag-out needs kitty or ripdrag/dragon)"
+	m.status += dragFallbackHint(runtime.GOOS)
+}
+
+// dragFallbackHint explains why the d key copied instead of dragging. macOS has
+// no CLI drag-source helper, so only kitty offers native drag there; Linux also
+// has the ripdrag/dragon GTK helpers.
+func dragFallbackHint(goos string) string {
+	if goos == "darwin" {
+		return " (drag-out needs kitty; copied to clipboard)"
+	}
+	return " (drag-out needs kitty or ripdrag/dragon)"
 }
 
 // handleDragEvent drives the OSC 72 round-trip from inbound terminal events

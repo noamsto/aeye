@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -17,6 +19,24 @@ func fakeBins(t *testing.T, names ...string) {
 		}
 	}
 	t.Setenv("PATH", dir)
+}
+
+func TestOpenTool(t *testing.T) {
+	if got := openTool("darwin"); got != "open" {
+		t.Errorf("openTool(darwin) = %q, want open", got)
+	}
+	if got := openTool("linux"); got != "xdg-open" {
+		t.Errorf("openTool(linux) = %q, want xdg-open", got)
+	}
+}
+
+func TestDragFallbackHint(t *testing.T) {
+	if got := dragFallbackHint("darwin"); strings.Contains(got, "ripdrag") {
+		t.Errorf("darwin hint should not mention Linux helpers: %q", got)
+	}
+	if got := dragFallbackHint("linux"); !strings.Contains(got, "ripdrag") {
+		t.Errorf("linux hint should mention ripdrag: %q", got)
+	}
 }
 
 func TestRunDragHelper(t *testing.T) {
@@ -79,9 +99,12 @@ func TestDragSelected(t *testing.T) {
 		fakeBins(t) // no helper, and no clipboard tool on this PATH either
 		m := &galleryModel{images: []imageEntry{{Path: "/x/a.png"}}}
 		m.dragSelected()
-		want := "copy failed: no clipboard tool found (install wl-clipboard or xclip) (drag-out needs kitty or ripdrag/dragon)"
-		if m.status != want {
-			t.Fatalf("got %q, want %q", m.status, want)
+		// The copy also fails on this bare PATH; the exact error is platform
+		// specific (osascript vs wl-copy/xclip), so assert the shape: a failed
+		// copy plus the OS-appropriate drag hint.
+		if !strings.HasPrefix(m.status, "copy failed:") ||
+			!strings.HasSuffix(m.status, dragFallbackHint(runtime.GOOS)) {
+			t.Fatalf("status = %q", m.status)
 		}
 	})
 	t.Run("no images is a no-op", func(t *testing.T) {

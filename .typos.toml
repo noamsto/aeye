@@ -8,3 +8,8 @@ extend-exclude = ["*.svg"]
 thm = "thm"
 # Go standard adjective; both spellings exist but the codebase predates this check.
 unparseable = "unparseable"
+
+[default.extend-identifiers]
+# AppleScript pasteboard four-char type code for PNG (« class PNGf »); typos
+# splits it into PN+Gf and flags PN, so allowlist the whole identifier.
+PNGf = "PNGf"

@@ -30,10 +30,13 @@ pane_id="${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}"
 pane_file="${pane_id#%}"
 session="${CLAUDE_CODE_SESSION_ID:-}"
 
-clear_pane() { rm -f "$IMAGES_DIR/$1.jsonl" "$IMAGES_DIR/$1.owner"; }
+clear_pane() { rm -f "$IMAGES_DIR/$1.jsonl" "$IMAGES_DIR/$1.owner" "$IMAGES_DIR/$1.lock"; }
 
 # --- This pane's manifest ---
 if [[ -n $pane_id && $pane_file =~ ^[A-Za-z0-9_@:.-]+$ ]]; then
+	# Serialize the clear/owner-stamp against a live images.sh append that may
+	# fire the instant the session starts.
+	_manifest_lock "$IMAGES_DIR/$pane_file.lock"
 	owner_file="$IMAGES_DIR/$pane_file.owner"
 	owner=""
 	[[ -f $owner_file ]] && owner="$(<"$owner_file")"
@@ -66,15 +69,16 @@ live=""
 ttl=$((7 * 86400))
 printf -v now '%(%s)T' -1
 
-# Sweep both the manifest and its owner sidecar: an orphaned .owner (its .jsonl
+# Sweep the manifest and its sidecars: an orphaned .owner/.lock (its .jsonl
 # already gone) would otherwise never be reaped, since clear_pane only fires on a
-# base the loop visits. Dedup the bases so a base with both files is handled once.
+# base the loop visits. Dedup the bases so a base with several files is handled once.
 declare -A gc_seen=()
-for m in "$IMAGES_DIR"/*.jsonl "$IMAGES_DIR"/*.owner; do
+for m in "$IMAGES_DIR"/*.jsonl "$IMAGES_DIR"/*.owner "$IMAGES_DIR"/*.lock; do
 	[[ -e $m ]] || continue
 	base="$(basename "$m")"
 	base="${base%.jsonl}"
 	base="${base%.owner}"
+	base="${base%.lock}"
 	[[ $base == "$pane_file" ]] && continue # never GC the pane we just stamped
 	[[ -n ${gc_seen[$base]:-} ]] && continue
 	gc_seen[$base]=1

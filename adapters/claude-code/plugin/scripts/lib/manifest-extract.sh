@@ -11,6 +11,19 @@ _mtime() {
 	stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0
 }
 
+# _manifest_lock LOCKPATH -> take an exclusive advisory lock on fd 9, serializing
+# the concurrent hook mutations of one pane's manifest (images.sh appends,
+# diagrams.sh's read-modify-write prune, session-backfill's rebuild,
+# session-reset's clear). Without it, diagrams.sh's tmp+mv rewrite can clobber a
+# concurrent images.sh append (lost update) and a resume-time append can race the
+# backfill rebuild. Released when the script exits (fd 9 closes). Best-effort:
+# without flock on PATH the prior lock-free behavior stands.
+_manifest_lock() {
+	command -v flock >/dev/null 2>&1 || return 0
+	exec 9>"$1" || return 0
+	flock 9 2>/dev/null || true
+}
+
 # extract_image_path PAYLOAD -> echoes a resolved, existing image path or nothing.
 # Two phases mirror the live images.sh: explicit tool_input paths, then a scan of
 # tool_response strings for an embedded path.

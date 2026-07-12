@@ -32,6 +32,10 @@ printf -v now '%(%FT%T%z)T' -1
 manifest="$IMAGES_DIR/$pane_file.jsonl"
 mkdir -p "$IMAGES_DIR"
 
+# Serialize the owner self-heal + append against a concurrent diagrams.sh
+# rewrite or backfill rebuild of the same manifest.
+_manifest_lock "$IMAGES_DIR/$pane_file.lock"
+
 # Self-heal against tmux pane-id reuse: a manifest last written by a different
 # Claude session belongs to a pane that's since been recycled — drop it so this
 # session's carousel never blends in a prior session's images. (The SessionStart

@@ -53,6 +53,11 @@ if [[ $was_missing -eq 1 ]] && grep -q '<foreignObject' "$svg"; then
 	exit 0
 fi
 
+# Serialize the owner self-heal, the prune read-modify-write, and the append
+# below against a concurrent images.sh append of the same manifest. Taken after
+# the (slow) d2_render above so rendering never holds the lock.
+_manifest_lock "$IMAGES_DIR/$pane_file.lock"
+
 # Self-heal against tmux pane-id reuse: a manifest last written by a different
 # Claude session belongs to a pane that's since been recycled — drop it so this
 # session's carousel never blends in a prior session's images. (The SessionStart

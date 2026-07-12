@@ -68,14 +68,23 @@ func TestCachedPNGTranscodesJPEG(t *testing.T) {
 	}
 }
 
-// A PNG already no larger than the cell box is handed to kitty untouched.
-func TestCachedPNGSmallPNGUntouched(t *testing.T) {
+// Even a PNG already small enough is pinned into the viewer-owned cache dir
+// rather than handed to kitty by its live path: kitty fetches the transmit path
+// asynchronously, so the source could be pruned/re-rendered before the fetch.
+func TestCachedPNGSmallPNGPinned(t *testing.T) {
 	imgCacheDir = t.TempDir()
 	src := filepath.Join(t.TempDir(), "small.png")
 	writeTestImage(t, src, 8, 8)
 
-	if got := cachedPNG(src, 20, 10); got != src {
-		t.Errorf("small PNG should be returned untouched, got %q", got)
+	got := cachedPNG(src, 20, 10)
+	if got == src {
+		t.Fatalf("small PNG should be pinned to the cache, got original path %q", got)
+	}
+	if filepath.Dir(got) != imgCacheDir {
+		t.Errorf("pinned file %q not under cache dir %q", got, imgCacheDir)
+	}
+	if !decodesAsPNG(t, got) {
+		t.Errorf("pinned file %q is not a PNG", got)
 	}
 }
 

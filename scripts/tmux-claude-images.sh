@@ -83,8 +83,12 @@ launch_tmux() {
 	# focus to the viewer.
 	local detach=()
 	[[ -n $ENSURE_OPEN ]] && detach=(-d)
+	# printf '%q' both fields so a binary path with spaces (e.g. a macOS
+	# ~/Users/Jane Doe/... install) survives tmux re-parsing the command via sh -c.
+	local cmd
+	printf -v cmd '%q %q' "$VIEWER_BIN" "$KEY"
 	local viewer
-	viewer="$(tmux split-window -h "${detach[@]}" -t "$KEY" -P -F '#{pane_id}' "$VIEWER_BIN '$KEY'")"
+	viewer="$(tmux split-window -h "${detach[@]}" -t "$KEY" -P -F '#{pane_id}' "$cmd")"
 	tmux set-option -p -t "$viewer" @claude_img_src "$KEY"
 }
 

@@ -89,3 +89,10 @@ for m in "$IMAGES_DIR"/*.jsonl "$IMAGES_DIR"/*.owner; do
 		((now - mtime > ttl)) && clear_pane "$base"
 	fi
 done
+
+# The GC loop's last command is a bare ((...)) that returns 1 when the final
+# file is within its TTL — which would otherwise leak out as the hook's exit
+# status (non-blocking, but Claude Code reports it as a hook error). This hook
+# signals only via stdout/side-effects, so force success; set -e already aborted
+# on any real earlier failure.
+exit 0

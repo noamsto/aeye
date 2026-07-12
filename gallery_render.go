@@ -76,16 +76,19 @@ func manifestPath(pane string) string {
 	return dir + "/images/" + strings.TrimPrefix(pane, "%") + ".jsonl"
 }
 
-// loadManifest reads and parses the pane's image manifest, dropping entries
-// that don't decode as an image so neither a deleted file nor a truncated stub
-// (e.g. a failed diagram render that left a few bytes on disk) renders as a
-// blank cell. A path that becomes valid later is picked up on the next reload.
-func loadManifest(pane string) []imageEntry {
+// loadManifest reads and parses the pane's image manifest, resolves each d2
+// entry to the live theme's variant, then drops entries that don't decode as an
+// image so neither a deleted file nor a truncated stub (e.g. a failed diagram
+// render that left a few bytes on disk) renders as a blank cell. Resolution runs
+// before the decode check so validation covers the variant actually shown — a
+// dark render whose light sibling is missing is dropped, not painted blank. A
+// path that becomes valid later is picked up on the next reload.
+func loadManifest(pane, theme string) []imageEntry {
 	data, err := os.ReadFile(manifestPath(pane))
 	if err != nil {
 		return nil
 	}
-	entries := parseManifest(data)
+	entries := resolveThemeVariants(parseManifest(data), theme)
 	out := entries[:0]
 	for _, e := range entries {
 		if err := decodeErr(e.Path); err != nil {

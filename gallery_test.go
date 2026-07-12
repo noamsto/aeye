@@ -242,7 +242,7 @@ func TestLoadManifestDropsUndecodableFiles(t *testing.T) {
 	if err := os.WriteFile(manifest, []byte(lines), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got := loadManifest("p1")
+	got := loadManifest("p1", "dark")
 	if len(got) != 1 || got[0].Path != live {
 		t.Fatalf("loadManifest = %+v, want only the decodable file %q", got, live)
 	}

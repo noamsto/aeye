@@ -76,16 +76,44 @@ func manifestPath(pane string) string {
 	return dir + "/images/" + strings.TrimPrefix(pane, "%") + ".jsonl"
 }
 
-// loadManifest reads and parses the pane's image manifest, dropping entries
-// that don't decode as an image so neither a deleted file nor a truncated stub
-// (e.g. a failed diagram render that left a few bytes on disk) renders as a
-// blank cell. A path that becomes valid later is picked up on the next reload.
-func loadManifest(pane string) []imageEntry {
+// foreignManifest reports whether the pane's manifest is owned by a different
+// session than this viewer's. The capture hooks stamp <pane>.owner with the
+// writing session's id; when this viewer knows its own identity (AEYE_OWNER, or
+// the Claude session id the adapter forwards) and the sidecar names someone
+// else, the manifest is a prior session's images left under a reused tmux pane
+// id — show nothing rather than bleed them in. Absent identity or sidecar, the
+// check is inert, so a manual/standalone launch behaves exactly as before.
+func foreignManifest(pane string) bool {
+	self := os.Getenv("AEYE_OWNER")
+	if self == "" {
+		self = os.Getenv("CLAUDE_CODE_SESSION_ID")
+	}
+	if self == "" {
+		return false
+	}
+	owner, err := os.ReadFile(strings.TrimSuffix(manifestPath(pane), ".jsonl") + ".owner")
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(owner)) != self
+}
+
+// loadManifest reads and parses the pane's image manifest, resolves each d2
+// entry to the live theme's variant, then drops entries that don't decode as an
+// image so neither a deleted file nor a truncated stub (e.g. a failed diagram
+// render that left a few bytes on disk) renders as a blank cell. Resolution runs
+// before the decode check so validation covers the variant actually shown — a
+// dark render whose light sibling is missing is dropped, not painted blank. A
+// path that becomes valid later is picked up on the next reload.
+func loadManifest(pane, theme string) []imageEntry {
+	if foreignManifest(pane) {
+		return nil
+	}
 	data, err := os.ReadFile(manifestPath(pane))
 	if err != nil {
 		return nil
 	}
-	entries := parseManifest(data)
+	entries := resolveThemeVariants(parseManifest(data), theme)
 	out := entries[:0]
 	for _, e := range entries {
 		if err := decodeErr(e.Path); err != nil {
@@ -128,17 +156,51 @@ func withTheme(path, mode string) string {
 	return path
 }
 
-// decodeErr returns nil if path's header decodes as a registered image format.
-// DecodeConfig reads only the header (cheap), so this validates every manifest
-// entry on load without paying a full decode.
+// decodeCache memoizes decodeErr by (path, mtime, size) so an unchanged file is
+// fully decoded only once across the 1.5s reload poll; a re-captured file (new
+// mtime/size) is re-decoded and can flip from failing to valid.
+var decodeCache = struct {
+	sync.Mutex
+	m map[string]decodeResult
+}{m: map[string]decodeResult{}}
+
+type decodeResult struct {
+	mtime int64
+	size  int64
+	err   error
+}
+
+// decodeErr returns nil if path decodes fully as a registered image format. It
+// does a whole-image Decode, not just DecodeConfig: a capture still being
+// flushed (e.g. a screenshot mid-write) can carry a valid header yet truncated
+// pixel data, which DecodeConfig accepts and the carousel then paints as a blank
+// cell. Dropping it on the failed full decode keeps the truncated frame out
+// until a later reload sees the completed file. Results are memoized per file
+// version so the extra cost is paid once, not every poll.
 func decodeErr(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	_, _, err = image.DecodeConfig(f)
-	return err
+	fi, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	mtime, size := fi.ModTime().UnixNano(), fi.Size()
+
+	decodeCache.Lock()
+	if r, ok := decodeCache.m[path]; ok && r.mtime == mtime && r.size == size {
+		decodeCache.Unlock()
+		return r.err
+	}
+	decodeCache.Unlock()
+
+	_, _, derr := image.Decode(f)
+	decodeCache.Lock()
+	decodeCache.m[path] = decodeResult{mtime, size, derr}
+	decodeCache.Unlock()
+	return derr
 }
 
 // dropped tracks paths already logged this process so a stale entry isn't

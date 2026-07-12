@@ -190,7 +190,7 @@ func (m *galleryModel) selectIndex(idx int) {
 
 func (m *galleryModel) reload() {
 	m.mtime = manifestMtime(m.pane)
-	m.images = resolveThemeVariants(loadManifest(m.pane), m.theme)
+	m.images = loadManifest(m.pane, m.theme)
 	m.cursor = clamp(m.cursor, 0, max(0, len(m.images)-1))
 	if m.pinned {
 		m.cursor = max(0, len(m.images)-1)
@@ -685,7 +685,7 @@ func (m galleryModel) thmColor(opt, dark, light string) imgcolor.Color {
 func runGallery(pane string) error {
 	tty, _ := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
 	theme := detectTheme()
-	images := resolveThemeVariants(loadManifest(pane), theme)
+	images := loadManifest(pane, theme)
 	backend, rasterFmt := chooseGridBackend(termName(), os.Getenv("TMUX") != "", os.Getenv("TERM_PROGRAM"), os.Getenv("LC_TERMINAL"), os.Getenv("WEZTERM_PANE"), os.Getenv("TERM"), probeSixel)
 	m := galleryModel{
 		pane:         pane,

@@ -54,7 +54,7 @@ func cachedPNG(srcPath string, cols, rows int) string {
 		return srcPath
 	}
 	defer f.Close()
-	src, format, err := image.Decode(f)
+	src, _, err := image.Decode(f)
 	if err != nil {
 		return srcPath
 	}
@@ -62,10 +62,13 @@ func cachedPNG(srcPath string, cols, rows int) string {
 	b := src.Bounds()
 	scale := min(float64(tw)/float64(b.Dx()), float64(th)/float64(b.Dy()))
 	if scale >= 1 {
-		if format == "png" {
-			return srcPath // already a PNG no larger than the cell box
-		}
-		return writePNG(out, src, srcPath) // small but wrong format: transcode only
+		// Small enough to send as-is, but still write a viewer-owned copy rather
+		// than returning srcPath: kitty fetches the transmit path asynchronously
+		// (t=f), so handing it the live manifest path races a hook deleting or
+		// re-rendering that file (a d2 prune, GC, or an edited diagram) before the
+		// fetch lands — which paints an empty cell. The cache dir is ours; the
+		// capture hooks never sweep it.
+		return writePNG(out, src, srcPath)
 	}
 
 	dst := image.NewRGBA(image.Rect(0, 0, int(float64(b.Dx())*scale), int(float64(b.Dy())*scale)))

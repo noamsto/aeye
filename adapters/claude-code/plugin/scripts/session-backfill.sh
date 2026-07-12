@@ -30,6 +30,14 @@ owner_file="$IMAGES_DIR/$pane_file.owner"
 session="${CLAUDE_CODE_SESSION_ID:-}"
 mkdir -p "$IMAGES_DIR"
 
+# shellcheck source=lib/manifest-extract.sh disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/lib/manifest-extract.sh"
+
+# Hold the pane's manifest lock across the whole clear/rebuild — a live images.sh
+# or diagrams.sh append fired right after resume must wait, not interleave with
+# the authoritative rebuild (which starts by wiping the manifest).
+_manifest_lock "$IMAGES_DIR/$pane_file.lock"
+
 # Without a readable transcript we can't rebuild. Drop a manifest we can't prove
 # belongs to this session (the reused-pane-id bleed); keep one this session owns
 # (a legit continuation whose transcript is unreadable) rather than blank it.
@@ -39,9 +47,6 @@ if [[ -z $transcript || ! -r $transcript ]]; then
 	[[ -f $manifest && (-z $owner || $owner != "$session") ]] && rm -f "$manifest" "$owner_file"
 	exit 0
 fi
-
-# shellcheck source=lib/manifest-extract.sh disable=SC1091
-source "$(dirname "${BASH_SOURCE[0]}")/lib/manifest-extract.sh"
 
 # Authoritative rebuild: the transcript is the record of what this session
 # touched, so start from empty rather than merge into whatever the pane held —
@@ -54,7 +59,7 @@ append_image() { # $1 path  $2 source  $3 ts
 	[[ -n ${seen["$1"]:-} ]] && return 0
 	seen["$1"]=1
 	local mtime
-	mtime="$(stat -c %Y "$1" 2>/dev/null || echo 0)"
+	mtime="$(_mtime "$1")"
 	jq -nc --arg path "$1" --arg source "$2" --arg ts "$3" --argjson mtime "$mtime" \
 		'{type:"image", path:$path, source:$source, ts:$ts, mtime:$mtime}' >>"$manifest"
 }
@@ -63,7 +68,7 @@ append_diagram() { # $1 png  $2 svg  $3 ts  $4 name
 	[[ -n ${seen["$1"]:-} ]] && return 0
 	seen["$1"]=1
 	local mtime
-	mtime="$(stat -c %Y "$1" 2>/dev/null || echo 0)"
+	mtime="$(_mtime "$1")"
 	jq -nc --arg path "$1" --arg vector "$2" --arg source "d2" --arg name "$4" --arg ts "$3" --argjson mtime "$mtime" \
 		'{type:"image", path:$path, vector:$vector, source:$source, name:$name, ts:$ts, mtime:$mtime}' >>"$manifest"
 }

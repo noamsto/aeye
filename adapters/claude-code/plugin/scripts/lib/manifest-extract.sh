@@ -4,6 +4,13 @@
 # echoes a result (or nothing) and returns 0 so callers under `set -euo pipefail`
 # are never aborted by a "not found" outcome.
 
+# _mtime PATH -> file mtime in epoch seconds (0 if absent/unstatable). Portable
+# across GNU stat (-c) and BSD/macOS stat (-f): the carousel keys dedup and the
+# raster cache on this value, and session-reset ages files out by it.
+_mtime() {
+	stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0
+}
+
 # extract_image_path PAYLOAD -> echoes a resolved, existing image path or nothing.
 # Two phases mirror the live images.sh: explicit tool_input paths, then a scan of
 # tool_response strings for an embedded path.

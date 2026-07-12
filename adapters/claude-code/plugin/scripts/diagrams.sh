@@ -100,7 +100,7 @@ if [[ -f $manifest ]]; then
 		mv "$tmp" "$manifest"
 fi
 
-mtime="$(stat -c %Y "$png" 2>/dev/null || echo 0)"
+mtime="$(_mtime "$png")"
 printf -v now '%(%FT%T%z)T' -1
 jq -nc --arg path "$png" --arg vector "$svg" --arg source "d2" --arg name "$name" --arg ts "$now" --argjson mtime "$mtime" \
 	'{type:"image", path:$path, vector:$vector, source:$source, name:$name, ts:$ts, mtime:$mtime}' >>"$manifest"

@@ -26,7 +26,7 @@ source_tool="$(jq -r '.tool_name // "?"' <<<"$payload" 2>/dev/null)"
 path="$(extract_image_path "$payload")"
 [[ -n $path ]] || exit 0
 
-mtime="$(stat -c %Y "$path" 2>/dev/null || echo 0)"
+mtime="$(_mtime "$path")"
 printf -v now '%(%FT%T%z)T' -1
 
 manifest="$IMAGES_DIR/$pane_file.jsonl"

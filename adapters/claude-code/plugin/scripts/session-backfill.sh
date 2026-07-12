@@ -54,7 +54,7 @@ append_image() { # $1 path  $2 source  $3 ts
 	[[ -n ${seen["$1"]:-} ]] && return 0
 	seen["$1"]=1
 	local mtime
-	mtime="$(stat -c %Y "$1" 2>/dev/null || echo 0)"
+	mtime="$(_mtime "$1")"
 	jq -nc --arg path "$1" --arg source "$2" --arg ts "$3" --argjson mtime "$mtime" \
 		'{type:"image", path:$path, source:$source, ts:$ts, mtime:$mtime}' >>"$manifest"
 }
@@ -63,7 +63,7 @@ append_diagram() { # $1 png  $2 svg  $3 ts  $4 name
 	[[ -n ${seen["$1"]:-} ]] && return 0
 	seen["$1"]=1
 	local mtime
-	mtime="$(stat -c %Y "$1" 2>/dev/null || echo 0)"
+	mtime="$(_mtime "$1")"
 	jq -nc --arg path "$1" --arg vector "$2" --arg source "d2" --arg name "$4" --arg ts "$3" --argjson mtime "$mtime" \
 		'{type:"image", path:$path, vector:$vector, source:$source, name:$name, ts:$ts, mtime:$mtime}' >>"$manifest"
 }

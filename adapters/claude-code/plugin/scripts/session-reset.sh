@@ -22,6 +22,9 @@ STATE_DIR="${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}"
 IMAGES_DIR="$STATE_DIR/images"
 [[ -d $IMAGES_DIR ]] || exit 0
 
+# shellcheck source=lib/manifest-extract.sh disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/lib/manifest-extract.sh"
+
 # Same keying as images.sh/diagrams.sh so we act on the right manifest.
 pane_id="${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}"
 pane_file="${pane_id#%}"
@@ -82,10 +85,11 @@ for m in "$IMAGES_DIR"/*.jsonl "$IMAGES_DIR"/*.owner; do
 		grep -qxF "$base" <<<"$live" || clear_pane "$base"
 	else
 		# session-keyed files — prune if untouched past the TTL, aging off the
-		# newest of the two (either may be absent; the || true keeps a missing-file
-		# stat from tripping set -o pipefail and aborting the sweep).
-		mtime="$({ stat -c %Y "$IMAGES_DIR/$base.jsonl" "$IMAGES_DIR/$base.owner" 2>/dev/null || true; } | sort -rn | head -1)"
-		: "${mtime:=$now}"
+		# newest of the two (either may be absent; _mtime yields 0 for a missing
+		# one, so the surviving file's real mtime wins).
+		j="$(_mtime "$IMAGES_DIR/$base.jsonl")"
+		o="$(_mtime "$IMAGES_DIR/$base.owner")"
+		mtime=$((j > o ? j : o))
 		((now - mtime > ttl)) && clear_pane "$base"
 	fi
 done

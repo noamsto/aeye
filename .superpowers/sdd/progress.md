@@ -21,3 +21,4 @@ Branch: feat/122-codex-adapter
 Task 0.1: spike gate PASSED (hooks fire in 0.144.1; contract captured)
 Task 1.1: complete (commits fa1e413..a535f1c, review clean — core manifest-extract.sh extracted, 117/117 bats + go green)
 Task 1.2: complete (commits 2ceabc6..a78a9e0, review clean opus — manifest-lifecycle.sh extracted, session-id parameterized, all 5 fragility risks byte-identical, 117/117 + go green). PHASE 1 DONE.
+Task 2.1: complete (commits cade0fa..1b585a5 — Codex plugin.json + hooks.json + provisional marketplace.json; review found missing interface.defaultPrompt (Important), fixed in 1b585a5; validate_plugin.py PASSES under nix python w/ pyyaml). marketplace.json path:"./" provisional → finalize in Task 4.1.

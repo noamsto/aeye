@@ -77,7 +77,7 @@ test:
 
 # Bats integration tests (adapter, toggle, diagrams, hooks)
 test-bats:
-    bats tests/
+    bats --recursive tests/
 
 # Format Go sources
 fmt:

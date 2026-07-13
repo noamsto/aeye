@@ -79,6 +79,11 @@ test:
 test-bats:
     bats --recursive tests/
 
+# Re-vendor core/ into the Codex plugin (codex plugin add copies the plugin
+# dir only, not its core/ sibling, so the plugin carries its own synced copy).
+sync-codex-core:
+    cp adapters/core/manifest-extract.sh adapters/core/manifest-lifecycle.sh adapters/codex/plugin/scripts/core/
+
 # Format Go sources
 fmt:
     gofmt -w .

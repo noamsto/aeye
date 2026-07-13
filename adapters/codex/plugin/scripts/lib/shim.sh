@@ -9,8 +9,8 @@
 # nothing) and returns 0 so callers under `set -euo pipefail` are never
 # aborted by a "not found" outcome.
 
-# shellcheck source=../../../../core/manifest-extract.sh disable=SC1091
-source "$(dirname "${BASH_SOURCE[0]}")/../../../../core/manifest-extract.sh"
+# shellcheck source=../core/manifest-extract.sh disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/../core/manifest-extract.sh"
 
 # _codex_apply_patch_paths ENVELOPE -> echoes each Add/Update File path (one
 # per line) from an apply_patch envelope's `*** Begin/End Patch` command text.

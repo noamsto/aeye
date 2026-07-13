@@ -25,6 +25,15 @@ PHASE 4 progress:
 - ORDERING DEPENDENCY: nix-config rebuild is BLOCKED on merging this aeye branch first (flake input pinned to aeye main lacks adapters/codex/ until merge + input bump). So: live E2E against the worktree now → aeye PR/merge → bump input → nix wire + rebuild.
 - REMAINING: live E2E (interactive: /hooks trust + real codex session, user-driven); README + CHANGELOG (subagent-able); nix-config codex wrapper (env: AEYE_D2_FONT/FONT_DIR/THEME-via-dconf + aeye/resvg PATH, mirror claude-wrapper) + marketplace register via stable symlink (draft now, rebuild post-merge); aeye PR --assignee @me linking #122.
 
+Task 4.2 docs: DONE (commit 15f07fb) — README Install (Codex subsection + /hooks trust caveat) + Adapters bullet + docs/INSTALL.md Codex section. CHANGELOG untouched (release-please). No git-URL overclaim.
+
+=== BRANCH STATE: aeye adapter COMPLETE, install-verified, reviewed, documented → PR-READY ===
+Remaining = USER-GATED only:
+1. aeye PR (needs push consent) — feat/122-codex-adapter.
+2. nix-config wiring: BLOCKED on aeye merge (flake input pinned to main lacks adapters/codex). Post-merge: bump input → codex wrapper (AEYE_D2_* env, mirror claude-wrapper) + register marketplace via stable symlink → rebuild. Draft deferred until input is bumpable/testable.
+3. Optional full live interactive E2E (real model session + /hooks trust). NOTE: installed round-trip already proved capture works from the INSTALLED copy (task 4.0-fix) — this is extra confidence, not correctness-critical.
+FAST-FOLLOWS (post-merge): bundle Minors 3/4/5/6 (multi-.d2 lock/JSON/test-gap + diagrams owner test); toggle bare-terminal gap (Minor 8, cross-repo w/ lazytmux).
+
 ## Status
 
 - Task 0.1 (spike: hook runtime fires) — COMPLETE, GATE PASSED. Contract in docs/superpowers/spikes/2026-07-12-codex-hook-contract.md. Hook payload normalized (clean tool_name + structured tool_input); JS-unwrap is backfill-only. Plan/spec updated to match.

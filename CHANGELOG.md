@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.1](https://github.com/noamsto/aeye/compare/v0.9.0...v0.9.1) (2026-07-12)
+
+
+### Bug Fixes
+
+* **carousel:** macOS hook portability + bleed/empty-box hardening ([#121](https://github.com/noamsto/aeye/issues/121)) ([86b110c](https://github.com/noamsto/aeye/commit/86b110cec95d68408a8c5690ced6e266317c3b3a))
+* **claude-code:** don't leak GC sweep exit status from session-reset hook ([#119](https://github.com/noamsto/aeye/issues/119)) ([221209e](https://github.com/noamsto/aeye/commit/221209e3e4b6443f4e9588c63b8afd5d38d99b5e))
+
 ## [0.9.0](https://github.com/noamsto/aeye/compare/v0.8.0...v0.9.0) (2026-07-07)
 
 

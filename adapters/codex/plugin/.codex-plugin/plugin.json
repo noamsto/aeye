@@ -3,6 +3,7 @@
   "version": "0.9.0",
   "description": "Capture images this Codex session touches and browse them in a tmux/kitty carousel.",
   "author": {"name": "Noam Stolero"},
+  "skills": "./skills",
   "interface": {
     "displayName": "aeye",
     "shortDescription": "Image carousel for Codex sessions.",

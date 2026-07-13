@@ -25,7 +25,9 @@ close):
 - **Inside tmux** — a split pane, keyed by `$TMUX_PANE`. The user can also open
   it with `prefix + I` if their tmux config binds it (lazytmux does).
 - **Outside tmux, in kitty with remote control** (`$KITTY_LISTEN_ON` set) — a
-  `kitty @ launch` window, keyed by the session.
+  `kitty @ launch` window, keyed by the session. (Note: This currently requires
+  a Claude Code session; Codex support for bare-terminal/kitty launch is
+  pending.)
 
 - It does nothing if no images have been captured yet (in tmux it prints
   `no images yet for this pane`) — the manifest fills as you touch images via

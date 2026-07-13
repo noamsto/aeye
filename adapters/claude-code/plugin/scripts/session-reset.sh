@@ -14,16 +14,17 @@
 #      never grows without bound. Reads the hook JSON on stdin.
 set -euo pipefail
 
+# shellcheck source=lib/manifest-extract.sh disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/lib/manifest-extract.sh"
+# shellcheck source=../../../core/manifest-lifecycle.sh disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/../../../core/manifest-lifecycle.sh"
+
 payload="$(cat)"
 [[ -n $payload ]] || exit 0
 source="$(jq -r '.source // empty' <<<"$payload" 2>/dev/null)"
 
-STATE_DIR="${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}"
-IMAGES_DIR="$STATE_DIR/images"
+resolve_state_dirs
 [[ -d $IMAGES_DIR ]] || exit 0
-
-# shellcheck source=lib/manifest-extract.sh disable=SC1091
-source "$(dirname "${BASH_SOURCE[0]}")/lib/manifest-extract.sh"
 
 # Same keying as images.sh/diagrams.sh so we act on the right manifest.
 pane_id="${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}"
@@ -33,7 +34,7 @@ session="${CLAUDE_CODE_SESSION_ID:-}"
 clear_pane() { rm -f "$IMAGES_DIR/$1.jsonl" "$IMAGES_DIR/$1.owner" "$IMAGES_DIR/$1.lock"; }
 
 # --- This pane's manifest ---
-if [[ -n $pane_id && $pane_file =~ ^[A-Za-z0-9_@:.-]+$ ]]; then
+if [[ -n $pane_id ]] && valid_pane_file "$pane_file"; then
 	# Serialize the clear/owner-stamp against a live images.sh append that may
 	# fire the instant the session starts.
 	_manifest_lock "$IMAGES_DIR/$pane_file.lock"
@@ -66,41 +67,8 @@ fi
 live=""
 [[ -n ${TMUX:-} ]] && command -v tmux >/dev/null 2>&1 &&
 	live="$(tmux list-panes -a -F '%#{pane_id}' 2>/dev/null | tr -d '%')"
-ttl=$((7 * 86400))
-printf -v now '%(%s)T' -1
 
-# Sweep the manifest and its sidecars: an orphaned .owner/.lock (its .jsonl
-# already gone) would otherwise never be reaped, since clear_pane only fires on a
-# base the loop visits. Dedup the bases so a base with several files is handled once.
-declare -A gc_seen=()
-for m in "$IMAGES_DIR"/*.jsonl "$IMAGES_DIR"/*.owner "$IMAGES_DIR"/*.lock; do
-	[[ -e $m ]] || continue
-	base="$(basename "$m")"
-	base="${base%.jsonl}"
-	base="${base%.owner}"
-	base="${base%.lock}"
-	[[ $base == "$pane_file" ]] && continue # never GC the pane we just stamped
-	[[ -n ${gc_seen[$base]:-} ]] && continue
-	gc_seen[$base]=1
-	if [[ $base =~ ^[0-9]+$ ]]; then
-		# tmux pane files — GC only when we have a reliable live list and the
-		# pane is not in it.
-		[[ -n $live ]] || continue
-		grep -qxF "$base" <<<"$live" || clear_pane "$base"
-	else
-		# session-keyed files — prune if untouched past the TTL, aging off the
-		# newest of the two (either may be absent; _mtime yields 0 for a missing
-		# one, so the surviving file's real mtime wins).
-		j="$(_mtime "$IMAGES_DIR/$base.jsonl")"
-		o="$(_mtime "$IMAGES_DIR/$base.owner")"
-		mtime=$((j > o ? j : o))
-		((now - mtime > ttl)) && clear_pane "$base"
-	fi
-done
+gc_sweep "$pane_file" "$live"
 
-# The GC loop's last command is a bare ((...)) that returns 1 when the final
-# file is within its TTL — which would otherwise leak out as the hook's exit
-# status (non-blocking, but Claude Code reports it as a hook error). This hook
-# signals only via stdout/side-effects, so force success; set -e already aborted
-# on any real earlier failure.
+# gc_sweep forces its own success; this exit is just the hook's overall status.
 exit 0

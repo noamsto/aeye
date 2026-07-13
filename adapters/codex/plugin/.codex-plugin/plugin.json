@@ -9,6 +9,11 @@
     "longDescription": "Captures screenshots and diagrams touched during a Codex session (via apply_patch, view_image, and Bash tool calls) and browses them in a tmux/kitty image carousel.",
     "developerName": "Noam Stolero",
     "category": "Productivity",
-    "capabilities": ["Read", "Write"]
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Show me the images from this conversation",
+      "Draw the architecture as a D2 diagram",
+      "Open the image carousel"
+    ]
   }
 }

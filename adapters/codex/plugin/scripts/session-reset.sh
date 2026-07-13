@@ -14,10 +14,11 @@
 #      never grows without bound. Reads the hook JSON on stdin.
 set -euo pipefail
 
-# shellcheck source=lib/manifest-extract.sh disable=SC1091
-source "$(dirname "${BASH_SOURCE[0]}")/lib/manifest-extract.sh"
-# shellcheck source=../../../core/manifest-lifecycle.sh disable=SC1091
-source "$(dirname "${BASH_SOURCE[0]}")/../../../core/manifest-lifecycle.sh"
+PLUGIN_ROOT="${PLUGIN_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
+# shellcheck source=lib/shim.sh disable=SC1091
+source "$PLUGIN_ROOT/scripts/lib/shim.sh"
+# shellcheck source=core/manifest-lifecycle.sh disable=SC1091
+source "$PLUGIN_ROOT/scripts/core/manifest-lifecycle.sh"
 
 payload="$(cat)"
 [[ -n $payload ]] || exit 0
@@ -27,9 +28,9 @@ resolve_state_dirs
 [[ -d $IMAGES_DIR ]] || exit 0
 
 # Same keying as images.sh/diagrams.sh so we act on the right manifest.
-pane_id="${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}"
+session="$(codex_session_id "$payload")"
+pane_id="${TMUX_PANE:-$session}"
 pane_file="${pane_id#%}"
-session="${CLAUDE_CODE_SESSION_ID:-}"
 
 clear_pane() { rm -f "$IMAGES_DIR/$1.jsonl" "$IMAGES_DIR/$1.owner" "$IMAGES_DIR/$1.lock"; }
 

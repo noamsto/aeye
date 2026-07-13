@@ -96,7 +96,9 @@ command -v chafa || echo "(optional) chafa not installed — needed only off kit
 command -v d2 && command -v resvg && echo "diagrams: ready" || echo "(optional) diagrams need d2 + resvg"
 ```
 
-## Step 3 — Install the Claude Code plugin (capture half)
+## Step 3 — Install the capture adapter for your agent
+
+### Claude Code
 
 These are **Claude Code slash commands**, run inside the Claude Code session
 (not the shell):
@@ -109,6 +111,23 @@ These are **Claude Code slash commands**, run inside the Claude Code session
 This repo doubles as its own single-plugin marketplace; both the marketplace and
 the plugin are named `aeye`. The plugin only *captures* — opening the
 carousel still uses the `tmux-claude-images` binary from Step 1.
+
+### Codex CLI
+
+Run in a shell (not inside Codex). The marketplace root is `adapters/codex/`,
+not the repo root:
+
+```bash
+codex plugin marketplace add <path-to-aeye>/adapters/codex
+codex plugin add aeye@aeye
+```
+
+Then, **inside** Codex, run `/hooks` once to review and trust the plugin's
+hooks — Codex won't run them until you do. Trust is keyed to the hooks' hash,
+so a plugin update requires re-running `/hooks`.
+
+<!-- TODO(codex): finalize once Nix wiring lands (Nix/Home-Manager auto-install
+for the Codex plugin is not done yet). -->
 
 ## Step 4 — Smoke test
 

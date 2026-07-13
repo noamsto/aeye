@@ -73,13 +73,26 @@ nix profile install github:noamsto/aeye#toggle   # toggle
 go install github.com/noamsto/aeye@latest
 ```
 
-Then install the **capture** half — the Claude Code plugin (run inside Claude
-Code, not the shell):
+Then install the **capture** half for your coding agent.
+
+**Claude Code** (run inside Claude Code, not the shell):
 
 ```
 /plugin marketplace add noamsto/aeye
 /plugin install aeye@aeye
 ```
+
+**Codex CLI** (run in a shell; the marketplace root is `adapters/codex/`, not
+the repo root):
+
+```bash
+codex plugin marketplace add <path-to-aeye>/adapters/codex
+codex plugin add aeye@aeye
+```
+
+Codex skips a plugin's hooks until you review and trust them: run `/hooks`
+inside Codex once after installing, and again after any plugin update (trust
+is keyed to the hooks' hash).
 
 > 📖 **Step-by-step, agent-friendly guide:** [`docs/INSTALL.md`](docs/INSTALL.md)
 > — host check, both entrypoints, plugin, optional deps, and a smoke test, each
@@ -208,16 +221,16 @@ the manifest; the viewer never changes.
 - **Viewer** (Go binary) — reads
   `${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}/images/<pane>.jsonl`
   and renders via the kitty graphics protocol (or chafa fallback).
-- **Adapters** (`adapters/`) — per-agent capture. Today: `claude-code/`
-  (a PostToolUse hook + plugin + skill).
+- **Adapters** (`adapters/`) — per-agent capture, at parity: `claude-code/`
+  and `codex/` (each a PostToolUse/SessionStart hook + plugin + skill).
 
 Extracted from [lazytmux](https://github.com/noamsto/lazytmux), which consumes
 this repo as a flake input.
 
 ## Status
 
-Live standalone repo — the viewer binary, Claude Code capture adapter, and plugin
-skill all build and are consumed by
+Live standalone repo — the viewer binary, the Claude Code and Codex capture
+adapters, and plugin skills all build and are consumed by
 [lazytmux](https://github.com/noamsto/lazytmux) as a flake input. Zoom/pan and D2
 diagram navigation are implemented; see
 [docs/2026-06-10-design.md](docs/2026-06-10-design.md) for the design notes.

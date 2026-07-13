@@ -16,27 +16,30 @@ payload="$(cat)"
 
 transcript="$(jq -r '.transcript_path // empty' <<<"$payload" 2>/dev/null)"
 
-STATE_DIR="${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}"
-IMAGES_DIR="$STATE_DIR/images"
-DIAGRAMS_DIR="$IMAGES_DIR/diagrams"
+# shellcheck source=lib/manifest-extract.sh disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/lib/manifest-extract.sh"
+# shellcheck source=../../../core/manifest-lifecycle.sh disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/../../../core/manifest-lifecycle.sh"
+
+resolve_state_dirs
 
 pane_id="${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}"
 [[ -n $pane_id ]] || exit 0
 pane_file="${pane_id#%}"
-[[ $pane_file =~ ^[A-Za-z0-9_@:.-]+$ ]] || exit 0
+valid_pane_file "$pane_file" || exit 0
 
-manifest="$IMAGES_DIR/$pane_file.jsonl"
-owner_file="$IMAGES_DIR/$pane_file.owner"
+manifest_paths "$pane_file"
+# shellcheck disable=SC2153 # MANIFEST/OWNER_FILE come from core's manifest_paths
+manifest="$MANIFEST"
+# shellcheck disable=SC2153
+owner_file="$OWNER_FILE"
 session="${CLAUDE_CODE_SESSION_ID:-}"
 mkdir -p "$IMAGES_DIR"
-
-# shellcheck source=lib/manifest-extract.sh disable=SC1091
-source "$(dirname "${BASH_SOURCE[0]}")/lib/manifest-extract.sh"
 
 # Hold the pane's manifest lock across the whole clear/rebuild — a live images.sh
 # or diagrams.sh append fired right after resume must wait, not interleave with
 # the authoritative rebuild (which starts by wiping the manifest).
-_manifest_lock "$IMAGES_DIR/$pane_file.lock"
+_manifest_lock "$LOCK_FILE"
 
 # Without a readable transcript we can't rebuild. Drop a manifest we can't prove
 # belongs to this session (the reused-pane-id bleed); keep one this session owns
@@ -58,19 +61,13 @@ declare -A seen=()
 append_image() { # $1 path  $2 source  $3 ts
 	[[ -n ${seen["$1"]:-} ]] && return 0
 	seen["$1"]=1
-	local mtime
-	mtime="$(_mtime "$1")"
-	jq -nc --arg path "$1" --arg source "$2" --arg ts "$3" --argjson mtime "$mtime" \
-		'{type:"image", path:$path, source:$source, ts:$ts, mtime:$mtime}' >>"$manifest"
+	append_image_line "$manifest" "$1" "$2" "$3"
 }
 
 append_diagram() { # $1 png  $2 svg  $3 ts  $4 name
 	[[ -n ${seen["$1"]:-} ]] && return 0
 	seen["$1"]=1
-	local mtime
-	mtime="$(_mtime "$1")"
-	jq -nc --arg path "$1" --arg vector "$2" --arg source "d2" --arg name "$4" --arg ts "$3" --argjson mtime "$mtime" \
-		'{type:"image", path:$path, vector:$vector, source:$source, name:$name, ts:$ts, mtime:$mtime}' >>"$manifest"
+	append_diagram_line "$manifest" "$1" "$2" "$4" "$3"
 }
 
 # Only image/diagram-bearing lines reach jq (raw grep fast-bail, like images.sh).
@@ -111,5 +108,5 @@ done < <(grep -E '\.(png|jpe?g|gif|webp|bmp|d2)' "$transcript")
 
 # Claim the rebuilt manifest so the live hooks' owner self-heal does not drop it.
 if [[ -f $manifest && -n ${CLAUDE_CODE_SESSION_ID:-} ]]; then
-	printf '%s' "$CLAUDE_CODE_SESSION_ID" >"$IMAGES_DIR/$pane_file.owner"
+	printf '%s' "$CLAUDE_CODE_SESSION_ID" >"$owner_file"
 fi

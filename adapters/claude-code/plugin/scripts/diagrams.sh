@@ -4,20 +4,20 @@
 # Mirrors images.sh — self-contained, keyed by $TMUX_PANE or $CLAUDE_CODE_SESSION_ID.
 set -euo pipefail
 
-STATE_DIR="${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}"
-IMAGES_DIR="$STATE_DIR/images"
-DIAGRAMS_DIR="$IMAGES_DIR/diagrams"
+# shellcheck source=lib/manifest-extract.sh disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/lib/manifest-extract.sh"
+# shellcheck source=../../../core/manifest-lifecycle.sh disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/../../../core/manifest-lifecycle.sh"
+
+resolve_state_dirs
 
 pane_id="${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}"
 [[ -n $pane_id ]] || exit 0
 pane_file="${pane_id#%}"
-[[ $pane_file =~ ^[A-Za-z0-9_@:.-]+$ ]] || exit 0
+valid_pane_file "$pane_file" || exit 0
 
 payload="$(cat)"
 [[ -n $payload ]] || exit 0
-
-# shellcheck source=lib/manifest-extract.sh disable=SC1091
-source "$(dirname "${BASH_SOURCE[0]}")/lib/manifest-extract.sh"
 
 candidate="$(extract_d2_path "$payload")"
 [[ -n $candidate ]] || exit 0
@@ -27,7 +27,9 @@ mkdir -p "$DIAGRAMS_DIR"
 # the live theme at view time. d2_render below renders both variants.
 png="$(d2_png_for "$candidate" "$DIAGRAMS_DIR" dark)"
 svg="${png%.png}.svg"
-manifest="$IMAGES_DIR/$pane_file.jsonl"
+manifest_paths "$pane_file"
+# shellcheck disable=SC2153 # MANIFEST comes from core's manifest_paths
+manifest="$MANIFEST"
 
 # A fresh render (PNG absent beforehand) is the only time the markdown check
 # applies — a cached PNG was already vetted on its first render.
@@ -56,19 +58,13 @@ fi
 # Serialize the owner self-heal, the prune read-modify-write, and the append
 # below against a concurrent images.sh append of the same manifest. Taken after
 # the (slow) d2_render above so rendering never holds the lock.
-_manifest_lock "$IMAGES_DIR/$pane_file.lock"
+_manifest_lock "$LOCK_FILE"
 
 # Self-heal against tmux pane-id reuse: a manifest last written by a different
 # Claude session belongs to a pane that's since been recycled — drop it so this
 # session's carousel never blends in a prior session's images. (The SessionStart
 # reset already covers fresh starts; this also guards a start the reset missed.)
-owner="$IMAGES_DIR/$pane_file.owner"
-if [[ -n ${CLAUDE_CODE_SESSION_ID:-} ]]; then
-	if [[ -f $owner && $(<"$owner") != "$CLAUDE_CODE_SESSION_ID" ]]; then
-		rm -f "$manifest"
-	fi
-	printf '%s' "$CLAUDE_CODE_SESSION_ID" >"$owner"
-fi
+owner_selfheal "$pane_file" "${CLAUDE_CODE_SESSION_ID:-}"
 
 # Append guarded by a path-dedup check (independent of the render step, so a
 # diagram missing from the manifest is re-added even when its PNG is cached).
@@ -105,10 +101,8 @@ if [[ -f $manifest ]]; then
 		mv "$tmp" "$manifest"
 fi
 
-mtime="$(_mtime "$png")"
 printf -v now '%(%FT%T%z)T' -1
-jq -nc --arg path "$png" --arg vector "$svg" --arg source "d2" --arg name "$name" --arg ts "$now" --argjson mtime "$mtime" \
-	'{type:"image", path:$path, vector:$vector, source:$source, name:$name, ts:$ts, mtime:$mtime}' >>"$manifest"
+append_diagram_line "$manifest" "$png" "$svg" "$name" "$now"
 
 # Proactively surface the carousel on every new diagram. Reached only when a
 # genuinely new diagram was appended above (the dedup guard exits early for ones

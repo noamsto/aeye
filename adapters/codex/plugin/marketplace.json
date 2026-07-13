@@ -1,0 +1,20 @@
+{
+  "name": "aeye",
+  "interface": {
+    "displayName": "aeye"
+  },
+  "plugins": [
+    {
+      "name": "aeye",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

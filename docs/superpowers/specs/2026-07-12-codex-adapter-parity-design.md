@@ -2,6 +2,13 @@
 
 Date: 2026-07-12
 Tracking issue: [#122](https://github.com/noamsto/aeye/issues/122)
+Revision: rev3 — Spike 0.1 executed (`docs/superpowers/spikes/2026-07-12-codex-hook-contract.md`).
+GATE PASSED: hooks fire in 0.144.1. Key correction to rev2: the **hook payload is
+normalized** — `tool_name` ∈ {`apply_patch`,`view_image`,`Bash`}, `tool_input`
+structured (`.command`/`.path`), so the JS-`exec` unwrap the rev2 "tool encodings"
+section describes is needed for the **backfill/transcript path only**, not live
+capture. rev2 history below retained for the transcript-shape detail.
+
 Revision: rev2 — corrected after an adversarial spec review against the local
 `codex-cli 0.144.1` rollouts (the "one divergence" framing in rev1 was wrong;
 see [Codex tool encodings](#codex-tool-encodings-the-real-work) and

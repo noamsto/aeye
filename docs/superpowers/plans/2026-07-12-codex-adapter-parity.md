@@ -195,9 +195,9 @@ git commit -m "refactor(adapters): extract manifest lifecycle into core (#122)"
 
 ---
 
-## Phase 2 — Codex adapter (unlocked by Spike 1 PASS; payload access per the 0.1 contract)
+## Phase 2 — Codex adapter (Spike 0.1 PASSED — contract confirmed)
 
-> Extraction of the *tool input content* (patch envelope, view_image path) below is written against the real transcript payloads captured in the spec. The *outer hook-payload access* (how `tool_name`/`tool_input` are keyed) uses the Task 0.1 contract — adjust the marked lines if the spike found different keys.
+> **Contract confirmed** by `docs/superpowers/spikes/2026-07-12-codex-hook-contract.md`: the hook payload is NORMALIZED. `tool_name` ∈ {`apply_patch`,`view_image`,`Bash`,`mcp__*`}; `apply_patch` → `tool_input.command` (clean patch envelope), `view_image` → `tool_input.path`, `Bash` → `tool_input.command`. **No JS-unwrap on the hook path** — that is backfill-only (Phase 3). Session id/cwd/transcript from the payload (`session_id`,`cwd`,`transcript_path`).
 
 ### Task 2.1: Codex plugin manifest, marketplace entry, hooks.json
 
@@ -211,12 +211,12 @@ git commit -m "refactor(adapters): extract manifest lifecycle into core (#122)"
 
 - [ ] **Step 2: Write `marketplace.json`** — root `{name, interface.displayName, plugins:[…]}` with one entry: `name:"aeye"`, `source:{source:"local", path:"./"}`, `policy:{installation:"AVAILABLE", authentication:"ON_INSTALL"}`, `category:"Productivity"`. (Confirm the `path` convention against the Task 0.2 findings.)
 
-- [ ] **Step 3: Write `hooks/hooks.json`** — mirror the Claude `hooks.json` structure with Codex matchers:
+- [ ] **Step 3: Write `hooks/hooks.json`** — mirror the Claude `hooks.json` structure with the confirmed clean Codex matchers (NOT `exec` — the hook payload is normalized):
 ```json
 { "hooks": {
   "PostToolUse": [
-    { "matcher": "exec|apply_patch|Bash", "hooks": [ { "type": "command", "command": "\"$PLUGIN_ROOT\"/scripts/images.sh" } ] },
-    { "matcher": "exec|apply_patch", "hooks": [ { "type": "command", "command": "\"$PLUGIN_ROOT\"/scripts/diagrams.sh" } ] }
+    { "matcher": "apply_patch|view_image|Bash", "hooks": [ { "type": "command", "command": "\"$PLUGIN_ROOT\"/scripts/images.sh" } ] },
+    { "matcher": "apply_patch", "hooks": [ { "type": "command", "command": "\"$PLUGIN_ROOT\"/scripts/diagrams.sh" } ] }
   ],
   "SessionStart": [
     { "hooks": [ { "type": "command", "command": "\"$PLUGIN_ROOT\"/scripts/diagram-guidance.sh" } ] },
@@ -225,7 +225,6 @@ git commit -m "refactor(adapters): extract manifest lifecycle into core (#122)"
   ]
 } }
 ```
-(Adjust matchers per the Task 0.1 finding on how exec/apply_patch surface.)
 
 - [ ] **Step 4: Validate + commit**
 
@@ -242,78 +241,71 @@ git commit -m "feat(codex): plugin manifest, marketplace entry, hooks.json (#122
 - Test: `tests/codex/extract.bats` (new), `tests/fixtures/codex/*.json` (new)
 
 **Interfaces:**
-- Consumes: `scan_response_image_path`, `_mtime` from core; the Task 0.1 payload contract.
-- Produces: `codex_session_id PAYLOAD` (echoes `.session_id`), `codex_extract_touched_paths PAYLOAD` (echoes newline-separated existing image/`.d2` paths this call wrote or viewed), and internal `_codex_apply_patch_paths ENVELOPE`, `_codex_view_image_path INPUT`.
+- Consumes: `scan_response_image_path`, `_mtime` from core; the confirmed hook contract (normalized `tool_name`/`tool_input`).
+- Produces: `codex_session_id PAYLOAD` (echoes `.session_id`), `codex_extract_touched_paths PAYLOAD` (echoes newline-separated existing image/`.d2` paths this call wrote or viewed), and internal `_codex_apply_patch_paths ENVELOPE`.
 
-- [ ] **Step 1: Write failing tests for the envelope parser**
+- [ ] **Step 1: Write failing tests**
 
-`tests/codex/extract.bats` — feed a synthetic payload whose tool input is a raw `apply_patch` envelope adding `docs/foo.d2` and updating `/abs/bar.png`; assert `codex_extract_touched_paths` echoes both (that exist). Add a case with a non-image file (`README.md`) → not echoed. Fixtures under `tests/fixtures/codex/`.
+`tests/codex/extract.bats` — three synthetic hook payloads (real shapes from the spike):
+- `{"tool_name":"apply_patch","tool_input":{"command":"*** Begin Patch\n*** Add File: docs/foo.d2\n+x\n*** Update File: /abs/bar.png\n*** End Patch"},"cwd":"/repo"}` → echoes `/repo/docs/foo.d2` and `/abs/bar.png` (for the ones that exist as fixtures);
+- `{"tool_name":"view_image","tool_input":{"path":"/abs/shot.png"},"cwd":"/repo"}` → echoes `/abs/shot.png`;
+- an `apply_patch` touching `README.md` → NOT echoed (non-image).
+Fixtures under `tests/fixtures/codex/`.
 
 - [ ] **Step 2: Run → fail** (`shim.sh` functions undefined).
 
-- [ ] **Step 3: Implement the envelope + view_image parsers**
+- [ ] **Step 3: Implement the envelope parser**
 
 ```bash
 # _codex_apply_patch_paths ENVELOPE -> echo Add/Update File paths (one per line)
 _codex_apply_patch_paths() {
 	sed -n 's/^\*\*\* \(Add\|Update\) File: //p' <<<"$1"
 }
-
-# _codex_view_image_path JS_INPUT -> echo the path arg of a tools.view_image({...}) call
-_codex_view_image_path() {
-	grep -oE 'tools\.view_image\(\{[^}]*"path"[[:space:]]*:[[:space:]]*"[^"]+"' <<<"$1" \
-		| grep -oE '"path"[[:space:]]*:[[:space:]]*"[^"]+"' \
-		| sed -E 's/.*:[[:space:]]*"([^"]+)"/\1/'
-}
 ```
 
 - [ ] **Step 4: Implement `codex_extract_touched_paths`**
 
+The hook payload is normalized (confirmed by the spike), so this is a clean
+branch on `tool_name` — no JS unwrap:
+
 ```bash
-# Reads the hook payload; branches on tool_name per the 0.1 contract.
-# tool_name/tool_input keys below are the ADJUSTABLE seam (Task 0.1).
 codex_extract_touched_paths() {
-	local payload="$1" cwd name input envelope p out=()
+	local payload="$1" cwd name p resolved
 	cwd="$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null)"
 	name="$(jq -r '.tool_name // empty' <<<"$payload" 2>/dev/null)"
-	input="$(jq -r '.tool_input.command // .tool_input.input // .tool_input // empty' <<<"$payload" 2>/dev/null)"
+
+	emit() { # $1 raw path -> resolve, filter, existence-check, print
+		local q="$1"
+		[[ -z $q ]] && return 0
+		[[ $q != /* && -n $cwd ]] && q="$cwd/$q"
+		[[ ${q,,} =~ \.(png|jpe?g|gif|webp|bmp|d2)$ ]] || return 0
+		[[ -f $q ]] || return 0
+		printf '%s\n' "$q"
+	}
 
 	case "$name" in
-	apply_patch) envelope="$input" ;;
-	exec)
-		# JS wrapper: extract the tools.apply_patch("…") string arg, JSON-decode it.
-		local jsstr
-		jsstr="$(grep -oE 'tools\.apply_patch\("([^"\\]|\\.)*"' <<<"$input" | sed -E 's/^tools\.apply_patch\(//')"
-		[[ -n $jsstr ]] && envelope="$(jq -r . <<<"$jsstr" 2>/dev/null)"
-		# view_image path (image reads):
-		local vp; vp="$(_codex_view_image_path "$input")"
-		[[ -n $vp ]] && out+=("$vp")
+	apply_patch)
+		local env; env="$(jq -r '.tool_input.command // empty' <<<"$payload" 2>/dev/null)"
+		while IFS= read -r p; do emit "$p"; done < <(_codex_apply_patch_paths "$env")
+		;;
+	view_image)
+		emit "$(jq -r '.tool_input.path // empty' <<<"$payload" 2>/dev/null)"
 		;;
 	esac
 
-	while IFS= read -r p; do [[ -n $p ]] && out+=("$p"); done < <(_codex_apply_patch_paths "${envelope:-}")
-
-	# resolve (relative→cwd), filter to image/.d2, existing files; then scan tool_response.
-	local resolved
-	for p in "${out[@]:-}"; do
-		[[ -z $p ]] && continue
-		resolved="$p"; [[ $p != /* && -n $cwd ]] && resolved="$cwd/$p"
-		[[ ${resolved,,} =~ \.(png|jpe?g|gif|webp|bmp|d2)$ ]] || continue
-		[[ -f $resolved ]] || continue
-		printf '%s\n' "$resolved"
-	done
+	# screenshots embedded in tool output (Bash/MCP) — shared scanner.
 	scan_response_image_path "$payload"
 }
 codex_session_id() { jq -r '.session_id // empty' <<<"$1" 2>/dev/null; }
 ```
 
-- [ ] **Step 5: Run → pass.** Add cases: JS-`exec`-wrapped `apply_patch`, `view_image` JS call, and a `tool_response` screenshot path.
+- [ ] **Step 5: Run → pass.** Add a case with a `Bash` tool whose `tool_response` embeds a screenshot path → captured via `scan_response_image_path`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add adapters/codex/plugin/scripts/lib/shim.sh tests/codex tests/fixtures/codex
-git commit -m "feat(codex): shim for session id + dual-encoding path extraction (#122)"
+git commit -m "feat(codex): shim for session id + normalized-payload path extraction (#122)"
 ```
 
 ### Task 2.3: Codex `images.sh` + `diagrams.sh` capture hooks
@@ -374,11 +366,26 @@ git commit -m "feat(codex): shim for session id + dual-encoding path extraction 
 
 - [ ] **Step 3: Run → fail.**
 
-- [ ] **Step 4: Implement the iterator** — port Claude's `session-backfill.sh` skeleton (resume-only, authoritative rebuild under lock, `seen` dedup). Replace the transcript parse with a Codex reader that, per `.jsonl` line, extracts `payload` and emits a synthetic hook payload `{tool_name, tool_input:{…}, tool_response:{}, cwd}` for each of:
-  - `payload.type=="custom_tool_call"` → `{tool_name: payload.name, tool_input:{command: payload.input}}`
-  - `payload.type=="function_call"` → `{tool_name: payload.name, tool_input:(payload.arguments|fromjson?)}`
-  - tool-output records (screenshot paths) → `{tool_response: <output>}`
-  then run each through `codex_extract_touched_paths`. `cwd` from `turn_context`/`session_meta` (confirm field in the fixtures).
+- [ ] **Step 4: Implement the iterator** — port Claude's `session-backfill.sh` skeleton (resume-only, authoritative rebuild under lock, `seen` dedup). The transcript stores the RAW `exec`/JS transport (unlike the normalized hook payload), so the reader must normalize each record into the clean `{tool_name, tool_input}` shape `codex_extract_touched_paths` expects, then feed it through. Per `.jsonl` line, from `.payload`:
+  - `custom_tool_call` / `name=="exec"` / JS `input` → **unwrap** (see helper below): a `tools.apply_patch("…")` call → `{tool_name:"apply_patch", tool_input:{command:<decoded envelope>}}`; a `tools.view_image({path:…})` call → `{tool_name:"view_image", tool_input:{path:<path>}}`.
+  - `custom_tool_call` / `name=="apply_patch"` / raw envelope `input` (older) → `{tool_name:"apply_patch", tool_input:{command:.input}}`.
+  - `function_call` / `name=="exec_command"` / `arguments` (older) → shell; scan its paired output record for screenshot paths.
+  - tool-output records (e.g. `function_call_output`) → `{tool_response:<output>}` for the shared scanner.
+  `cwd` from the `turn_context`/`session_meta` record (confirm the field name in the fixtures).
+
+  Unwrap helper (handles the JS transport — note `apply_patch` arg is a JSON-escaped string, `view_image` uses an **unquoted** JS key `path:`):
+```bash
+# _codex_unwrap_apply_patch JS -> decoded patch envelope (empty if none)
+_codex_unwrap_apply_patch() {
+	local s; s="$(grep -oE 'tools\.apply_patch\("([^"\\]|\\.)*"' <<<"$1" | sed -E 's/^tools\.apply_patch\(//')"
+	[[ -n $s ]] && jq -r . <<<"$s" 2>/dev/null
+}
+# _codex_unwrap_view_image JS -> path arg (quoted or unquoted key)
+_codex_unwrap_view_image() {
+	grep -oE 'tools\.view_image\(\{[[:space:]]*"?path"?[[:space:]]*:[[:space:]]*"[^"]+"' <<<"$1" \
+		| grep -oE '"[^"]+"$' | tr -d '"'
+}
+```
 
 - [ ] **Step 5: Run → pass.**
 

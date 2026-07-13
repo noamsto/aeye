@@ -22,7 +22,7 @@ transcript="$(jq -r '.transcript_path // empty' <<<"$payload" 2>/dev/null)"
 PLUGIN_ROOT="${PLUGIN_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
 # shellcheck source=lib/shim.sh disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib/shim.sh"
-# shellcheck source=../../core/manifest-lifecycle.sh disable=SC1091
+# shellcheck source=../../../core/manifest-lifecycle.sh disable=SC1091
 source "$PLUGIN_ROOT/../../core/manifest-lifecycle.sh"
 
 resolve_state_dirs

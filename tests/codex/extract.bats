@@ -43,9 +43,13 @@ setup() {
 @test "codex_extract_touched_paths: Bash tool_response embedding a screenshot path is captured" {
 	PNG="$FIXTURES/screenshot.png"
 	payload="$(jq -nc --arg p "$PNG" '{tool_name:"Bash",tool_input:{command:"ls"},tool_response:("saved to "+$p),cwd:"/repo"}')"
-	run codex_extract_touched_paths "$payload"
-	[ "$status" -eq 0 ]
-	[[ $output == *"$PNG"* ]]
+
+	# Consume via a read-loop, like diagrams.sh / session-backfill.sh do, so a
+	# dropped final (non-newline-terminated) line fails this test.
+	paths=()
+	while IFS= read -r p; do [[ -n $p ]] && paths+=("$p"); done < <(codex_extract_touched_paths "$payload")
+
+	printf '%s\n' "${paths[@]}" | grep -qF "$PNG"
 }
 
 @test "codex_session_id: echoes .session_id" {

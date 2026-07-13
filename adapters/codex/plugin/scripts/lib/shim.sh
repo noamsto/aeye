@@ -46,7 +46,12 @@ codex_extract_touched_paths() {
 	esac
 
 	# screenshots embedded in tool output (Bash/MCP) — shared scanner.
-	scan_response_image_path "$payload"
+	# scan_response_image_path prints via printf '%s' (no trailing newline),
+	# so terminate it here or a read-loop consumer drops this final line.
+	local resp
+	resp="$(scan_response_image_path "$payload")"
+	[[ -n $resp ]] && printf '%s\n' "$resp"
+	return 0
 }
 
 # codex_session_id PAYLOAD -> echoes .session_id or nothing.

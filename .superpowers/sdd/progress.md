@@ -3,6 +3,8 @@
 Plan: docs/superpowers/plans/2026-07-12-codex-adapter-parity.md
 Branch: feat/122-codex-adapter
 
+Task 3.1: complete (commits ec7d536..aef3c31, review clean opus — session-backfill.sh rollout replay w/ JS-unwrap normalization; 2 TDD bugs fixed (cwd grep-widen, set-e unwrap guards); all 7 named risks clean incl set-e no-abort-mid-rebuild; 178/178 bats green). PHASE 3 DONE. In-repo adapter COMPLETE.
+
 ## Status
 
 - Task 0.1 (spike: hook runtime fires) — COMPLETE, GATE PASSED. Contract in docs/superpowers/spikes/2026-07-12-codex-hook-contract.md. Hook payload normalized (clean tool_name + structured tool_input); JS-unwrap is backfill-only. Plan/spec updated to match.

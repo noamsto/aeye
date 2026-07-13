@@ -34,6 +34,12 @@ Remaining = USER-GATED only:
 3. Optional full live interactive E2E (real model session + /hooks trust). NOTE: installed round-trip already proved capture works from the INSTALLED copy (task 4.0-fix) — this is extra confidence, not correctness-critical.
 FAST-FOLLOWS (post-merge): bundle Minors 3/4/5/6 (multi-.d2 lock/JSON/test-gap + diagrams owner test); toggle bare-terminal gap (Minor 8, cross-repo w/ lazytmux).
 
+LIVE E2E PASSED (real interactive Codex session, pane 23): apply_patch diagram.d2 → captured (source:d2) AND rendered both themes (no error); view_image /tmp/aeye-e2e/sample.png → captured (source:view_image). Real model + /hooks-trusted hooks + capture + d2 render + carousel. Test plugin torn down; ~/.codex fully restored (removed plugin/marketplace/cache + cleaned [projects."/tmp/aeye-e2e"] and 5 [hooks.state] leftovers from config.toml).
+
+NIX DRAFT DONE (nix-config worktree ~/nix-config-worktrees/feat-aeye-codex-adapter, branch feat/aeye-codex-adapter, commit ffe5209b): home/ai/codex/default.nix — codex-wrapper exports AEYE_D2_FONT/FONT_DIR/THEME(dconf); home.file ~/.config/aeye/codex → ${lazytmux.inputs.aeye}/adapters/codex (stable marketplace symlink). Parse OK + alejandra clean. CANNOT rebuild until aeye merges (input lacks adapters/codex).
+
+UNBLOCK CHAIN for nix rebuild: (1) push+PR+merge aeye feat/122-codex-adapter → aeye main; (2) bump lazytmux's aeye input to that; (3) nix-config: update lazytmux input, then rebuild home → verify AEYE_D2_* in a codex session + `codex plugin marketplace add ~/.config/aeye/codex` resolves. Then one-time `codex plugin add aeye@aeye` + /hooks trust.
+
 ## Status
 
 - Task 0.1 (spike: hook runtime fires) — COMPLETE, GATE PASSED. Contract in docs/superpowers/spikes/2026-07-12-codex-hook-contract.md. Hook payload normalized (clean tool_name + structured tool_input); JS-unwrap is backfill-only. Plan/spec updated to match.

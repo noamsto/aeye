@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 # Codex-specific session id + path-extraction helpers, layered on the
-# agent-agnostic core. The PostToolUse payload is normalized by Codex
-# (confirmed by the 2026-07-12 hook-contract spike): tool_name is a clean
-# apply_patch|view_image|Bash, and tool_input is structured — no JS-string
-# unwrapping needed on this hook path (that's a later backfill concern, since
-# the raw rollout transcript uses the unwrapped exec/JS transport). Pure: no
-# manifest writes, no keying, no toggle. Each function echoes a result (or
-# nothing) and returns 0 so callers under `set -euo pipefail` are never
-# aborted by a "not found" outcome.
+# agent-agnostic core. Codex normalizes the PostToolUse payload: tool_name is a
+# clean apply_patch|view_image|Bash and tool_input is structured, so no JS-string
+# unwrapping is needed here (that's a backfill concern — the raw rollout
+# transcript uses the unwrapped exec/JS transport). Pure: no manifest writes, no
+# keying, no toggle. Each function echoes a result (or nothing) and returns 0 so
+# callers under `set -euo pipefail` are never aborted by a "not found" outcome.
 
 # shellcheck source=../core/manifest-extract.sh disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/../core/manifest-extract.sh"

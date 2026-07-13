@@ -19,11 +19,15 @@ Branch: feat/122-codex-adapter
 - Task 2.3: diagrams.sh:89-91 — two markdown-broken .d2 in one apply_patch emit two hookSpecificOutput JSON objects on stdout (PostToolUse expects ≤1); worst case lost/mangled warning, no corruption. (PostToolUse additionalContext honoring itself unconfirmed.)
 - Task 2.3: test gap — no bats case exercises a single apply_patch with 2+ .d2/images (the loop generalization, the whole point of the task, is untested on the multi-path branch). A 2-.d2 fixture asserting 2 manifest lines would cover it.
 
+## FOLLOW-UP GAP (parity, beyond current plan tasks)
+- `scripts/tmux-claude-images.sh` keys its OUTSIDE-tmux/kitty launch off `${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}`. Codex never sets CLAUDE_CODE_SESSION_ID (session id is payload-only), so bare-terminal/kitty carousel launch is UNWIRED for Codex. In-tmux (TMUX_PANE) works. Fix = wire the toggle to a Codex-supplied key (new follow-up task; shared viewer infra, also used by lazytmux — cross-repo consideration). SKILL.md wording hedged in 0cb52c8 so it doesn't over-claim.
+
 ## Completed
 
 Task 0.1: spike gate PASSED (hooks fire in 0.144.1; contract captured)
 Task 1.1: complete (commits fa1e413..a535f1c, review clean — core manifest-extract.sh extracted, 117/117 bats + go green)
 Task 1.2: complete (commits 2ceabc6..a78a9e0, review clean opus — manifest-lifecycle.sh extracted, session-id parameterized, all 5 fragility risks byte-identical, 117/117 + go green). PHASE 1 DONE.
 Task 2.1: complete (commits cade0fa..1b585a5 — Codex plugin.json + hooks.json + provisional marketplace.json; review found missing interface.defaultPrompt (Important), fixed in 1b585a5; validate_plugin.py PASSES under nix python w/ pyyaml). marketplace.json path:"./" provisional → finalize in Task 4.1.
+Task 2.4: complete (commits ab0f51a..0cb52c8 — session-reset.sh + diagram-guidance.sh (verbatim) + both skills + plugin.json skills field; validate_plugin.py PASSES; 163/163 bats green. Review found Important doc oversell in image-gallery SKILL.md (outside-tmux launch broken for Codex), fixed in 0cb52c8. Toggle gap → FOLLOW-UP above.) PHASE 2 DONE.
 Task 2.3: complete (commits d6720a4..b79d4d1, review clean opus — images.sh + diagrams.sh capture hooks ported, 137/137 bats green, shellcheck clean. 3 Minors on multi-.d2 branch logged above for final review.)
 Task 2.2: complete (commits 8df0278..0a5b55a — shim.sh: codex_session_id, codex_extract_touched_paths, _codex_apply_patch_paths; tests/codex/extract.bats + fixtures. Review found Important newline-loss defect (scan output dropped by while-read consumers), fixed in 0a5b55a w/ hardened read-loop test. ALSO: changed justfile + ci.yml to `bats --recursive tests/` (bats didn't recurse into tests/codex/) — verify still correct at final review. 123/123 bats green.

@@ -9,6 +9,12 @@ Branch: feat/122-codex-adapter
 - Task 0.2 (spike: install + trust) — PARTIAL: install copies to versioned cache; runtime hook-trust gate exists (needed --dangerously-bypass-hook-trust). Trust-persistence for Nix = remaining Phase 4 unknown; fallback documented. Resolve before Task 4.1.
 - Tasks 1.1+ — UNLOCKED (0.1 passed). Next: Task 1.1 (core refactor).
 
+## Minor findings (for final whole-branch review triage)
+
+- Task 1.1: `resolve`/`is_ext` duplicated across Claude lib + core `scan_response_image_path` (spec-mandated; harmless). If a 3rd adapter needs Phase-1-style resolution, dedupe.
+- Task 1.1: image-extension list maintained in 3 spots (fast-bail regex, `is_ext`, jq capture) — pre-existing, not worsened; Codex core will also depend on the core copy.
+
 ## Completed
 
 Task 0.1: spike gate PASSED (hooks fire in 0.144.1; contract captured)
+Task 1.1: complete (commits fa1e413..a535f1c, review clean — core manifest-extract.sh extracted, 117/117 bats + go green)

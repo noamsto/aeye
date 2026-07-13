@@ -108,5 +108,25 @@ Non-interactive routes:
 **Decision for Task 4.1 (degraded, as the spec anticipated):** Nix provides the
 marketplace source + exports the `AEYE_D2_*` env; the user runs `codex plugin add`
 (or it's pre-added) and **`/hooks` once to trust aeye**. Document that a plugin
-update requires re-running `/hooks` (hash-based trust). No fully-declarative
-auto-trust is available without the enterprise policy path.
+update requires re-running `/hooks` (hash-based trust).
+
+### UPDATE — trust IS persisted in config.toml (found during E2E teardown)
+
+`/hooks` trust writes plain TOML into `~/.codex/config.toml`:
+```toml
+[hooks.state."aeye@aeye:hooks/hooks.json:post_tool_use:0:0"]
+trusted_hash = "sha256:7df2ff66…"
+enabled = true
+```
+- Key: `<plugin>@<marketplace>:<hooks-file>:<event>:<matcher-idx>:<hook-idx>` (one
+  entry per individual hook — 5 for aeye: 2 PostToolUse + 3 SessionStart).
+- `trusted_hash` = sha256 of the hook definition; `enabled = true`.
+
+So declarative pre-trust is NOT impossible after all — a future enhancement could
+have Nix pre-seed these `[hooks.state]` entries. Caveats keeping it out of scope
+for now: (1) `config.toml` is the HAND-MANAGED file (Nix deliberately doesn't own
+it — only `worker.config.toml` is nix-generated, and that's the `--profile worker`
+overlay, not interactive), so seeding requires a merge-not-clobber activation
+step; (2) `trusted_hash`'s exact input/algorithm is version-dependent and not
+build-derivable without first installing+trusting to read it back. Robust path
+stays the one-time `/hooks`; this is the documented lever for later.

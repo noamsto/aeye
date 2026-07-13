@@ -83,6 +83,30 @@ all three.
   a marketplace at a store path).
 - Neither `marketplace add` nor `plugin add` prompted for trust in this run.
 - **Hooks did NOT run until `--dangerously-bypass-hook-trust` was passed** — there
-  is a runtime hook-trust gate. The declarative-Nix trust-persistence mechanism
-  (config key? trust-store file?) is the remaining Phase 4 unknown; fallback is a
-  documented one-time interactive trust. To resolve before Task 4.1.
+  is a runtime hook-trust gate.
+
+### Task 0.2 RESOLVED — trust mechanism (docs + local probe)
+
+Codex hook trust is:
+- **Interactive** via the in-Codex `/hooks` command. "Installing or enabling a
+  plugin doesn't automatically trust its hooks; Codex skips plugin-bundled hooks
+  until you review and trust the current hook definition."
+- **Hash-based**: "Codex records trust against the hook's current hash, so new or
+  changed hooks are marked for review and skipped until trusted." → every aeye
+  update that changes `hooks.json` or a hook script re-triggers review.
+- Persistence store is not a plaintext file or an obvious sqlite table (checked
+  `state_5.sqlite`/`logs_2.sqlite`, config.toml, and the plugins dir — nothing
+  fakeable declaratively).
+
+Non-interactive routes:
+- `--dangerously-bypass-hook-trust` — per-invocation only, DANGEROUS, not for
+  normal interactive sessions.
+- **Managed hooks** via `requirements.toml` (enterprise/MDM, "trusted by policy")
+  — not a user-level Home-Manager mechanism; no `requirements.toml` present, no
+  CLI surface for it; out of scope.
+
+**Decision for Task 4.1 (degraded, as the spec anticipated):** Nix provides the
+marketplace source + exports the `AEYE_D2_*` env; the user runs `codex plugin add`
+(or it's pre-added) and **`/hooks` once to trust aeye**. Document that a plugin
+update requires re-running `/hooks` (hash-based trust). No fully-declarative
+auto-trust is available without the enterprise policy path.

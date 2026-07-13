@@ -13,7 +13,10 @@ PHASES 1-3 COMPLETE + reviewed. Remaining = Phase 4 (packaging/E2E/PR), all USER
 - Task 4.2: live E2E (real Codex session: apply_patch .d2 + view_image + Bash screenshot), README + CHANGELOG, PR --assignee @me linking #122.
 FAST-FOLLOWS (post-merge): bundle Minors 3/4/5/6 (multi-.d2 lock-in-loop + double-JSON + test gap + diagrams owner-selfheal test); toggle gap (Minor 8, cross-repo w/ lazytmux).
 
-*** CRITICAL install-time defect found (Phase 4 E2E prep), NOT caught by any review ***
+*** CRITICAL defect FIXED + install-verified (commit 20be184, review clean) ***
+Vendored core into adapters/codex/plugin/scripts/core/ (byte-identical to adapters/core/, blob-hash verified); repointed all 5 source lines to $PLUGIN_ROOT/scripts/core; added `just sync-codex-core` + tests/codex/core-sync.bats drift-check (reviewer injected corruption → test fails, confirmed non-vacuous). 180/180 bats. REAL installed round-trip: codex plugin add → cache has scripts/core/ → installed images.sh sourced core + appended manifest line (exit 0). Adapter now WORKS when installed. ~/.codex left pristine.
+
+--- original finding (now resolved) ---
 Codex COPIES only the plugin dir on `codex plugin add` (verified: cache = adapters/codex/plugin/ contents only). Codex scripts source core via `$PLUGIN_ROOT/../../core/...` which escapes the plugin dir → installed hooks can't find core → BROKEN on install. Reviews missed it because tests set PLUGIN_ROOT to the in-repo dir (sibling core present). Symlinks NOT viable (verified: codex copy SKIPS symlinks entirely — real subdirs like scripts/lib ARE copied recursively). FIX (task 4.0-fix): vendor real copy of adapters/core/*.sh into adapters/codex/plugin/scripts/core/, repoint sources to $PLUGIN_ROOT/scripts/core, add justfile sync recipe + bats drift-check test. Canonical source stays adapters/core/ (Claude uses it in-place). Whole-branch "ready to merge" was PREMATURE until this lands + install re-verified.
 
 PHASE 4 progress:

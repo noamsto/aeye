@@ -13,6 +13,12 @@ PHASES 1-3 COMPLETE + reviewed. Remaining = Phase 4 (packaging/E2E/PR), all USER
 - Task 4.2: live E2E (real Codex session: apply_patch .d2 + view_image + Bash screenshot), README + CHANGELOG, PR --assignee @me linking #122.
 FAST-FOLLOWS (post-merge): bundle Minors 3/4/5/6 (multi-.d2 lock-in-loop + double-JSON + test gap + diagrams owner-selfheal test); toggle gap (Minor 8, cross-repo w/ lazytmux).
 
+PHASE 4 progress:
+- Task 0.2 RESOLVED: hook-trust interactive (/hooks), hash-based, no declarative pre-trust. Degraded plan: nix installs+env, user runs /hooks once (re-trust on plugin update).
+- Marketplace layout VERIFIED + restructured (commit 0511438): root at adapters/codex/.agents/plugins/marketplace.json, source.path "./plugin" (no dir rename needed). `codex plugin marketplace add <root>` resolves aeye@aeye. Provisional plugin/marketplace.json removed.
+- ORDERING DEPENDENCY: nix-config rebuild is BLOCKED on merging this aeye branch first (flake input pinned to aeye main lacks adapters/codex/ until merge + input bump). So: live E2E against the worktree now → aeye PR/merge → bump input → nix wire + rebuild.
+- REMAINING: live E2E (interactive: /hooks trust + real codex session, user-driven); README + CHANGELOG (subagent-able); nix-config codex wrapper (env: AEYE_D2_FONT/FONT_DIR/THEME-via-dconf + aeye/resvg PATH, mirror claude-wrapper) + marketplace register via stable symlink (draft now, rebuild post-merge); aeye PR --assignee @me linking #122.
+
 ## Status
 
 - Task 0.1 (spike: hook runtime fires) — COMPLETE, GATE PASSED. Contract in docs/superpowers/spikes/2026-07-12-codex-hook-contract.md. Hook payload normalized (clean tool_name + structured tool_input); JS-unwrap is backfill-only. Plan/spec updated to match.

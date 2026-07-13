@@ -5,6 +5,14 @@ Branch: feat/122-codex-adapter
 
 Task 3.1: complete (commits ec7d536..aef3c31, review clean opus — session-backfill.sh rollout replay w/ JS-unwrap normalization; 2 TDD bugs fixed (cwd grep-widen, set-e unwrap guards); all 7 named risks clean incl set-e no-abort-mid-rebuild; 178/178 bats green). PHASE 3 DONE. In-repo adapter COMPLETE.
 
+FINAL whole-branch review (opus, 86b110c..2b6245e): READY TO MERGE with the one trivial shellcheck-path fix (done in 34fbca2). No Critical/Important. Seams compose, regression green. Minors triaged: accept 1,2,7,8; fast-follow 3,4,5,6 (bundle 4/5/6 + a 2-.d2 fixture into one issue).
+
+PHASES 1-3 COMPLETE + reviewed. Remaining = Phase 4 (packaging/E2E/PR), all USER-GATED:
+- Task 0.2: resolve non-interactive hook-trust persistence for Nix (needs investigation on user machine).
+- Task 4.1: nix-config home/ai/codex/default.nix — export AEYE_D2_* env + plugin install (cross-repo, needs rebuild).
+- Task 4.2: live E2E (real Codex session: apply_patch .d2 + view_image + Bash screenshot), README + CHANGELOG, PR --assignee @me linking #122.
+FAST-FOLLOWS (post-merge): bundle Minors 3/4/5/6 (multi-.d2 lock-in-loop + double-JSON + test gap + diagrams owner-selfheal test); toggle gap (Minor 8, cross-repo w/ lazytmux).
+
 ## Status
 
 - Task 0.1 (spike: hook runtime fires) — COMPLETE, GATE PASSED. Contract in docs/superpowers/spikes/2026-07-12-codex-hook-contract.md. Hook payload normalized (clean tool_name + structured tool_input); JS-unwrap is backfill-only. Plan/spec updated to match.

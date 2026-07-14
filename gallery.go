@@ -165,7 +165,12 @@ func (m *galleryModel) transmitView() {
 	} else {
 		src = cachedPNG(src, m.l.previewW, m.l.previewH)
 	}
-	fmt.Fprint(m.tty, transmitVirtual(previewID, src, m.l.previewW, m.l.previewH))
+	apc := transmitVirtual(previewID, src, m.l.previewW, m.l.previewH)
+	n, err := fmt.Fprint(m.tty, apc)
+	if traceEnabled {
+		tracef("store preview id=%d bytes=%d n=%d err=%v cur=%d %dx%d nimg=%d",
+			previewID, len(apc), n, err, m.cursor, m.l.previewW, m.l.previewH, len(m.images))
+	}
 	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
 	for s := 0; s < m.l.stripCols; s++ {
 		idx := start + s
@@ -234,7 +239,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.l = computeLayout(m.width, m.height)
 		m.ready = true
-		tracef("WindowSizeMsg w=%d h=%d firstReady=%v prevW=%d prevH=%d", msg.Width, msg.Height, firstReady, m.l.previewW, m.l.previewH)
+		tracef("WindowSizeMsg w=%d h=%d firstReady=%v previewW=%d previewH=%d", msg.Width, msg.Height, firstReady, m.l.previewW, m.l.previewH)
 		m.transmitView()
 		if firstReady {
 			// The image store (transmitView → /dev/tty passthrough) and the
@@ -544,6 +549,9 @@ func (m galleryModel) View() tea.View {
 	content := "Loading..."
 	if m.ready {
 		content = m.renderView()
+	}
+	if traceEnabled && time.Since(traceStart) < time.Second {
+		tracef("View emit ready=%v len=%d", m.ready, len(content))
 	}
 	v := tea.NewView(content)
 	v.AltScreen = true

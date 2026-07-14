@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-// Trace facility (issue #125): AEYE_DEBUG toggles a best-effort, per-launch
-// trace of the carousel's first-frame lifecycle. Mirrors logDropped: a file we
-// can't write is never worth failing the viewer.
+// AEYE_DEBUG toggles a best-effort, per-launch trace of the carousel's
+// first-frame lifecycle. Mirrors logDropped: a file we can't write is never
+// worth failing the viewer.
 var (
 	traceEnabled bool
 	traceFile    *os.File

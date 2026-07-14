@@ -243,7 +243,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Width == 0 || msg.Height == 0 {
 			// A freshly-spawned pane can report 0×0 before it's sized; committing
 			// to it clamps computeLayout to 1×1 with no recovery until a manual
-			// resize — the #125 symptom. Ignore it; a real size follows.
+			// resize. Ignore it; a real size follows.
 			tracef("WindowSizeMsg IGNORED w=%d h=%d", msg.Width, msg.Height)
 			return m, nil
 		}

@@ -88,11 +88,13 @@ launch_tmux() {
 	# Forward the session id as AEYE_OWNER when we have it (the split inherits
 	# tmux's env, not Claude's shell env) so the viewer can reject a reused pane's
 	# stale manifest instead of bleeding it in.
+	local dbg=""
+	[[ -n ${AEYE_DEBUG:-} ]] && printf -v dbg 'AEYE_DEBUG=%q ' "$AEYE_DEBUG"
 	local cmd
 	if [[ -n ${CLAUDE_CODE_SESSION_ID:-} ]]; then
-		printf -v cmd 'env AEYE_OWNER=%q %q %q' "$CLAUDE_CODE_SESSION_ID" "$VIEWER_BIN" "$KEY"
+		printf -v cmd 'env %sAEYE_OWNER=%q %q %q' "$dbg" "$CLAUDE_CODE_SESSION_ID" "$VIEWER_BIN" "$KEY"
 	else
-		printf -v cmd '%q %q' "$VIEWER_BIN" "$KEY"
+		printf -v cmd 'env %s%q %q' "$dbg" "$VIEWER_BIN" "$KEY"
 	fi
 	local viewer
 	viewer="$(tmux split-window -h "${detach[@]}" -t "$KEY" -P -F '#{pane_id}' "$cmd")"
@@ -154,6 +156,8 @@ launch_kitty() {
 	# stays inert in the viewer.
 	local owner_env=()
 	[[ -n ${CLAUDE_CODE_SESSION_ID:-} ]] && owner_env=(--env AEYE_OWNER="$CLAUDE_CODE_SESSION_ID")
+	local debug_env=()
+	[[ -n ${AEYE_DEBUG:-} ]] && debug_env=(--env AEYE_DEBUG="$AEYE_DEBUG")
 	# Toggle: a viewer window is tagged with user_var claude_img_src=$KEY.
 	# `kitty @ ls --match` exits non-zero when nothing matches.
 	if kitty @ ls --match "var:claude_img_src=$KEY" >/dev/null 2>&1; then
@@ -172,6 +176,7 @@ launch_kitty() {
 			--env AEYE_DIR="$STATE_DIR" \
 			--env CLAUDE_STATUS_DIR="$STATE_DIR" \
 			${owner_env[@]+"${owner_env[@]}"} \
+			${debug_env[@]+"${debug_env[@]}"} \
 			"$VIEWER_BIN" "$KEY" >/dev/null
 		return
 	fi
@@ -182,6 +187,7 @@ launch_kitty() {
 		--env AEYE_DIR="$STATE_DIR" \
 		--env CLAUDE_STATUS_DIR="$STATE_DIR" \
 		${owner_env[@]+"${owner_env[@]}"} \
+		${debug_env[@]+"${debug_env[@]}"} \
 		"$VIEWER_BIN" "$KEY" >/dev/null
 }
 
@@ -204,8 +210,10 @@ launch_wezterm() {
 	fi
 	# split-pane defaults its target to $WEZTERM_PANE, so it lands next to the
 	# agent. env forwards the state dir — the mux server never saw our env.
+	local dbg=()
+	[[ -n ${AEYE_DEBUG:-} ]] && dbg=(AEYE_DEBUG="$AEYE_DEBUG")
 	pane="$(wezterm cli split-pane --right --percent 40 --cwd "$STATE_DIR" -- \
-		env AEYE_DIR="$STATE_DIR" CLAUDE_STATUS_DIR="$STATE_DIR" "$VIEWER_BIN" "$KEY")"
+		env ${dbg[@]+"${dbg[@]}"} AEYE_DIR="$STATE_DIR" CLAUDE_STATUS_DIR="$STATE_DIR" "$VIEWER_BIN" "$KEY")"
 	printf '%s\n' "$pane" >"$panefile"
 }
 
@@ -227,7 +235,9 @@ launch_ghostty() {
 	fi
 	# env forwards the state dir (D-Bus/new instance never saw our env);
 	# --working-directory is explicit to dodge the 1.3.0 -e working-dir bug.
-	local cmd=(env AEYE_DIR="$STATE_DIR" CLAUDE_STATUS_DIR="$STATE_DIR" "$VIEWER_BIN" "$KEY")
+	local dbg=()
+	[[ -n ${AEYE_DEBUG:-} ]] && dbg=(AEYE_DEBUG="$AEYE_DEBUG")
+	local cmd=(env ${dbg[@]+"${dbg[@]}"} AEYE_DIR="$STATE_DIR" CLAUDE_STATUS_DIR="$STATE_DIR" "$VIEWER_BIN" "$KEY")
 	case "$(uname -s)" in
 	Darwin) open -na ghostty --args --working-directory="$STATE_DIR" -e "${cmd[@]}" ;;
 	*) ghostty +new-window --working-directory="$STATE_DIR" -e "${cmd[@]}" ;;
@@ -301,8 +311,10 @@ launch_iterm() {
 	# state dir explicitly — same as the wezterm/ghostty paths. printf '%q' (bash-3.2
 	# safe) quotes each value so the command string survives iTerm2's shell re-parsing
 	# a path with spaces (e.g. /Users/Jane Doe/...).
+	local dbg_frag=""
+	[[ -n ${AEYE_DEBUG:-} ]] && printf -v dbg_frag 'AEYE_DEBUG=%q ' "$AEYE_DEBUG"
 	local cmd
-	cmd="env AEYE_DIR=$(printf '%q' "$STATE_DIR") CLAUDE_STATUS_DIR=$(printf '%q' "$STATE_DIR") $(printf '%q' "$VIEWER_BIN") $(printf '%q' "$KEY")"
+	cmd="env ${dbg_frag}AEYE_DIR=$(printf '%q' "$STATE_DIR") CLAUDE_STATUS_DIR=$(printf '%q' "$STATE_DIR") $(printf '%q' "$VIEWER_BIN") $(printf '%q' "$KEY")"
 	session="$(iterm_split "$cmd")"
 	printf '%s\n' "$session" >"$idfile"
 }

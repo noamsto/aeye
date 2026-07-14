@@ -55,3 +55,20 @@ STUB
 	run grep -c kill-pane "$TMUX_LOG"
 	[ "$output" -ge 1 ]
 }
+
+@test "AEYE_DEBUG is forwarded into the viewer command when set" {
+	unset STUB_EXISTING
+	export AEYE_DEBUG=1
+	run bash "$APP" --ensure-open
+	[ "$status" -eq 0 ]
+	run grep -c "AEYE_DEBUG=1" "$TMUX_LOG"
+	[ "$output" -ge 1 ]
+}
+
+@test "AEYE_DEBUG is absent from the viewer command when unset" {
+	unset STUB_EXISTING AEYE_DEBUG
+	run bash "$APP" --ensure-open
+	[ "$status" -eq 0 ]
+	run grep -c "AEYE_DEBUG" "$TMUX_LOG"
+	[ "$output" -eq 0 ]
+}

@@ -83,21 +83,20 @@ launch_tmux() {
 	# focus to the viewer.
 	local detach=()
 	[[ -n $ENSURE_OPEN ]] && detach=(-d)
-	# printf '%q' every field so a binary path with spaces (e.g. a macOS
-	# ~/Users/Jane Doe/... install) survives tmux re-parsing the command via sh -c.
-	# Forward the session id as AEYE_OWNER when we have it (the split inherits
-	# tmux's env, not Claude's shell env) so the viewer can reject a reused pane's
-	# stale manifest instead of bleeding it in.
-	local dbg=""
-	[[ -n ${AEYE_DEBUG:-} ]] && printf -v dbg 'AEYE_DEBUG=%q ' "$AEYE_DEBUG"
+	# Pass viewer env via tmux -e, NOT a shell `env` prefix: the split runs the
+	# command through the pane's shell, and a shell that wraps `env` (e.g. fish with
+	# the grc plugin) would colourise the viewer's stdout and destroy its
+	# kitty-graphics / alt-screen stream. Forward the session id as AEYE_OWNER when
+	# we have it (the split inherits tmux's env, not Claude's shell env) so the
+	# viewer can reject a reused pane's stale manifest. printf '%q' the command so a
+	# binary path with spaces survives tmux re-parsing it via the shell.
+	local env_args=()
+	[[ -n ${CLAUDE_CODE_SESSION_ID:-} ]] && env_args+=(-e AEYE_OWNER="$CLAUDE_CODE_SESSION_ID")
+	[[ -n ${AEYE_DEBUG:-} ]] && env_args+=(-e AEYE_DEBUG="$AEYE_DEBUG")
 	local cmd
-	if [[ -n ${CLAUDE_CODE_SESSION_ID:-} ]]; then
-		printf -v cmd 'env %sAEYE_OWNER=%q %q %q' "$dbg" "$CLAUDE_CODE_SESSION_ID" "$VIEWER_BIN" "$KEY"
-	else
-		printf -v cmd 'env %s%q %q' "$dbg" "$VIEWER_BIN" "$KEY"
-	fi
+	printf -v cmd '%q %q' "$VIEWER_BIN" "$KEY"
 	local viewer
-	viewer="$(tmux split-window -h "${detach[@]}" -t "$KEY" -P -F '#{pane_id}' "$cmd")"
+	viewer="$(tmux split-window -h "${detach[@]}" ${env_args[@]+"${env_args[@]}"} -t "$KEY" -P -F '#{pane_id}' "$cmd")"
 	tmux set-option -p -t "$viewer" @claude_img_src "$KEY"
 }
 

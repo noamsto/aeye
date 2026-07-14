@@ -56,16 +56,20 @@ STUB
 	[ "$output" -ge 1 ]
 }
 
-@test "AEYE_DEBUG is forwarded into the viewer command when set" {
+@test "AEYE_DEBUG is forwarded via tmux -e when set" {
 	unset STUB_EXISTING
 	export AEYE_DEBUG=1
 	run bash "$APP" --ensure-open
 	[ "$status" -eq 0 ]
-	run grep -c "AEYE_DEBUG=1" "$TMUX_LOG"
+	# Passed as a tmux -e flag, not a shell `env` prefix (a shell that wraps `env`
+	# would mangle the viewer's graphics stream).
+	run grep -c -- "-e AEYE_DEBUG=1" "$TMUX_LOG"
 	[ "$output" -ge 1 ]
+	run grep -c "env AEYE_DEBUG" "$TMUX_LOG"
+	[ "$output" -eq 0 ]
 }
 
-@test "AEYE_DEBUG is absent from the viewer command when unset" {
+@test "AEYE_DEBUG is absent from the viewer launch when unset" {
 	unset STUB_EXISTING AEYE_DEBUG
 	run bash "$APP" --ensure-open
 	[ "$status" -eq 0 ]

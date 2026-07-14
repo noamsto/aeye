@@ -151,6 +151,17 @@ func settleCmd() tea.Cmd {
 	return tea.Tick(80*time.Millisecond, func(time.Time) tea.Msg { return settleMsg{} })
 }
 
+type sizeRetryMsg struct{ attempt int }
+
+const (
+	sizeRetryInterval = 50 * time.Millisecond
+	sizeRetryMax      = 20 // ~1s of retries before giving up
+)
+
+func sizeRetryCmd(attempt int) tea.Cmd {
+	return tea.Tick(sizeRetryInterval, func(time.Time) tea.Msg { return sizeRetryMsg{attempt} })
+}
+
 // transmitView stores the preview + visible filmstrip images store-only (kitty
 // backend). Writes to /dev/tty so the APC bytes never interleave with
 // bubbletea's frame output.
@@ -240,18 +251,24 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		if msg.Width == 0 || msg.Height == 0 {
-			// A freshly-spawned pane can report 0×0 before it's sized; committing
-			// to it clamps computeLayout to 1×1 with no recovery until a manual
-			// resize. Ignore it; a real size follows.
-			tracef("WindowSizeMsg IGNORED w=%d h=%d", msg.Width, msg.Height)
-			return m, nil
+		w, h := msg.Width, msg.Height
+		if w == 0 || h == 0 {
+			// A freshly-spawned tmux pane can report 0×0 with no follow-up
+			// (seen under tmux 3.8): committing to it clamps the layout to 1×1
+			// with no recovery. tmux always knows the real pane size, so ask it
+			// directly; retry briefly if it isn't resolvable yet.
+			pw, ph := tmuxPaneSize()
+			tracef("WindowSizeMsg 0x0; tmux pane size=%dx%d", pw, ph)
+			if pw == 0 || ph == 0 {
+				return m, sizeRetryCmd(0)
+			}
+			w, h = pw, ph
 		}
 		firstReady := !m.ready
-		m.width, m.height = msg.Width, msg.Height
-		m.l = computeLayout(m.width, m.height)
+		m.width, m.height = w, h
+		m.l = computeLayout(w, h)
 		m.ready = true
-		tracef("WindowSizeMsg w=%d h=%d firstReady=%v previewW=%d previewH=%d", msg.Width, msg.Height, firstReady, m.l.previewW, m.l.previewH)
+		tracef("size applied w=%d h=%d firstReady=%v previewW=%d previewH=%d", w, h, firstReady, m.l.previewW, m.l.previewH)
 		m.transmitView()
 		if firstReady {
 			// The image store (transmitView → /dev/tty passthrough) and the
@@ -411,6 +428,19 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(galleryTickCmd(), m.kickVector(), m.schedulePaint())
 		}
 		return m, galleryTickCmd()
+	case sizeRetryMsg:
+		if m.ready {
+			return m, nil
+		}
+		pw, ph := tmuxPaneSize()
+		tracef("sizeRetry attempt=%d tmux pane size=%dx%d", msg.attempt, pw, ph)
+		if pw > 0 && ph > 0 {
+			return m.Update(tea.WindowSizeMsg{Width: pw, Height: ph})
+		}
+		if msg.attempt+1 >= sizeRetryMax {
+			return m, nil
+		}
+		return m, sizeRetryCmd(msg.attempt + 1)
 	case settleMsg:
 		tracef("settleMsg re-store")
 		// Re-store before the repaint: the first transmitView (in the
@@ -776,6 +806,19 @@ func termName() string {
 		return os.Getenv("TERM")
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// tmuxPaneSize returns the viewer's own tmux pane size in cells, or 0,0 when it
+// can't be determined (not in tmux, or tmux can't resolve it yet). Used to
+// recover when bubbletea's first WindowSizeMsg is a bogus 0×0.
+func tmuxPaneSize() (int, int) {
+	out, err := exec.Command("tmux", "display-message", "-p", "#{pane_width} #{pane_height}").Output()
+	if err != nil {
+		return 0, 0
+	}
+	var w, h int
+	fmt.Sscanf(strings.TrimSpace(string(out)), "%d %d", &w, &h)
+	return w, h
 }
 
 // manifestMtime returns the manifest file's mtime in ns, or 0 if absent.

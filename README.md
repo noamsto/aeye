@@ -213,7 +213,8 @@ glitches):
 
 - `AEYE_DEBUG=1` (or `true`/`on`) → writes `<state-dir>/<key>.trace.log` (beside the manifest),
   fresh on each open.
-- `AEYE_DEBUG=/path/to/file` → writes there.
+- `AEYE_DEBUG=/path/to/file` → writes there. This truncates (overwrites) the file on each
+  open, so don't point it at a file you want to keep.
 
 To leave it on, set it where the *launcher* runs:
 - tmux keybinding: `tmux set-environment -g AEYE_DEBUG 1`

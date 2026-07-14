@@ -172,12 +172,24 @@ func (m *galleryModel) transmitView() {
 			previewID, len(apc), n, err, m.cursor, m.l.previewW, m.l.previewH, len(m.images))
 	}
 	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
+	stripCells, stripBytes, stripWritten := 0, 0, 0
+	var stripErr error
 	for s := 0; s < m.l.stripCols; s++ {
 		idx := start + s
 		if idx >= len(m.images) {
 			break
 		}
-		fmt.Fprint(m.tty, transmitVirtual(s+1, cachedPNG(m.images[idx].Path, m.l.stripW, m.l.stripH), m.l.stripW, m.l.stripH))
+		sapc := transmitVirtual(s+1, cachedPNG(m.images[idx].Path, m.l.stripW, m.l.stripH), m.l.stripW, m.l.stripH)
+		sn, serr := fmt.Fprint(m.tty, sapc)
+		stripCells++
+		stripBytes += len(sapc)
+		stripWritten += sn
+		if serr != nil && stripErr == nil {
+			stripErr = serr
+		}
+	}
+	if traceEnabled {
+		tracef("store strip cells=%d bytes=%d written=%d firstErr=%v", stripCells, stripBytes, stripWritten, stripErr)
 	}
 }
 

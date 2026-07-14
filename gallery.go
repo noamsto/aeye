@@ -165,14 +165,31 @@ func (m *galleryModel) transmitView() {
 	} else {
 		src = cachedPNG(src, m.l.previewW, m.l.previewH)
 	}
-	fmt.Fprint(m.tty, transmitVirtual(previewID, src, m.l.previewW, m.l.previewH))
+	apc := transmitVirtual(previewID, src, m.l.previewW, m.l.previewH)
+	n, err := fmt.Fprint(m.tty, apc)
+	if traceEnabled {
+		tracef("store preview id=%d bytes=%d n=%d err=%v cur=%d %dx%d nimg=%d",
+			previewID, len(apc), n, err, m.cursor, m.l.previewW, m.l.previewH, len(m.images))
+	}
 	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
+	stripCells, stripBytes, stripWritten := 0, 0, 0
+	var stripErr error
 	for s := 0; s < m.l.stripCols; s++ {
 		idx := start + s
 		if idx >= len(m.images) {
 			break
 		}
-		fmt.Fprint(m.tty, transmitVirtual(s+1, cachedPNG(m.images[idx].Path, m.l.stripW, m.l.stripH), m.l.stripW, m.l.stripH))
+		sapc := transmitVirtual(s+1, cachedPNG(m.images[idx].Path, m.l.stripW, m.l.stripH), m.l.stripW, m.l.stripH)
+		sn, serr := fmt.Fprint(m.tty, sapc)
+		stripCells++
+		stripBytes += len(sapc)
+		stripWritten += sn
+		if serr != nil && stripErr == nil {
+			stripErr = serr
+		}
+	}
+	if traceEnabled {
+		tracef("store strip cells=%d bytes=%d written=%d firstErr=%v", stripCells, stripBytes, stripWritten, stripErr)
 	}
 }
 
@@ -213,12 +230,28 @@ func (m *galleryModel) reload() {
 }
 
 func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if traceEnabled {
+		switch msg.(type) {
+		case tea.MouseMotionMsg, galleryTickMsg:
+			// high-frequency; excluded so the first-frame sequence stays legible
+		default:
+			tracef("msg %T", msg)
+		}
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		if msg.Width == 0 || msg.Height == 0 {
+			// A freshly-spawned pane can report 0×0 before it's sized; committing
+			// to it clamps computeLayout to 1×1 with no recovery until a manual
+			// resize. Ignore it; a real size follows.
+			tracef("WindowSizeMsg IGNORED w=%d h=%d", msg.Width, msg.Height)
+			return m, nil
+		}
 		firstReady := !m.ready
 		m.width, m.height = msg.Width, msg.Height
 		m.l = computeLayout(m.width, m.height)
 		m.ready = true
+		tracef("WindowSizeMsg w=%d h=%d firstReady=%v previewW=%d previewH=%d", msg.Width, msg.Height, firstReady, m.l.previewW, m.l.previewH)
 		m.transmitView()
 		if firstReady {
 			// The image store (transmitView → /dev/tty passthrough) and the
@@ -368,15 +401,18 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// reload() re-resolves every d2 path to the new theme. Force the reload by
 		// clearing mtime so the diff below always fires.
 		if th := detectTheme(); th != m.theme {
+			tracef("theme switch %s -> %s", m.theme, th)
 			m.theme = th
 			m.mtime = 0
 		}
 		if mt := manifestMtime(m.pane); mt != m.mtime {
+			tracef("reload manifest mtime changed")
 			m.reload()
 			return m, tea.Batch(galleryTickCmd(), m.kickVector(), m.schedulePaint())
 		}
 		return m, galleryTickCmd()
 	case settleMsg:
+		tracef("settleMsg re-store")
 		// Re-store before the repaint: the first transmitView (in the
 		// WindowSizeMsg handler) runs before bubbletea switches to the alt-screen,
 		// so on a freshly spawned window (e.g. a ghostty window outside tmux) the
@@ -525,6 +561,9 @@ func (m galleryModel) View() tea.View {
 	content := "Loading..."
 	if m.ready {
 		content = m.renderView()
+	}
+	if traceEnabled && time.Since(traceStart) < time.Second {
+		tracef("View emit ready=%v len=%d", m.ready, len(content))
 	}
 	v := tea.NewView(content)
 	v.AltScreen = true
@@ -687,6 +726,8 @@ func runGallery(pane string) error {
 	theme := detectTheme()
 	images := loadManifest(pane, theme)
 	backend, rasterFmt := chooseGridBackend(termName(), os.Getenv("TMUX") != "", os.Getenv("TERM_PROGRAM"), os.Getenv("LC_TERMINAL"), os.Getenv("WEZTERM_PANE"), os.Getenv("TERM"), probeSixel)
+	traceInit(pane)
+	tracef("start backend=%v nimg=%d tmux=%v term=%q", backend, len(images), os.Getenv("TMUX") != "", termName())
 	m := galleryModel{
 		pane:         pane,
 		images:       images,

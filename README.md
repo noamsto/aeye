@@ -206,6 +206,22 @@ must hand off to kitty at the pane edge. lazytmux ships this; for a hand-rolled
 `KITTY_LISTEN_ON` set, runs `kitty @ action neighboring_window <dir>` instead of
 `select-pane` (see `lazytmux` `scripts/tmux-smart-nav.sh`).
 
+### Debugging the carousel
+
+Set `AEYE_DEBUG` to trace the viewer's first-frame lifecycle (issue #125-class
+glitches):
+
+- `AEYE_DEBUG=1` (or `true`/`on`) → writes `<state-dir>/<key>.trace.log` (beside the manifest),
+  fresh on each open.
+- `AEYE_DEBUG=/path/to/file` → writes there. This truncates (overwrites) the file on each
+  open, so don't point it at a file you want to keep.
+
+To leave it on, set it where the *launcher* runs:
+- tmux keybinding: `tmux set-environment -g AEYE_DEBUG 1`
+- `/aeye` skill / auto-open hook: export it in your shell profile.
+
+The launcher forwards it into the spawned viewer on every host (tmux/kitty/wezterm/ghostty/iterm) when set.
+
 ## Architecture
 
 <picture>

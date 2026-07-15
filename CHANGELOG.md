@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.10.0](https://github.com/noamsto/aeye/compare/v0.9.1...v0.10.0) (2026-07-15)
+
+
+### Features
+
+* **codex:** Codex CLI adapter at parity with the Claude Code plugin ([#123](https://github.com/noamsto/aeye/issues/123)) ([465dc38](https://github.com/noamsto/aeye/commit/465dc3853758133bd49c4e097afe14817930fe2d))
+* **viewer:** toggleable AEYE_DEBUG trace + 0x0 size guard ([#125](https://github.com/noamsto/aeye/issues/125)) ([#126](https://github.com/noamsto/aeye/issues/126)) ([9bf3c5c](https://github.com/noamsto/aeye/commit/9bf3c5c9601a60d2e27bfc455f60cbac406a3b81))
+
+
+### Bug Fixes
+
+* **carousel:** launcher env→tmux -e (grc regression) + 0x0 size recovery ([#125](https://github.com/noamsto/aeye/issues/125)) ([#127](https://github.com/noamsto/aeye/issues/127)) ([9eefa84](https://github.com/noamsto/aeye/commit/9eefa84687117de1097bb15cb712a6f8a6292ca5))
+* **viewer:** ignore input until ready — zoom on an unsized pane panicked ([#129](https://github.com/noamsto/aeye/issues/129)) ([9de760d](https://github.com/noamsto/aeye/commit/9de760df672265fb74a56bea5fca21cfc681458f)), closes [#128](https://github.com/noamsto/aeye/issues/128)
+
 ## [0.9.1](https://github.com/noamsto/aeye/compare/v0.9.0...v0.9.1) (2026-07-12)
 
 

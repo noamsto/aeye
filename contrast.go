@@ -1,11 +1,9 @@
 package main
 
 import (
-	"regexp"
-	"strconv"
-
 	"oss.terrastruct.com/d2/d2graph"
 	"oss.terrastruct.com/d2/d2target"
+	"oss.terrastruct.com/d2/lib/color"
 	"oss.terrastruct.com/d2/lib/label"
 )
 
@@ -16,8 +14,14 @@ const (
 	contrastLightInk = "#F5F5F5"
 )
 
-// hexFillRe matches a #RRGGBB fill. Named or gradient fills are left to d2.
-var hexFillRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+// resolvableFill reports whether a user fill resolves to a concrete RGB color —
+// true for hex (#rgb, #rrggbb), named CSS colors (lightgreen), and rgb()/hsl().
+// Gradients (url(...)) and anything else csscolorparser can't parse stay false,
+// so their labels keep the theme color, as before.
+func resolvableFill(fill string) bool {
+	_, err := color.Luminance(fill)
+	return err == nil
+}
 
 // contrastLabels recolors a shape's label to contrast its fill, but only for
 // shapes the user explicitly filled without also picking a font color — d2's
@@ -36,7 +40,7 @@ var hexFillRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 func contrastLabels(diagram *d2target.Diagram, graph *d2graph.Graph) {
 	fill := make(map[string]string, len(graph.Objects))
 	for _, obj := range graph.Objects {
-		if obj.Style.Fill != nil && obj.Style.FontColor == nil && hexFillRe.MatchString(obj.Style.Fill.Value) {
+		if obj.Style.Fill != nil && obj.Style.FontColor == nil && resolvableFill(obj.Style.Fill.Value) {
 			fill[obj.AbsID()] = obj.Style.Fill.Value
 		}
 	}
@@ -86,13 +90,11 @@ func enclosingFill(obj *d2graph.Object, fill map[string]string) (string, bool) {
 	return "", false
 }
 
-// contrastInk returns the ink — dark or light — that reads best on hexFill,
-// chosen by relative luminance.
-func contrastInk(hexFill string) string {
-	r, _ := strconv.ParseInt(hexFill[1:3], 16, 0)
-	g, _ := strconv.ParseInt(hexFill[3:5], 16, 0)
-	b, _ := strconv.ParseInt(hexFill[5:7], 16, 0)
-	l := (0.2126*float64(r) + 0.7152*float64(g) + 0.0722*float64(b)) / 255
+// contrastInk returns the ink — dark or light — that reads best on fill, chosen
+// by relative luminance. fill is any color resolvableFill accepts; a fill that
+// somehow fails to parse scores 0 and takes the light ink.
+func contrastInk(fill string) string {
+	l, _ := color.Luminance(fill) // in [0,1]
 	if l > 0.5 {
 		return contrastDarkInk
 	}

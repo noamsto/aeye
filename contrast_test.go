@@ -53,6 +53,28 @@ func TestContrastLabelsUserDarkFillGetsLightInk(t *testing.T) {
 	}
 }
 
+// Named CSS colors and #rgb shorthand must contrast too — the hex-only gate used
+// to skip them, so a light named fill (roster.d2's lightgreen/gold) sat
+// light-on-light under the dark theme.
+func TestContrastLabelsResolvesNamedAndShorthandFills(t *testing.T) {
+	for _, c := range []struct {
+		name, fill, wantInk string
+	}{
+		{"light named", "lightgreen", contrastDarkInk},
+		{"light named gold", "gold", contrastDarkInk},
+		{"dark named", "navy", contrastLightInk},
+		{"light shorthand", `"#efe"`, contrastDarkInk},
+		{"dark shorthand", `"#123"`, contrastLightInk},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			svg := renderSrc(t, "a: A {style.fill: "+c.fill+"}\n")
+			if !strings.Contains(svg, c.wantInk) {
+				t.Fatalf("fill %s should ink %s; not found", c.fill, c.wantInk)
+			}
+		})
+	}
+}
+
 func TestContrastLabelsLeavesThemeShapesAlone(t *testing.T) {
 	// No custom fills: every label keeps its theme color, so our inks never appear.
 	svg := renderSrc(t, "a -> b -> c\n")

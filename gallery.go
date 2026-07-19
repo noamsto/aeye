@@ -121,6 +121,13 @@ type galleryModel struct {
 	// Transient one-line feedback (e.g. copy result), cleared on the next key.
 	status string
 
+	// Pending deletion: the selected entry is marked (danger border + countdown)
+	// for undoWindow before the file(s) are removed. Single-level undo. delGen
+	// invalidates in-flight commit/countdown ticks when the pending set changes,
+	// mirroring vecGen/rasterGen.
+	pending *pendingDeletion
+	delGen  uint64
+
 	// Mouse drag state for preview panning.
 	dragging             bool
 	lastDragX, lastDragY int
@@ -134,6 +141,18 @@ type galleryModel struct {
 	// Theme colors, resolved once at startup (tmux options are session-invariant).
 	selColor, dimColor, hintFg, textFg imgcolor.Color
 }
+
+type pendingDeletion struct {
+	path     string   // manifest path; match key that survives the reload poll
+	name     string   // caption, for the footer line
+	files    []string // resolved at mark time; removed on commit
+	deadline time.Time
+}
+
+const (
+	undoWindow    = 5 * time.Second
+	countdownTick = 300 * time.Millisecond
+)
 
 func (m galleryModel) Init() tea.Cmd {
 	if m.dragNative && m.tty != nil {
@@ -251,6 +270,49 @@ func (m *galleryModel) reload() {
 			warmCacheAsync(paths, m.l.previewW, m.l.previewH, m.l.stripW, m.l.stripH)
 		}
 	}
+}
+
+// markPending marks the selected entry for deletion. Any prior pending deletion
+// commits first (single-level undo). No-op on an empty carousel.
+func (m *galleryModel) markPending() {
+	if len(m.images) == 0 {
+		return
+	}
+	e := m.images[m.cursor]
+	if m.pending != nil {
+		m.commitPending()
+	}
+	m.pending = &pendingDeletion{
+		path:     e.Path,
+		name:     e.caption(),
+		files:    e.filesToDelete(),
+		deadline: time.Now().Add(undoWindow),
+	}
+	m.delGen++
+}
+
+// undoPending cancels a pending deletion, leaving every file on disk. Bumping
+// delGen makes the scheduled commit tick a no-op when it fires.
+func (m *galleryModel) undoPending() {
+	if m.pending == nil {
+		return
+	}
+	m.pending = nil
+	m.delGen++
+	m.status = "Deletion cancelled"
+}
+
+// commitPending removes the pending entry's files and clears the mark. The
+// entry drops out of the carousel on the next reload via the existing
+// "undecodable → dropped" path; the manifest is never rewritten.
+func (m *galleryModel) commitPending() {
+	if m.pending == nil {
+		return
+	}
+	for _, f := range m.pending.files {
+		os.Remove(f)
+	}
+	m.pending = nil
 }
 
 func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

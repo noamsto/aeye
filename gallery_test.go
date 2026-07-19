@@ -351,3 +351,47 @@ func TestCaption(t *testing.T) {
 		t.Fatalf("unnamed caption = %q, want login.png", got)
 	}
 }
+
+func TestPendingLifecycle(t *testing.T) {
+	f := writeTestPNG(t)
+	m := &galleryModel{images: []imageEntry{{Path: f, Source: "Read"}}}
+
+	m.markPending()
+	if m.pending == nil || m.pending.path != f {
+		t.Fatalf("markPending did not set pending for %q: %+v", f, m.pending)
+	}
+	if _, err := os.Stat(f); err != nil {
+		t.Fatalf("file removed too early: %v", err)
+	}
+	gen := m.delGen
+
+	// Undo clears pending, bumps the generation, leaves the file on disk.
+	m.undoPending()
+	if m.pending != nil {
+		t.Fatalf("undoPending left pending set: %+v", m.pending)
+	}
+	if m.delGen == gen {
+		t.Fatalf("undoPending did not bump delGen")
+	}
+	if _, err := os.Stat(f); err != nil {
+		t.Fatalf("undo should not remove the file: %v", err)
+	}
+
+	// Commit removes the file.
+	m.markPending()
+	m.commitPending()
+	if m.pending != nil {
+		t.Fatalf("commitPending left pending set")
+	}
+	if _, err := os.Stat(f); !os.IsNotExist(err) {
+		t.Fatalf("commitPending did not remove the file (err=%v)", err)
+	}
+}
+
+func TestMarkPendingEmptyIsNoop(t *testing.T) {
+	m := &galleryModel{}
+	m.markPending()
+	if m.pending != nil {
+		t.Fatalf("markPending on empty carousel set pending: %+v", m.pending)
+	}
+}

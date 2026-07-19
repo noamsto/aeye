@@ -156,6 +156,33 @@ func withTheme(path, mode string) string {
 	return path
 }
 
+// filesToDelete returns the on-disk files removed when this entry is deleted
+// from the carousel. A plain capture is a single file; a d2 diagram is the
+// whole rendered cluster — both theme PNG files and both theme SVGs — so a later
+// theme switch can't resurrect a half-deleted diagram. The .d2 source lives in
+// the adapter-owned src dir and is deliberately left untouched (the viewer
+// stays decoupled from the hook's layout).
+func (e imageEntry) filesToDelete() []string {
+	if e.Source != "d2" {
+		return []string{e.Path}
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, p := range []string{e.Path, e.Vector} {
+		if p == "" {
+			continue
+		}
+		for _, mode := range []string{"light", "dark"} {
+			v := withTheme(p, mode)
+			if !seen[v] {
+				seen[v] = true
+				out = append(out, v)
+			}
+		}
+	}
+	return out
+}
+
 // decodeCache memoizes decodeErr by (path, mtime, size) so an unchanged file is
 // fully decoded only once across the 1.5s reload poll; a re-captured file (new
 // mtime/size) is re-decoded and can flip from failing to valid.

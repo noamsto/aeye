@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	imgcolor "image/color"
+	"math"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -78,6 +79,18 @@ func stripStart(cursor, stripCols, n int) int {
 	return clamp(cursor-stripCols/2, 0, n-stripCols)
 }
 
+// countdownBar renders a depleting bar of `width` cells for `remaining` of a
+// `total` window, suffixed with whole seconds remaining (e.g. "▓▓░░░ 2s"). Used
+// for the pending-deletion undo countdown. Text only — no raster work.
+func countdownBar(remaining, total time.Duration, width int) string {
+	if remaining < 0 {
+		remaining = 0
+	}
+	filled := clamp(int(math.Round(float64(remaining)/float64(total)*float64(width))), 0, width)
+	secs := int(math.Ceil(remaining.Seconds()))
+	return strings.Repeat("▓", filled) + strings.Repeat("░", width-filled) + fmt.Sprintf(" %ds", secs)
+}
+
 // ---------------------------------------------------------------------------
 // Gallery bubbletea model — carousel (big preview + filmstrip)
 // ---------------------------------------------------------------------------
@@ -108,6 +121,13 @@ type galleryModel struct {
 	// Transient one-line feedback (e.g. copy result), cleared on the next key.
 	status string
 
+	// Pending deletion: the selected entry is marked (danger border + countdown)
+	// for undoWindow before the file(s) are removed. Single-level undo. delGen
+	// invalidates in-flight commit/countdown ticks when the pending set changes,
+	// mirroring vecGen/rasterGen.
+	pending *pendingDeletion
+	delGen  uint64
+
 	// Mouse drag state for preview panning.
 	dragging             bool
 	lastDragX, lastDragY int
@@ -119,8 +139,20 @@ type galleryModel struct {
 	dragInFlight bool
 
 	// Theme colors, resolved once at startup (tmux options are session-invariant).
-	selColor, dimColor, hintFg, textFg imgcolor.Color
+	selColor, dimColor, hintFg, textFg, dangerColor imgcolor.Color
 }
+
+type pendingDeletion struct {
+	path     string   // manifest path; match key that survives the reload poll
+	name     string   // caption, for the footer line
+	files    []string // resolved at mark time; removed on commit
+	deadline time.Time
+}
+
+const (
+	undoWindow    = 5 * time.Second
+	countdownTick = 300 * time.Millisecond
+)
 
 func (m galleryModel) Init() tea.Cmd {
 	if m.dragNative && m.tty != nil {
@@ -160,6 +192,20 @@ const (
 
 func sizeRetryCmd(attempt int) tea.Cmd {
 	return tea.Tick(sizeRetryInterval, func(time.Time) tea.Msg { return sizeRetryMsg{attempt} })
+}
+
+type deleteCommitMsg struct{ gen uint64 }
+type deleteCountdownMsg struct{ gen uint64 }
+
+// scheduleDeleteTicks arms the commit deadline and the countdown repaint for the
+// current pending generation. Both carry delGen so a superseding x/u makes them
+// no-op when they fire.
+func (m *galleryModel) scheduleDeleteTicks() tea.Cmd {
+	gen := m.delGen
+	return tea.Batch(
+		tea.Tick(undoWindow, func(time.Time) tea.Msg { return deleteCommitMsg{gen} }),
+		tea.Tick(countdownTick, func(time.Time) tea.Msg { return deleteCountdownMsg{gen} }),
+	)
 }
 
 // transmitView stores the preview + visible filmstrip images store-only (kitty
@@ -238,6 +284,77 @@ func (m *galleryModel) reload() {
 			warmCacheAsync(paths, m.l.previewW, m.l.previewH, m.l.stripW, m.l.stripH)
 		}
 	}
+	if m.pending != nil {
+		found := false
+		for _, e := range m.images {
+			if m.isPending(e) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			m.pending = nil
+		}
+	}
+}
+
+// markPending marks the selected entry for deletion. Any prior pending deletion
+// commits first (single-level undo). No-op on an empty carousel.
+func (m *galleryModel) markPending() {
+	if len(m.images) == 0 {
+		return
+	}
+	e := m.images[m.cursor]
+	if m.pending != nil {
+		m.commitPending()
+		m.reload()
+	}
+	m.pending = &pendingDeletion{
+		path:     e.Path,
+		name:     e.caption(),
+		files:    e.filesToDelete(),
+		deadline: time.Now().Add(undoWindow),
+	}
+	m.delGen++
+}
+
+// undoPending cancels a pending deletion, leaving every file on disk. Bumping
+// delGen makes the scheduled commit tick a no-op when it fires.
+func (m *galleryModel) undoPending() {
+	if m.pending == nil {
+		return
+	}
+	m.pending = nil
+	m.delGen++
+	m.status = "Deletion cancelled"
+}
+
+// commitPending removes the pending entry's files and clears the mark. The
+// entry drops out of the carousel on the next reload via the existing
+// "undecodable → dropped" path; the manifest is never rewritten.
+func (m *galleryModel) commitPending() {
+	if m.pending == nil {
+		return
+	}
+	for _, f := range m.pending.files {
+		os.Remove(f)
+	}
+	m.pending = nil
+}
+
+// isPending reports whether e is the entry currently marked for deletion. d2
+// diagrams are matched theme-canonically because reload() re-resolves their
+// -light/-dark variant on a live theme switch (resolveThemeVariants); plain
+// captures — whose path never re-resolves — are matched exactly, so a non-d2
+// file that merely happens to end in -light/-dark isn't conflated with a sibling.
+func (m *galleryModel) isPending(e imageEntry) bool {
+	if m.pending == nil {
+		return false
+	}
+	if e.Source == "d2" {
+		return withTheme(e.Path, "dark") == withTheme(m.pending.path, "dark")
+	}
+	return e.Path == m.pending.path
 }
 
 func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -292,6 +409,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch msg.String() {
 		case "q", "ctrl+c":
+			m.commitPending()
 			return m, tea.Quit
 		case "ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l":
 			// Cross the tmux/kitty boundary: hand focus to the neighbouring kitty
@@ -379,6 +497,12 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dragSelected()
 		case "r":
 			m.reload()
+		case "x":
+			m.markPending()
+			return m, tea.Batch(m.scheduleDeleteTicks(), m.schedulePaint())
+		case "u":
+			m.undoPending()
+			return m, m.schedulePaint()
 		default:
 			if d := digitKey(msg.String()); d >= 1 && d-1 < len(m.images) {
 				m.selectIndex(d - 1)
@@ -423,6 +547,20 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.images[m.cursor].Path, fastPNG.Encode)
 		fmt.Fprint(m.tty, transmitVirtual(previewID, src, m.l.previewW, m.l.previewH))
 		return m, nil
+	case deleteCommitMsg:
+		if msg.gen != m.delGen || m.pending == nil {
+			return m, nil
+		}
+		m.commitPending()
+		m.reload()
+		return m, m.schedulePaint()
+	case deleteCountdownMsg:
+		// Repaint-only tick: re-renders the depleting bar (text layer; rasters
+		// are stored by id and not re-transmitted). Stops once pending clears.
+		if msg.gen != m.delGen || m.pending == nil {
+			return m, nil
+		}
+		return m, tea.Tick(countdownTick, func(time.Time) tea.Msg { return deleteCountdownMsg{msg.gen} })
 	case galleryTickMsg:
 		// A live light/dark switch repaints from the already-rendered variant —
 		// reload() re-resolves every d2 path to the new theme. Force the reload by
@@ -611,6 +749,21 @@ func (m galleryModel) View() tea.View {
 	return v
 }
 
+// actionRow is the footer's second line: the pending-deletion countdown when a
+// deletion is in flight, else a transient status, else the action-key hints.
+func (m galleryModel) actionRow() string {
+	actionKeys := "↵ open · O folder · y copy · d drag · x del · r reload · q quit"
+	if m.pending != nil {
+		line := fmt.Sprintf("✗ Deleting %s  %s — u to undo",
+			m.pending.name, countdownBar(time.Until(m.pending.deadline), undoWindow, 5))
+		return lipgloss.NewStyle().Foreground(m.dangerColor).Render(truncateToWidth(line, m.width))
+	}
+	if m.status != "" {
+		return lipgloss.NewStyle().Foreground(m.selColor).Render(truncateToWidth(m.status, m.width))
+	}
+	return lipgloss.NewStyle().Foreground(m.hintFg).Render(truncateToWidth(actionKeys, m.width))
+}
+
 // emptyState is the centered placeholder shown until the first image lands.
 func (m galleryModel) emptyState() string {
 	icon := lipgloss.NewStyle().Foreground(m.selColor).Bold(true).Render(galleryTitleIcon + "  Claude Images")
@@ -649,7 +802,11 @@ func (m galleryModel) renderView() string {
 			context = "region: " + r.path + " · ⇥ next · ⇧⇥ back · ] [ drill · esc exit"
 		}
 	}
-	preview = borderWithTitle(preview, m.l.previewW, context, selColor)
+	frameColor := selColor
+	if len(m.images) > 0 && m.isPending(m.images[m.cursor]) {
+		frameColor = m.dangerColor
+	}
+	preview = borderWithTitle(preview, m.l.previewW, context, frameColor)
 	previewH := m.height - m.l.stripH - 6 // title + subtitle + filmstrip(stripH+2) + legend(2)
 	previewArea := lipgloss.Place(m.width, previewH, lipgloss.Center, lipgloss.Center, preview)
 
@@ -658,8 +815,14 @@ func (m galleryModel) renderView() string {
 	center := func(s string) string { return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, s) }
 	title := center(lipgloss.NewStyle().Foreground(selColor).Bold(true).Render(galleryTitleIcon+"  Claude Images") +
 		lipgloss.NewStyle().Foreground(hintFg).Render("  "+version()))
-	subtitle := center(lipgloss.NewStyle().Foreground(textFg).Render(
-		truncateToWidth(fmt.Sprintf("[%d/%d]  %s", m.cursor+1, len(m.images), m.images[m.cursor].caption()), m.width)))
+	capText := m.images[m.cursor].caption()
+	capFg := textFg
+	if m.isPending(m.images[m.cursor]) {
+		capText = "✗ " + capText
+		capFg = m.dangerColor
+	}
+	subtitle := center(lipgloss.NewStyle().Foreground(capFg).Render(
+		truncateToWidth(fmt.Sprintf("[%d/%d]  %s", m.cursor+1, len(m.images), capText), m.width)))
 
 	// Filmstrip window: each thumb framed; the selected thumb's frame is colored.
 	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
@@ -686,6 +849,9 @@ func (m galleryModel) renderView() string {
 		if idx == m.cursor {
 			border = selColor
 		}
+		if m.isPending(m.images[idx]) {
+			border = m.dangerColor
+		}
 		cells = append(cells, lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
 			BorderForeground(border).Render(thumb))
 	}
@@ -698,13 +864,7 @@ func (m galleryModel) renderView() string {
 	// preview's top border instead (see above).
 	hintStyle := lipgloss.NewStyle().Foreground(hintFg)
 	navKeys := "h/l move · n/p page · g/G ends · z/Z zoom · hjkl pan · 0 reset"
-	actionKeys := "↵ open · O folder · y copy · d drag · r reload · q quit"
-	// A transient message (e.g. copy result) takes over the action row until the
-	// next keypress; the keys reappear right after.
-	second := hintStyle.Render(truncateToWidth(actionKeys, m.width))
-	if m.status != "" {
-		second = lipgloss.NewStyle().Foreground(m.selColor).Render(truncateToWidth(m.status, m.width))
-	}
+	second := m.actionRow()
 	legend := lipgloss.JoinVertical(lipgloss.Left,
 		center(hintStyle.Render(truncateToWidth(navKeys, m.width))),
 		center(second))
@@ -734,8 +894,9 @@ func borderWithTitle(inner string, innerW int, title string, c imgcolor.Color) s
 	return top
 }
 
-// truncateToWidth cuts s to at most w display columns (ASCII-safe; bar text is
-// filenames + hints, no wide runes).
+// truncateToWidth cuts s to at most w display columns, on a rune boundary —
+// the countdown line packs multibyte glyphs (▓ ░ ✗ —) and an interpolated
+// diagram/user name, so a byte slice could split a multibyte rune mid-sequence.
 func truncateToWidth(s string, w int) string {
 	if lipgloss.Width(s) <= w {
 		return s
@@ -743,7 +904,15 @@ func truncateToWidth(s string, w int) string {
 	if w <= 0 {
 		return ""
 	}
-	return s[:w]
+	var out strings.Builder
+	for _, r := range s {
+		prefix := out.String() + string(r)
+		if lipgloss.Width(prefix) > w {
+			break
+		}
+		out.WriteRune(r)
+	}
+	return out.String()
 }
 
 // thmColor reads a tmux @thm_* color option, falling back per theme.
@@ -791,6 +960,7 @@ func runGallery(pane string) error {
 	m.dimColor = m.thmColor("@thm_surface_1", "#45475a", "#bcc0cc")
 	m.hintFg = m.thmColor("@thm_subtext_0", "#a6adc8", "#6c6f85")
 	m.textFg = m.thmColor("@thm_text", "#cdd6f4", "#4c4f69")
+	m.dangerColor = m.thmColor("@thm_red", "#f38ba8", "#d20f39")
 	// Teardown on pane-kill (toggle-off SIGTERM/SIGHUP), not just q.
 	if tty != nil {
 		sig := make(chan os.Signal, 1)

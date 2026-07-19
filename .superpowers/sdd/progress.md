@@ -1,70 +1,49 @@
-# Progress ledger — Codex adapter parity (#122)
+# Progress ledger — Carousel delete image with undo (#137)
 
-Plan: docs/superpowers/plans/2026-07-12-codex-adapter-parity.md
-Branch: feat/122-codex-adapter
-
-Task 3.1: complete (commits ec7d536..aef3c31, review clean opus — session-backfill.sh rollout replay w/ JS-unwrap normalization; 2 TDD bugs fixed (cwd grep-widen, set-e unwrap guards); all 7 named risks clean incl set-e no-abort-mid-rebuild; 178/178 bats green). PHASE 3 DONE. In-repo adapter COMPLETE.
-
-FINAL whole-branch review (opus, 86b110c..2b6245e): READY TO MERGE with the one trivial shellcheck-path fix (done in 34fbca2). No Critical/Important. Seams compose, regression green. Minors triaged: accept 1,2,7,8; fast-follow 3,4,5,6 (bundle 4/5/6 + a 2-.d2 fixture into one issue).
-
-PHASES 1-3 COMPLETE + reviewed. Remaining = Phase 4 (packaging/E2E/PR), all USER-GATED:
-- Task 0.2: resolve non-interactive hook-trust persistence for Nix (needs investigation on user machine).
-- Task 4.1: nix-config home/ai/codex/default.nix — export AEYE_D2_* env + plugin install (cross-repo, needs rebuild).
-- Task 4.2: live E2E (real Codex session: apply_patch .d2 + view_image + Bash screenshot), README + CHANGELOG, PR --assignee @me linking #122.
-FAST-FOLLOWS (post-merge): bundle Minors 3/4/5/6 (multi-.d2 lock-in-loop + double-JSON + test gap + diagrams owner-selfheal test); toggle gap (Minor 8, cross-repo w/ lazytmux).
-
-*** CRITICAL defect FIXED + install-verified (commit 20be184, review clean) ***
-Vendored core into adapters/codex/plugin/scripts/core/ (byte-identical to adapters/core/, blob-hash verified); repointed all 5 source lines to $PLUGIN_ROOT/scripts/core; added `just sync-codex-core` + tests/codex/core-sync.bats drift-check (reviewer injected corruption → test fails, confirmed non-vacuous). 180/180 bats. REAL installed round-trip: codex plugin add → cache has scripts/core/ → installed images.sh sourced core + appended manifest line (exit 0). Adapter now WORKS when installed. ~/.codex left pristine.
-
---- original finding (now resolved) ---
-Codex COPIES only the plugin dir on `codex plugin add` (verified: cache = adapters/codex/plugin/ contents only). Codex scripts source core via `$PLUGIN_ROOT/../../core/...` which escapes the plugin dir → installed hooks can't find core → BROKEN on install. Reviews missed it because tests set PLUGIN_ROOT to the in-repo dir (sibling core present). Symlinks NOT viable (verified: codex copy SKIPS symlinks entirely — real subdirs like scripts/lib ARE copied recursively). FIX (task 4.0-fix): vendor real copy of adapters/core/*.sh into adapters/codex/plugin/scripts/core/, repoint sources to $PLUGIN_ROOT/scripts/core, add justfile sync recipe + bats drift-check test. Canonical source stays adapters/core/ (Claude uses it in-place). Whole-branch "ready to merge" was PREMATURE until this lands + install re-verified.
-
-PHASE 4 progress:
-- Task 0.2 RESOLVED: hook-trust interactive (/hooks), hash-based, no declarative pre-trust. Degraded plan: nix installs+env, user runs /hooks once (re-trust on plugin update).
-- Marketplace layout VERIFIED + restructured (commit 0511438): root at adapters/codex/.agents/plugins/marketplace.json, source.path "./plugin" (no dir rename needed). `codex plugin marketplace add <root>` resolves aeye@aeye. Provisional plugin/marketplace.json removed.
-- ORDERING DEPENDENCY: nix-config rebuild is BLOCKED on merging this aeye branch first (flake input pinned to aeye main lacks adapters/codex/ until merge + input bump). So: live E2E against the worktree now → aeye PR/merge → bump input → nix wire + rebuild.
-- REMAINING: live E2E (interactive: /hooks trust + real codex session, user-driven); README + CHANGELOG (subagent-able); nix-config codex wrapper (env: AEYE_D2_FONT/FONT_DIR/THEME-via-dconf + aeye/resvg PATH, mirror claude-wrapper) + marketplace register via stable symlink (draft now, rebuild post-merge); aeye PR --assignee @me linking #122.
-
-Task 4.2 docs: DONE (commit 15f07fb) — README Install (Codex subsection + /hooks trust caveat) + Adapters bullet + docs/INSTALL.md Codex section. CHANGELOG untouched (release-please). No git-URL overclaim.
-
-=== BRANCH STATE: aeye adapter COMPLETE, install-verified, reviewed, documented → PR-READY ===
-Remaining = USER-GATED only:
-1. aeye PR (needs push consent) — feat/122-codex-adapter.
-2. nix-config wiring: BLOCKED on aeye merge (flake input pinned to main lacks adapters/codex). Post-merge: bump input → codex wrapper (AEYE_D2_* env, mirror claude-wrapper) + register marketplace via stable symlink → rebuild. Draft deferred until input is bumpable/testable.
-3. Optional full live interactive E2E (real model session + /hooks trust). NOTE: installed round-trip already proved capture works from the INSTALLED copy (task 4.0-fix) — this is extra confidence, not correctness-critical.
-FAST-FOLLOWS (post-merge): bundle Minors 3/4/5/6 (multi-.d2 lock/JSON/test-gap + diagrams owner test); toggle bare-terminal gap (Minor 8, cross-repo w/ lazytmux).
-
-LIVE E2E PASSED (real interactive Codex session, pane 23): apply_patch diagram.d2 → captured (source:d2) AND rendered both themes (no error); view_image /tmp/aeye-e2e/sample.png → captured (source:view_image). Real model + /hooks-trusted hooks + capture + d2 render + carousel. Test plugin torn down; ~/.codex fully restored (removed plugin/marketplace/cache + cleaned [projects."/tmp/aeye-e2e"] and 5 [hooks.state] leftovers from config.toml).
-
-NIX DRAFT DONE (nix-config worktree ~/nix-config-worktrees/feat-aeye-codex-adapter, branch feat/aeye-codex-adapter, commit ffe5209b): home/ai/codex/default.nix — codex-wrapper exports AEYE_D2_FONT/FONT_DIR/THEME(dconf); home.file ~/.config/aeye/codex → ${lazytmux.inputs.aeye}/adapters/codex (stable marketplace symlink). Parse OK + alejandra clean. CANNOT rebuild until aeye merges (input lacks adapters/codex).
-
-UNBLOCK CHAIN for nix rebuild: (1) push+PR+merge aeye feat/122-codex-adapter → aeye main; (2) bump lazytmux's aeye input to that; (3) nix-config: update lazytmux input, then rebuild home → verify AEYE_D2_* in a codex session + `codex plugin marketplace add ~/.config/aeye/codex` resolves. Then one-time `codex plugin add aeye@aeye` + /hooks trust.
+Plan: docs/superpowers/plans/2026-07-19-carousel-delete-image.md
+Branch: feat/137-delete-image-undo
+Base commit (branch start): 31de61b (plan commit)
 
 ## Status
 
-- Task 0.1 (spike: hook runtime fires) — COMPLETE, GATE PASSED. Contract in docs/superpowers/spikes/2026-07-12-codex-hook-contract.md. Hook payload normalized (clean tool_name + structured tool_input); JS-unwrap is backfill-only. Plan/spec updated to match.
-- Task 0.2 (spike: install + trust) — PARTIAL: install copies to versioned cache; runtime hook-trust gate exists (needed --dangerously-bypass-hook-trust). Trust-persistence for Nix = remaining Phase 4 unknown; fallback documented. Resolve before Task 4.1.
-- Tasks 1.1+ — UNLOCKED (0.1 passed). Next: Task 1.1 (core refactor).
-
-## Minor findings (for final whole-branch review triage)
-
-- Task 1.1: `resolve`/`is_ext` duplicated across Claude lib + core `scan_response_image_path` (spec-mandated; harmless). If a 3rd adapter needs Phase-1-style resolution, dedupe.
-- Task 1.1: image-extension list maintained in 3 spots (fast-bail regex, `is_ext`, jq capture) — pre-existing, not worsened; Codex core will also depend on the core copy.
-- Task 1.2: `diagrams.bats` has no owner-self-heal case (images.sh path IS covered via adapter.bats; owner_selfheal is now shared so the fn is tested). Consider adding a diagrams.sh owner-drop case.
-- Task 1.2 ⚠️ RESOLVED (not a defect): reviewer flagged possible divergence of two manifest-extract.sh copies — there is only ONE (core/); Claude lib + lifecycle lib both source it, idempotent double-source, single source of truth.
-- Task 2.3: diagrams.sh:97 — `_manifest_lock` inside the per-candidate loop holds the lock across candidate 2..N's slow `d2_render` (fd 9 persists). Contention regression only (no corruption/deadlock); comment "rendering never holds the lock" now false for multi-.d2. Fix: render all first, then lock once for prune/append.
-- Task 2.3: diagrams.sh:89-91 — two markdown-broken .d2 in one apply_patch emit two hookSpecificOutput JSON objects on stdout (PostToolUse expects ≤1); worst case lost/mangled warning, no corruption. (PostToolUse additionalContext honoring itself unconfirmed.)
-- Task 2.3: test gap — no bats case exercises a single apply_patch with 2+ .d2/images (the loop generalization, the whole point of the task, is untested on the multi-path branch). A 2-.d2 fixture asserting 2 manifest lines would cover it.
-
-## FOLLOW-UP GAP (parity, beyond current plan tasks)
-- `scripts/tmux-claude-images.sh` keys its OUTSIDE-tmux/kitty launch off `${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}`. Codex never sets CLAUDE_CODE_SESSION_ID (session id is payload-only), so bare-terminal/kitty carousel launch is UNWIRED for Codex. In-tmux (TMUX_PANE) works. Fix = wire the toggle to a Codex-supplied key (new follow-up task; shared viewer infra, also used by lazytmux — cross-repo consideration). SKILL.md wording hedged in 0cb52c8 so it doesn't over-claim.
+- Pre-flight plan scan: clean (no task/constraint conflicts, no tests asserting nothing).
+- Executing tasks 1-6 via subagent-driven development.
 
 ## Completed
 
-Task 0.1: spike gate PASSED (hooks fire in 0.144.1; contract captured)
-Task 1.1: complete (commits fa1e413..a535f1c, review clean — core manifest-extract.sh extracted, 117/117 bats + go green)
-Task 1.2: complete (commits 2ceabc6..a78a9e0, review clean opus — manifest-lifecycle.sh extracted, session-id parameterized, all 5 fragility risks byte-identical, 117/117 + go green). PHASE 1 DONE.
-Task 2.1: complete (commits cade0fa..1b585a5 — Codex plugin.json + hooks.json + provisional marketplace.json; review found missing interface.defaultPrompt (Important), fixed in 1b585a5; validate_plugin.py PASSES under nix python w/ pyyaml). marketplace.json path:"./" provisional → finalize in Task 4.1.
-Task 2.4: complete (commits ab0f51a..0cb52c8 — session-reset.sh + diagram-guidance.sh (verbatim) + both skills + plugin.json skills field; validate_plugin.py PASSES; 163/163 bats green. Review found Important doc oversell in image-gallery SKILL.md (outside-tmux launch broken for Codex), fixed in 0cb52c8. Toggle gap → FOLLOW-UP above.) PHASE 2 DONE.
-Task 2.3: complete (commits d6720a4..b79d4d1, review clean opus — images.sh + diagrams.sh capture hooks ported, 137/137 bats green, shellcheck clean. 3 Minors on multi-.d2 branch logged above for final review.)
-Task 2.2: complete (commits 8df0278..0a5b55a — shim.sh: codex_session_id, codex_extract_touched_paths, _codex_apply_patch_paths; tests/codex/extract.bats + fixtures. Review found Important newline-loss defect (scan output dropped by while-read consumers), fixed in 0a5b55a w/ hardened read-loop test. ALSO: changed justfile + ci.yml to `bats --recursive tests/` (bats didn't recurse into tests/codex/) — verify still correct at final review. 123/123 bats green.
+Task 1: complete (commits 1f57896..fd8e6ca, review clean sonnet — filesToDelete: non-d2→[Path], d2→both theme PNG+SVG via withTheme, .d2 source untouched; 3/3 tests, go build/vet/test clean).
+Task 2: complete (commits fd8e6ca..54f22d8, review clean sonnet — countdownBar pure text renderer, reuses clamp, math.Round/Ceil; 4 subtests, build clean).
+Task 3: complete (commits 54f22d8..2a156e6, review Approved sonnet — pendingDeletion{path,name,files,deadline} + markPending/undoPending/commitPending + undoWindow/countdownTick consts + pending/delGen fields; os.Remove on commit, no manifest write, empty-carousel no-op; capture-before-prior-commit verified safe).
+
+## Minor findings (for final whole-branch review triage)
+
+- Task 3: second markPending-commits-prior safety path is correct but not test-covered (brief gap). RESOLVED in Task 4 (TestMarkPendingCommitsPrior added + passing).
+- Task 4 (gallery.go x-case, ~line 477): `x` on an empty carousel still calls scheduleDeleteTicks() → arms 2 harmless no-op tea.Ticks (guarded by pending==nil when they fire). Trivial tidy-up: gate scheduleDeleteTicks on m.pending != nil. Not a bug.
+
+## Completed (cont.)
+
+Task 4: complete (commits 2a156e6..524782c, review Approved sonnet — x/u keys, deleteCommitMsg/deleteCountdownMsg gen-gated, commit-on-quit, reload pending-cleanup guard, scheduleDeleteTicks; countdown text-only self-terminating; +TestMarkPendingCommitsPrior; full suite+build clean).
+Task 5: complete (commits 524782c..8f7502b, review clean sonnet — dangerColor(@thm_red) resolved once; actionRow() pending→status→keys w/ "x del"; danger border on pending filmstrip cell + preview frame; ✗ danger subtitle; width math unchanged, no orphaned refs, no style bleed; 2 TestActionRow tests, build/vet clean).
+Task 6: complete (commit 9ea5488 — README keybinding row for x/u; go test/vet/gofmt/build all clean; binary builds). DEFERRED: live interactive carousel drive-through (needs real kitty/tmux tty) — controller to coordinate with user before merge.
+
+ALL 6 TASKS COMPLETE.
+
+FINAL REVIEW (opus general + charm-tui sonnet, 7248656..9ea5488): "With fixes". Findings → one fix wave:
+- #1 IMPORTANT: theme-switch while a d2 diagram pending silently cancels deletion (pending.path captured post-theme-resolution; reload re-resolves → cleanup clears mark; 3 render matches also mismatch). Fix: theme-canonical isPending() helper used in reload cleanup + 3 render sites (also dedups the 3x match). + regression test.
+- #2 MINOR: second-x-commits-prior leaves ghost cell ≤1.5s (no reload after inline commitPending in markPending). Fix: reload() after inline commit.
+- #3 MINOR(doc): spec design doc still says deletes .d2 source (stale) — correct to "rendered artifacts only".
+- FRAGILITY(charm): truncateToWidth s[:w] byte-slice cuts mid-rune on narrow pane w/ multibyte countdown/non-ASCII name. Fix: rune/width-aware truncation + narrow-width test.
+Core state machine / gen-debounce / file-scoping / read-only-manifest all verified clean + fail-safe.
+
+FIX WAVE 1 (commit c4e828e): #1 theme-canonical isPending + reload parity + rune-safe truncate + spec doc. Re-review (sonnet) found the isPending theme-normalization was applied unconditionally → non-d2 file named icon-dark.png falsely matched icon-light.png sibling (wrong cell highlighted; reload cleanup could miss). Deletion itself always correct (files captured at mark time).
+FIX WAVE 2 (commit 1c43fa0): isPending now takes imageEntry, gates theme-normalization on Source=="d2" (exact match for non-d2); 4 call sites pass entry; +regression test. Controller-verified: method + call sites correct; full suite green (ok 1.089s), vet+gofmt clean.
+
+=== ALL TASKS + REVIEW FINDINGS COMPLETE. Branch = feat/137-delete-image-undo, HEAD 1c43fa0 (9 feature commits from 7248656). ===
+Remaining before/at merge:
+- LIVE interactive verification (x marks danger border+✗+countdown; u undoes; 5s commit removes file from disk; q commits pending) — needs real kitty/tmux tty, NOT done headlessly. Controller to coordinate with user.
+- Non-blocking follow-up nits (final-review Minors, optional): x on empty carousel arms harmless no-op ticks; truncateToWidth O(n²) on short strings.
+- PR (needs push consent).
+
+## Minor findings (for final whole-branch review triage)
+
+(none yet)

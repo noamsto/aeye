@@ -9,6 +9,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+	"unicode/utf8"
+
+	"charm.land/lipgloss/v2"
 )
 
 func TestTmuxPassthrough(t *testing.T) {
@@ -185,6 +189,27 @@ func TestStripStart(t *testing.T) {
 	}
 }
 
+func TestCountdownBar(t *testing.T) {
+	total := 5 * time.Second
+	cases := []struct {
+		name      string
+		remaining time.Duration
+		want      string
+	}{
+		{"full", 5 * time.Second, "▓▓▓▓▓ 5s"},
+		{"half", 2 * time.Second, "▓▓░░░ 2s"},
+		{"empty", 0, "░░░░░ 0s"},
+		{"negative clamps to empty", -1 * time.Second, "░░░░░ 0s"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := countdownBar(tc.remaining, total, 5); got != tc.want {
+				t.Fatalf("countdownBar(%v) = %q, want %q", tc.remaining, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestParseManifest(t *testing.T) {
 	data := []byte(`{"type":"image","path":"/a/one.png","source":"Read","ts":"t","mtime":1}
 
@@ -327,5 +352,223 @@ func TestCaption(t *testing.T) {
 	plain := imageEntry{Path: "/shots/login.png"}
 	if got := plain.caption(); got != "login.png" {
 		t.Fatalf("unnamed caption = %q, want login.png", got)
+	}
+}
+
+func TestPendingLifecycle(t *testing.T) {
+	f := writeTestPNG(t)
+	m := &galleryModel{images: []imageEntry{{Path: f, Source: "Read"}}}
+
+	m.markPending()
+	if m.pending == nil || m.pending.path != f {
+		t.Fatalf("markPending did not set pending for %q: %+v", f, m.pending)
+	}
+	if _, err := os.Stat(f); err != nil {
+		t.Fatalf("file removed too early: %v", err)
+	}
+	gen := m.delGen
+
+	// Undo clears pending, bumps the generation, leaves the file on disk.
+	m.undoPending()
+	if m.pending != nil {
+		t.Fatalf("undoPending left pending set: %+v", m.pending)
+	}
+	if m.delGen == gen {
+		t.Fatalf("undoPending did not bump delGen")
+	}
+	if _, err := os.Stat(f); err != nil {
+		t.Fatalf("undo should not remove the file: %v", err)
+	}
+
+	// Commit removes the file.
+	m.markPending()
+	m.commitPending()
+	if m.pending != nil {
+		t.Fatalf("commitPending left pending set")
+	}
+	if _, err := os.Stat(f); !os.IsNotExist(err) {
+		t.Fatalf("commitPending did not remove the file (err=%v)", err)
+	}
+}
+
+func TestMarkPendingEmptyIsNoop(t *testing.T) {
+	m := &galleryModel{}
+	m.markPending()
+	if m.pending != nil {
+		t.Fatalf("markPending on empty carousel set pending: %+v", m.pending)
+	}
+}
+
+func TestMarkPendingCommitsPrior(t *testing.T) {
+	a := writeTestPNG(t)
+	b := writeTestPNG(t)
+	m := &galleryModel{images: []imageEntry{{Path: a, Source: "Read"}, {Path: b, Source: "Read"}}}
+
+	m.cursor = 0
+	m.markPending() // mark A
+	m.cursor = 1
+	m.markPending() // marking B commits A first
+
+	if m.pending == nil || m.pending.path != b {
+		t.Fatalf("pending should now be B (%q): %+v", b, m.pending)
+	}
+	if _, err := os.Stat(a); !os.IsNotExist(err) {
+		t.Fatalf("marking B did not commit (remove) A's file (err=%v)", err)
+	}
+	if _, err := os.Stat(b); err != nil {
+		t.Fatalf("B's file should still be on disk during its window: %v", err)
+	}
+}
+
+func TestDeleteCommitMsgGenGate(t *testing.T) {
+	f := writeTestPNG(t)
+	base := galleryModel{
+		images:  []imageEntry{{Path: f, Source: "Read"}},
+		pending: &pendingDeletion{path: f, files: []string{f}, deadline: time.Now()},
+		delGen:  7,
+	}
+
+	// Stale generation: commit is ignored, file survives.
+	stale := base
+	m2, _ := stale.Update(deleteCommitMsg{gen: 6})
+	if _, err := os.Stat(f); err != nil {
+		t.Fatalf("stale commit removed the file: %v", err)
+	}
+	if m2.(galleryModel).pending == nil {
+		t.Fatalf("stale commit cleared pending")
+	}
+
+	// Current generation: commit removes the file and clears pending.
+	current := base
+	m3, _ := current.Update(deleteCommitMsg{gen: 7})
+	if _, err := os.Stat(f); !os.IsNotExist(err) {
+		t.Fatalf("current commit did not remove the file (err=%v)", err)
+	}
+	if m3.(galleryModel).pending != nil {
+		t.Fatalf("current commit left pending set")
+	}
+}
+
+func TestActionRowPending(t *testing.T) {
+	m := &galleryModel{
+		width: 80,
+		pending: &pendingDeletion{
+			name:     "diagram",
+			deadline: time.Now().Add(2 * time.Second),
+		},
+	}
+	got := m.actionRow()
+	for _, want := range []string{"diagram", "u to undo", "▓"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("actionRow() = %q, missing %q", got, want)
+		}
+	}
+}
+
+func TestActionRowIdleShowsKeys(t *testing.T) {
+	m := &galleryModel{width: 80}
+	got := m.actionRow()
+	if !strings.Contains(got, "x del") {
+		t.Fatalf("actionRow() = %q, want the x del hint", got)
+	}
+}
+
+func TestIsPending(t *testing.T) {
+	d2 := &galleryModel{pending: &pendingDeletion{path: "/d/h-dark.png"}}
+	if !d2.isPending(imageEntry{Path: "/d/h-light.png", Source: "d2"}) {
+		t.Fatalf("isPending should match a d2 entry's -light variant against a -dark pending path")
+	}
+	if d2.isPending(imageEntry{Path: "/d/other-light.png", Source: "d2"}) {
+		t.Fatalf("isPending should not match a different hash")
+	}
+
+	// Non-d2 paths are matched exactly, never theme-normalized.
+	plain := &galleryModel{pending: &pendingDeletion{path: "/shots/login.png"}}
+	if !plain.isPending(imageEntry{Path: "/shots/login.png", Source: "Read"}) {
+		t.Fatalf("isPending should match an identical non-d2 path")
+	}
+	if plain.isPending(imageEntry{Path: "/shots/other.png", Source: "Read"}) {
+		t.Fatalf("isPending should not match a different non-d2 path")
+	}
+
+	// Regression: a non-d2 pending must not be conflated with its -light/-dark
+	// namesake sibling merely because the path shapes match withTheme's rewrite.
+	icon := &galleryModel{pending: &pendingDeletion{path: "/assets/icon-dark.png"}}
+	if icon.isPending(imageEntry{Path: "/assets/icon-light.png", Source: "Read"}) {
+		t.Fatalf("isPending should not conflate a non-d2 entry with its -light/-dark namesake sibling")
+	}
+
+	if (&galleryModel{}).isPending(imageEntry{Path: "/shots/login.png", Source: "Read"}) {
+		t.Fatalf("isPending with no pending deletion should never match")
+	}
+}
+
+// TestPendingSurvivesThemeSwitch guards against a pending d2 deletion silently
+// cancelling on a live theme flip: pending.path is captured already
+// theme-resolved (e.g. "-dark"), and reload() re-resolves every d2 entry to the
+// new theme's variant, so a byte-exact path match would find no survivor and
+// wrongly clear m.pending.
+func TestPendingSurvivesThemeSwitch(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AEYE_DIR", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "images"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	darkPNG := filepath.Join(dir, "h-dark.png")
+	lightPNG := filepath.Join(dir, "h-light.png")
+	writeTestImage(t, darkPNG, 4, 4)
+	writeTestImage(t, lightPNG, 4, 4)
+	darkSVG := filepath.Join(dir, "h-dark.svg")
+	lightSVG := filepath.Join(dir, "h-light.svg")
+	for _, p := range []string{darkSVG, lightSVG} {
+		if err := os.WriteFile(p, []byte("<svg/>"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	manifest := filepath.Join(dir, "images", "p1.jsonl")
+	line := `{"type":"image","path":"` + darkPNG + `","vector":"` + darkSVG + `","source":"d2","name":"diagram","mtime":1}` + "\n"
+	if err := os.WriteFile(manifest, []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &galleryModel{pane: "p1", theme: "dark"}
+	m.reload()
+	if len(m.images) != 1 || m.images[0].Path != darkPNG {
+		t.Fatalf("reload (dark) = %+v, want the dark-resolved d2 entry", m.images)
+	}
+	m.cursor = 0
+	m.markPending()
+	if m.pending == nil || m.pending.path != darkPNG {
+		t.Fatalf("markPending did not set pending for %q: %+v", darkPNG, m.pending)
+	}
+
+	// Live theme switch, mirroring the galleryTickMsg handler's reload() call.
+	m.theme = "light"
+	m.reload()
+
+	if m.pending == nil {
+		t.Fatalf("pending was cleared across a theme switch (d2 path resolution changed underneath it)")
+	}
+	if len(m.images) != 1 || m.images[0].Path != lightPNG {
+		t.Fatalf("reload (light) = %+v, want the light-resolved d2 entry", m.images)
+	}
+	if !m.isPending(m.images[0]) {
+		t.Fatalf("isPending does not match the re-resolved light path %q against pending %q",
+			m.images[0].Path, m.pending.path)
+	}
+}
+
+func TestTruncateToWidthRuneSafe(t *testing.T) {
+	s := "✗ Deleting café  ▓▓░░░ 2s"
+	for w := 1; w < len(s); w++ {
+		got := truncateToWidth(s, w)
+		if !utf8.ValidString(got) {
+			t.Fatalf("truncateToWidth(%q, %d) = %q, contains a partial rune", s, w, got)
+		}
+		if lipgloss.Width(got) > w {
+			t.Fatalf("truncateToWidth(%q, %d) = %q, display width %d > %d", s, w, got, lipgloss.Width(got), w)
+		}
 	}
 }

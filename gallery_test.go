@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestTmuxPassthrough(t *testing.T) {
@@ -182,6 +183,27 @@ func TestStripStart(t *testing.T) {
 	}
 	if s := stripStart(10, 4, 20); s != 8 {
 		t.Errorf("centered start = %d, want 8 (cursor-stripCols/2)", s)
+	}
+}
+
+func TestCountdownBar(t *testing.T) {
+	total := 5 * time.Second
+	cases := []struct {
+		name      string
+		remaining time.Duration
+		want      string
+	}{
+		{"full", 5 * time.Second, "▓▓▓▓▓ 5s"},
+		{"half", 2 * time.Second, "▓▓░░░ 2s"},
+		{"empty", 0, "░░░░░ 0s"},
+		{"negative clamps to empty", -1 * time.Second, "░░░░░ 0s"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := countdownBar(tc.remaining, total, 5); got != tc.want {
+				t.Fatalf("countdownBar(%v) = %q, want %q", tc.remaining, got, tc.want)
+			}
+		})
 	}
 }
 

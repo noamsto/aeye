@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	imgcolor "image/color"
+	"math"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -76,6 +77,18 @@ func stripStart(cursor, stripCols, n int) int {
 		return 0
 	}
 	return clamp(cursor-stripCols/2, 0, n-stripCols)
+}
+
+// countdownBar renders a depleting bar of `width` cells for `remaining` of a
+// `total` window, suffixed with whole seconds remaining (e.g. "▓▓░░░ 2s"). Used
+// for the pending-deletion undo countdown. Text only — no raster work.
+func countdownBar(remaining, total time.Duration, width int) string {
+	if remaining < 0 {
+		remaining = 0
+	}
+	filled := clamp(int(math.Round(float64(remaining)/float64(total)*float64(width))), 0, width)
+	secs := int(math.Ceil(remaining.Seconds()))
+	return strings.Repeat("▓", filled) + strings.Repeat("░", width-filled) + fmt.Sprintf(" %ds", secs)
 }
 
 // ---------------------------------------------------------------------------

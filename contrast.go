@@ -1,9 +1,9 @@
 package main
 
 import (
-	"regexp"
 	"strconv"
 
+	"github.com/mazznoer/csscolorparser"
 	"oss.terrastruct.com/d2/d2graph"
 	"oss.terrastruct.com/d2/d2target"
 	"oss.terrastruct.com/d2/lib/label"
@@ -16,8 +16,21 @@ const (
 	contrastLightInk = "#F5F5F5"
 )
 
-// hexFillRe matches a #RRGGBB fill. Named or gradient fills are left to d2.
-var hexFillRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+// resolveFill turns a d2 fill value — a hex like "#RRGGBB", a CSS color name
+// like "green", or an rgb()/hsl() string — into an opaque "#rrggbb" whose
+// luminance drives the ink pick. It reports ok=false for anything the contrast
+// pass can't reason about: transparent/translucent fills (the fill shows
+// through, so the ink can't be chosen from it) and values that don't parse
+// (gradients, keywords), which keep their theme label color. Handling names
+// here — not just hex — is what stops a bright named fill (a roster worker's
+// "lightgreen", "cyan", …) from getting a light theme label light-on-light.
+func resolveFill(v string) (string, bool) {
+	c, err := csscolorparser.Parse(v)
+	if err != nil || c.A < 1 {
+		return "", false
+	}
+	return c.HexString(), true
+}
 
 // contrastLabels recolors a shape's label to contrast its fill, but only for
 // shapes the user explicitly filled without also picking a font color — d2's
@@ -36,8 +49,11 @@ var hexFillRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 func contrastLabels(diagram *d2target.Diagram, graph *d2graph.Graph) {
 	fill := make(map[string]string, len(graph.Objects))
 	for _, obj := range graph.Objects {
-		if obj.Style.Fill != nil && obj.Style.FontColor == nil && hexFillRe.MatchString(obj.Style.Fill.Value) {
-			fill[obj.AbsID()] = obj.Style.Fill.Value
+		if obj.Style.Fill == nil || obj.Style.FontColor != nil {
+			continue
+		}
+		if hex, ok := resolveFill(obj.Style.Fill.Value); ok {
+			fill[obj.AbsID()] = hex
 		}
 	}
 	for i := range diagram.Shapes {

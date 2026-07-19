@@ -8,6 +8,7 @@ require (
 	github.com/alecthomas/kong v1.15.0
 	github.com/charmbracelet/ultraviolet v0.0.0-20260703014108-f5a850f9c2b7
 	github.com/charmbracelet/x/term v0.2.2
+	github.com/mazznoer/csscolorparser v0.1.5
 	golang.org/x/image v0.43.0
 	oss.terrastruct.com/d2 v0.7.1
 	oss.terrastruct.com/util-go v0.0.0-20250213174338-243d8661088a
@@ -31,7 +32,6 @@ require (
 	github.com/google/pprof v0.0.0-20240927180334-d43a67379298 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect
-	github.com/mazznoer/csscolorparser v0.1.5 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect

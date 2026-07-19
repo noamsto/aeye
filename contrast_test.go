@@ -53,6 +53,16 @@ func TestContrastLabelsUserDarkFillGetsLightInk(t *testing.T) {
 	}
 }
 
+func TestContrastLabelsNamedLightFillGetsDarkInk(t *testing.T) {
+	// A bright *named* fill — the roster-worker case — must ink its label too, not
+	// just #RRGGBB fills. Before the csscolorparser resolve, named fills were left
+	// to d2's theme, so a light name got a light theme label, light-on-light.
+	svg := renderSrc(t, "a: A {style.fill: lightgreen}\n")
+	if !strings.Contains(svg, contrastDarkInk) {
+		t.Fatalf("a light named fill should darken its label (%s); not found", contrastDarkInk)
+	}
+}
+
 func TestContrastLabelsLeavesThemeShapesAlone(t *testing.T) {
 	// No custom fills: every label keeps its theme color, so our inks never appear.
 	svg := renderSrc(t, "a -> b -> c\n")

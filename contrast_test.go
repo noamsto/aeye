@@ -53,13 +53,25 @@ func TestContrastLabelsUserDarkFillGetsLightInk(t *testing.T) {
 	}
 }
 
-func TestContrastLabelsNamedLightFillGetsDarkInk(t *testing.T) {
-	// A bright *named* fill — the roster-worker case — must ink its label too, not
-	// just #RRGGBB fills. Before the csscolorparser resolve, named fills were left
-	// to d2's theme, so a light name got a light theme label, light-on-light.
-	svg := renderSrc(t, "a: A {style.fill: lightgreen}\n")
-	if !strings.Contains(svg, contrastDarkInk) {
-		t.Fatalf("a light named fill should darken its label (%s); not found", contrastDarkInk)
+// Named CSS colors and #rgb shorthand must contrast too — the hex-only gate used
+// to skip them, so a light named fill (roster.d2's lightgreen/gold) sat
+// light-on-light under the dark theme.
+func TestContrastLabelsResolvesNamedAndShorthandFills(t *testing.T) {
+	for _, c := range []struct {
+		name, fill, wantInk string
+	}{
+		{"light named", "lightgreen", contrastDarkInk},
+		{"light named gold", "gold", contrastDarkInk},
+		{"dark named", "navy", contrastLightInk},
+		{"light shorthand", `"#efe"`, contrastDarkInk},
+		{"dark shorthand", `"#123"`, contrastLightInk},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			svg := renderSrc(t, "a: A {style.fill: "+c.fill+"}\n")
+			if !strings.Contains(svg, c.wantInk) {
+				t.Fatalf("fill %s should ink %s; not found", c.fill, c.wantInk)
+			}
+		})
 	}
 }
 

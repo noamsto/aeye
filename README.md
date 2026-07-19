@@ -133,6 +133,7 @@ session reads/writes/screenshots images.
 | `O` | Open the containing folder |
 | `y` | Copy the selected image to the clipboard |
 | `d` | Drag the selected image out — in kitty just drag it with the mouse; `d` opens a `ripdrag`/`dragon` window elsewhere, else copies to the clipboard |
+| `x` | Delete the selected image — marks it for deletion with a 5s undo window; press `u` to undo, or it's removed from disk when the countdown ends |
 | `r` | Reload the manifest |
 | `q` / `Ctrl-C` | Quit |
 

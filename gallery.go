@@ -139,7 +139,7 @@ type galleryModel struct {
 	dragInFlight bool
 
 	// Theme colors, resolved once at startup (tmux options are session-invariant).
-	selColor, dimColor, hintFg, textFg imgcolor.Color
+	selColor, dimColor, hintFg, textFg, dangerColor imgcolor.Color
 }
 
 type pendingDeletion struct {
@@ -723,6 +723,21 @@ func (m galleryModel) View() tea.View {
 	return v
 }
 
+// actionRow is the footer's second line: the pending-deletion countdown when a
+// deletion is in flight, else a transient status, else the action-key hints.
+func (m galleryModel) actionRow() string {
+	actionKeys := "↵ open · O folder · y copy · d drag · x del · r reload · q quit"
+	if m.pending != nil {
+		line := fmt.Sprintf("✗ Deleting %s  %s — u to undo",
+			m.pending.name, countdownBar(time.Until(m.pending.deadline), undoWindow, 5))
+		return lipgloss.NewStyle().Foreground(m.dangerColor).Render(truncateToWidth(line, m.width))
+	}
+	if m.status != "" {
+		return lipgloss.NewStyle().Foreground(m.selColor).Render(truncateToWidth(m.status, m.width))
+	}
+	return lipgloss.NewStyle().Foreground(m.hintFg).Render(truncateToWidth(actionKeys, m.width))
+}
+
 // emptyState is the centered placeholder shown until the first image lands.
 func (m galleryModel) emptyState() string {
 	icon := lipgloss.NewStyle().Foreground(m.selColor).Bold(true).Render(galleryTitleIcon + "  Claude Images")
@@ -761,7 +776,11 @@ func (m galleryModel) renderView() string {
 			context = "region: " + r.path + " · ⇥ next · ⇧⇥ back · ] [ drill · esc exit"
 		}
 	}
-	preview = borderWithTitle(preview, m.l.previewW, context, selColor)
+	frameColor := selColor
+	if m.pending != nil && len(m.images) > 0 && m.images[m.cursor].Path == m.pending.path {
+		frameColor = m.dangerColor
+	}
+	preview = borderWithTitle(preview, m.l.previewW, context, frameColor)
 	previewH := m.height - m.l.stripH - 6 // title + subtitle + filmstrip(stripH+2) + legend(2)
 	previewArea := lipgloss.Place(m.width, previewH, lipgloss.Center, lipgloss.Center, preview)
 
@@ -770,8 +789,14 @@ func (m galleryModel) renderView() string {
 	center := func(s string) string { return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, s) }
 	title := center(lipgloss.NewStyle().Foreground(selColor).Bold(true).Render(galleryTitleIcon+"  Claude Images") +
 		lipgloss.NewStyle().Foreground(hintFg).Render("  "+version()))
-	subtitle := center(lipgloss.NewStyle().Foreground(textFg).Render(
-		truncateToWidth(fmt.Sprintf("[%d/%d]  %s", m.cursor+1, len(m.images), m.images[m.cursor].caption()), m.width)))
+	capText := m.images[m.cursor].caption()
+	capFg := textFg
+	if m.pending != nil && m.images[m.cursor].Path == m.pending.path {
+		capText = "✗ " + capText
+		capFg = m.dangerColor
+	}
+	subtitle := center(lipgloss.NewStyle().Foreground(capFg).Render(
+		truncateToWidth(fmt.Sprintf("[%d/%d]  %s", m.cursor+1, len(m.images), capText), m.width)))
 
 	// Filmstrip window: each thumb framed; the selected thumb's frame is colored.
 	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
@@ -798,6 +823,9 @@ func (m galleryModel) renderView() string {
 		if idx == m.cursor {
 			border = selColor
 		}
+		if m.pending != nil && m.images[idx].Path == m.pending.path {
+			border = m.dangerColor
+		}
 		cells = append(cells, lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
 			BorderForeground(border).Render(thumb))
 	}
@@ -810,13 +838,7 @@ func (m galleryModel) renderView() string {
 	// preview's top border instead (see above).
 	hintStyle := lipgloss.NewStyle().Foreground(hintFg)
 	navKeys := "h/l move · n/p page · g/G ends · z/Z zoom · hjkl pan · 0 reset"
-	actionKeys := "↵ open · O folder · y copy · d drag · r reload · q quit"
-	// A transient message (e.g. copy result) takes over the action row until the
-	// next keypress; the keys reappear right after.
-	second := hintStyle.Render(truncateToWidth(actionKeys, m.width))
-	if m.status != "" {
-		second = lipgloss.NewStyle().Foreground(m.selColor).Render(truncateToWidth(m.status, m.width))
-	}
+	second := m.actionRow()
 	legend := lipgloss.JoinVertical(lipgloss.Left,
 		center(hintStyle.Render(truncateToWidth(navKeys, m.width))),
 		center(second))
@@ -903,6 +925,7 @@ func runGallery(pane string) error {
 	m.dimColor = m.thmColor("@thm_surface_1", "#45475a", "#bcc0cc")
 	m.hintFg = m.thmColor("@thm_subtext_0", "#a6adc8", "#6c6f85")
 	m.textFg = m.thmColor("@thm_text", "#cdd6f4", "#4c4f69")
+	m.dangerColor = m.thmColor("@thm_red", "#f38ba8", "#d20f39")
 	// Teardown on pane-kill (toggle-off SIGTERM/SIGHUP), not just q.
 	if tty != nil {
 		sig := make(chan os.Signal, 1)

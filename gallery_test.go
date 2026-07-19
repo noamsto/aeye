@@ -445,3 +445,27 @@ func TestDeleteCommitMsgGenGate(t *testing.T) {
 		t.Fatalf("current commit left pending set")
 	}
 }
+
+func TestActionRowPending(t *testing.T) {
+	m := &galleryModel{
+		width: 80,
+		pending: &pendingDeletion{
+			name:     "diagram",
+			deadline: time.Now().Add(2 * time.Second),
+		},
+	}
+	got := m.actionRow()
+	for _, want := range []string{"diagram", "u to undo", "▓"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("actionRow() = %q, missing %q", got, want)
+		}
+	}
+}
+
+func TestActionRowIdleShowsKeys(t *testing.T) {
+	m := &galleryModel{width: 80}
+	got := m.actionRow()
+	if !strings.Contains(got, "x del") {
+		t.Fatalf("actionRow() = %q, want the x del hint", got)
+	}
+}

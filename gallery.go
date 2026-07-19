@@ -400,6 +400,13 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		var cmd tea.Cmd
 		m.status = "" // any keypress clears the previous transient message
+		// Until the pane is sized, the view is still "Loading…" and the layout is
+		// zero (previewW/H == 0). Acting on input now feeds a 0-sized box into the
+		// zoom/crop math (0/0 = NaN crop → image.NewRGBA panic), so drop everything
+		// but quit — a stuck pane must still be closable.
+		if !m.ready && msg.String() != "q" && msg.String() != "ctrl+c" {
+			return m, nil
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			m.commitPending()
@@ -506,6 +513,9 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = m.scheduleVector()
 		return m, tea.Batch(cmd, m.schedulePaint())
 	case tea.MouseMsg:
+		if !m.ready {
+			return m, nil // see the KeyPressMsg gate: no interaction before sizing
+		}
 		var cmd tea.Cmd
 		m, cmd = m.handleMouse(msg)
 		return m, tea.Batch(cmd, m.schedulePaint())

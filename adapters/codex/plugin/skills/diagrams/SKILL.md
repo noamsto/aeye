@@ -79,10 +79,13 @@ Why these choices:
   `class: warn` is safe whatever theme renders. For a class you define yourself,
   tell it apart by a colored *stroke* + distinct *shape*: those read on both
   themes because the label keeps the theme's own contrasting text color, whereas a
-  raw `fill` you set by hand is baked for one theme and can go light-on-light (or
-  dark-on-dark) under the other. Reserve hand-set `fill` for a genuine one-off; the
-  render's contrast pass recolors a filled node's label as a backstop, not a
-  license.
+  raw `fill` you set by hand is baked for one theme. Reserve hand-set `fill` for a
+  genuine one-off — **carry a per-node distinction on the `stroke`, not the fill**
+  (a colored border keeps the theme's own label + fill, so contrast never depends
+  on the fill's luminance). The render's contrast pass re-inks a filled node's
+  label — named colors included — so a stray `fill` stays readable, but that's a
+  backstop, not a license: it needs the `aeye` binary on PATH and flattens the
+  label to one ink, where a stroke keeps the theme's text palette intact.
 - **A `classes` block alone draws nothing** — it's shown as `text` here on
   purpose. Drop it into a diagram that has shapes, as the worked examples do.
 
@@ -319,6 +322,8 @@ transform.enrich -> alerts: anomalies
 
 Rendering needs `d2` and `resvg` on PATH. If either is missing the hook no-ops
 silently (no diagram, no error) — install both to enable diagrams. The optional
-`svg-contrast` label-recolor backstop runs only when the `aeye` binary is also on
-PATH (it is, in the nix package); without it, a filled node's label falls back to
-the theme default — fine for the stroke-coded diagrams this skill recommends.
+`svg-contrast` label-recolor backstop — which re-inks the label of any hand-filled
+node, whether the fill is a `#hex` or a CSS name like `green` — runs only when the
+`aeye` binary is also on PATH (it is, in the nix package); without it, a filled
+node's label falls back to the theme default, which is why the stroke-coded
+diagrams this skill recommends stay readable with or without it.

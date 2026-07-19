@@ -11,7 +11,7 @@ setup() {
 }
 
 run_app() { # $1 = fixture name
-	sed "s#IMGPATH#$IMG#g" "$BATS_TEST_DIRNAME/fixtures/$1" | bash "$APP"
+	sed -e "s#IMGPATH#$IMG#g" -e "s#CWDPATH#$BATS_TEST_TMPDIR#g" "$BATS_TEST_DIRNAME/fixtures/$1" | bash "$APP"
 }
 
 @test "Read of an image appends one manifest line" {

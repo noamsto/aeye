@@ -395,3 +395,53 @@ func TestMarkPendingEmptyIsNoop(t *testing.T) {
 		t.Fatalf("markPending on empty carousel set pending: %+v", m.pending)
 	}
 }
+
+func TestMarkPendingCommitsPrior(t *testing.T) {
+	a := writeTestPNG(t)
+	b := writeTestPNG(t)
+	m := &galleryModel{images: []imageEntry{{Path: a, Source: "Read"}, {Path: b, Source: "Read"}}}
+
+	m.cursor = 0
+	m.markPending() // mark A
+	m.cursor = 1
+	m.markPending() // marking B commits A first
+
+	if m.pending == nil || m.pending.path != b {
+		t.Fatalf("pending should now be B (%q): %+v", b, m.pending)
+	}
+	if _, err := os.Stat(a); !os.IsNotExist(err) {
+		t.Fatalf("marking B did not commit (remove) A's file (err=%v)", err)
+	}
+	if _, err := os.Stat(b); err != nil {
+		t.Fatalf("B's file should still be on disk during its window: %v", err)
+	}
+}
+
+func TestDeleteCommitMsgGenGate(t *testing.T) {
+	f := writeTestPNG(t)
+	base := galleryModel{
+		images:  []imageEntry{{Path: f, Source: "Read"}},
+		pending: &pendingDeletion{path: f, files: []string{f}, deadline: time.Now()},
+		delGen:  7,
+	}
+
+	// Stale generation: commit is ignored, file survives.
+	stale := base
+	m2, _ := stale.Update(deleteCommitMsg{gen: 6})
+	if _, err := os.Stat(f); err != nil {
+		t.Fatalf("stale commit removed the file: %v", err)
+	}
+	if m2.(galleryModel).pending == nil {
+		t.Fatalf("stale commit cleared pending")
+	}
+
+	// Current generation: commit removes the file and clears pending.
+	current := base
+	m3, _ := current.Update(deleteCommitMsg{gen: 7})
+	if _, err := os.Stat(f); !os.IsNotExist(err) {
+		t.Fatalf("current commit did not remove the file (err=%v)", err)
+	}
+	if m3.(galleryModel).pending != nil {
+		t.Fatalf("current commit left pending set")
+	}
+}

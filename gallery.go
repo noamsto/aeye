@@ -194,6 +194,20 @@ func sizeRetryCmd(attempt int) tea.Cmd {
 	return tea.Tick(sizeRetryInterval, func(time.Time) tea.Msg { return sizeRetryMsg{attempt} })
 }
 
+type deleteCommitMsg struct{ gen uint64 }
+type deleteCountdownMsg struct{ gen uint64 }
+
+// scheduleDeleteTicks arms the commit deadline and the countdown repaint for the
+// current pending generation. Both carry delGen so a superseding x/u makes them
+// no-op when they fire.
+func (m *galleryModel) scheduleDeleteTicks() tea.Cmd {
+	gen := m.delGen
+	return tea.Batch(
+		tea.Tick(undoWindow, func(time.Time) tea.Msg { return deleteCommitMsg{gen} }),
+		tea.Tick(countdownTick, func(time.Time) tea.Msg { return deleteCountdownMsg{gen} }),
+	)
+}
+
 // transmitView stores the preview + visible filmstrip images store-only (kitty
 // backend). Writes to /dev/tty so the APC bytes never interleave with
 // bubbletea's frame output.
@@ -268,6 +282,18 @@ func (m *galleryModel) reload() {
 				paths[i] = im.Path
 			}
 			warmCacheAsync(paths, m.l.previewW, m.l.previewH, m.l.stripW, m.l.stripH)
+		}
+	}
+	if m.pending != nil {
+		found := false
+		for _, e := range m.images {
+			if e.Path == m.pending.path {
+				found = true
+				break
+			}
+		}
+		if !found {
+			m.pending = nil
 		}
 	}
 }
@@ -360,6 +386,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = "" // any keypress clears the previous transient message
 		switch msg.String() {
 		case "q", "ctrl+c":
+			m.commitPending()
 			return m, tea.Quit
 		case "ctrl+h", "ctrl+j", "ctrl+k", "ctrl+l":
 			// Cross the tmux/kitty boundary: hand focus to the neighbouring kitty
@@ -447,6 +474,12 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.dragSelected()
 		case "r":
 			m.reload()
+		case "x":
+			m.markPending()
+			return m, tea.Batch(m.scheduleDeleteTicks(), m.schedulePaint())
+		case "u":
+			m.undoPending()
+			return m, m.schedulePaint()
 		default:
 			if d := digitKey(msg.String()); d >= 1 && d-1 < len(m.images) {
 				m.selectIndex(d - 1)
@@ -488,6 +521,20 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.images[m.cursor].Path, fastPNG.Encode)
 		fmt.Fprint(m.tty, transmitVirtual(previewID, src, m.l.previewW, m.l.previewH))
 		return m, nil
+	case deleteCommitMsg:
+		if msg.gen != m.delGen || m.pending == nil {
+			return m, nil
+		}
+		m.commitPending()
+		m.reload()
+		return m, m.schedulePaint()
+	case deleteCountdownMsg:
+		// Repaint-only tick: re-renders the depleting bar (text layer; rasters
+		// are stored by id and not re-transmitted). Stops once pending clears.
+		if msg.gen != m.delGen || m.pending == nil {
+			return m, nil
+		}
+		return m, tea.Tick(countdownTick, func(time.Time) tea.Msg { return deleteCountdownMsg{msg.gen} })
 	case galleryTickMsg:
 		// A live light/dark switch repaints from the already-rendered variant —
 		// reload() re-resolves every d2 path to the new theme. Force the reload by

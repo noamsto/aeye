@@ -287,7 +287,7 @@ func (m *galleryModel) reload() {
 	if m.pending != nil {
 		found := false
 		for _, e := range m.images {
-			if m.isPending(e.Path) {
+			if m.isPending(e) {
 				found = true
 				break
 			}
@@ -342,12 +342,19 @@ func (m *galleryModel) commitPending() {
 	m.pending = nil
 }
 
-// isPending reports whether path is the entry currently marked for deletion,
-// comparing theme-canonically so a d2 diagram still matches after a live theme
-// switch re-resolves its -light/-dark variant (withTheme is a no-op on paths
-// without a theme suffix, so plain captures still match exactly).
-func (m *galleryModel) isPending(path string) bool {
-	return m.pending != nil && withTheme(path, "dark") == withTheme(m.pending.path, "dark")
+// isPending reports whether e is the entry currently marked for deletion. d2
+// diagrams are matched theme-canonically because reload() re-resolves their
+// -light/-dark variant on a live theme switch (resolveThemeVariants); plain
+// captures — whose path never re-resolves — are matched exactly, so a non-d2
+// file that merely happens to end in -light/-dark isn't conflated with a sibling.
+func (m *galleryModel) isPending(e imageEntry) bool {
+	if m.pending == nil {
+		return false
+	}
+	if e.Source == "d2" {
+		return withTheme(e.Path, "dark") == withTheme(m.pending.path, "dark")
+	}
+	return e.Path == m.pending.path
 }
 
 func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -786,7 +793,7 @@ func (m galleryModel) renderView() string {
 		}
 	}
 	frameColor := selColor
-	if len(m.images) > 0 && m.isPending(m.images[m.cursor].Path) {
+	if len(m.images) > 0 && m.isPending(m.images[m.cursor]) {
 		frameColor = m.dangerColor
 	}
 	preview = borderWithTitle(preview, m.l.previewW, context, frameColor)
@@ -800,7 +807,7 @@ func (m galleryModel) renderView() string {
 		lipgloss.NewStyle().Foreground(hintFg).Render("  "+version()))
 	capText := m.images[m.cursor].caption()
 	capFg := textFg
-	if m.isPending(m.images[m.cursor].Path) {
+	if m.isPending(m.images[m.cursor]) {
 		capText = "✗ " + capText
 		capFg = m.dangerColor
 	}
@@ -832,7 +839,7 @@ func (m galleryModel) renderView() string {
 		if idx == m.cursor {
 			border = selColor
 		}
-		if m.isPending(m.images[idx].Path) {
+		if m.isPending(m.images[idx]) {
 			border = m.dangerColor
 		}
 		cells = append(cells, lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).

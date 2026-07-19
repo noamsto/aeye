@@ -475,23 +475,30 @@ func TestActionRowIdleShowsKeys(t *testing.T) {
 
 func TestIsPending(t *testing.T) {
 	d2 := &galleryModel{pending: &pendingDeletion{path: "/d/h-dark.png"}}
-	if !d2.isPending("/d/h-light.png") {
+	if !d2.isPending(imageEntry{Path: "/d/h-light.png", Source: "d2"}) {
 		t.Fatalf("isPending should match a d2 entry's -light variant against a -dark pending path")
 	}
-	if d2.isPending("/d/other-light.png") {
+	if d2.isPending(imageEntry{Path: "/d/other-light.png", Source: "d2"}) {
 		t.Fatalf("isPending should not match a different hash")
 	}
 
-	// Non-d2 paths carry no theme suffix, so withTheme is a no-op: exact match only.
+	// Non-d2 paths are matched exactly, never theme-normalized.
 	plain := &galleryModel{pending: &pendingDeletion{path: "/shots/login.png"}}
-	if !plain.isPending("/shots/login.png") {
+	if !plain.isPending(imageEntry{Path: "/shots/login.png", Source: "Read"}) {
 		t.Fatalf("isPending should match an identical non-d2 path")
 	}
-	if plain.isPending("/shots/other.png") {
+	if plain.isPending(imageEntry{Path: "/shots/other.png", Source: "Read"}) {
 		t.Fatalf("isPending should not match a different non-d2 path")
 	}
 
-	if (&galleryModel{}).isPending("/shots/login.png") {
+	// Regression: a non-d2 pending must not be conflated with its -light/-dark
+	// namesake sibling merely because the path shapes match withTheme's rewrite.
+	icon := &galleryModel{pending: &pendingDeletion{path: "/assets/icon-dark.png"}}
+	if icon.isPending(imageEntry{Path: "/assets/icon-light.png", Source: "Read"}) {
+		t.Fatalf("isPending should not conflate a non-d2 entry with its -light/-dark namesake sibling")
+	}
+
+	if (&galleryModel{}).isPending(imageEntry{Path: "/shots/login.png", Source: "Read"}) {
 		t.Fatalf("isPending with no pending deletion should never match")
 	}
 }
@@ -547,7 +554,7 @@ func TestPendingSurvivesThemeSwitch(t *testing.T) {
 	if len(m.images) != 1 || m.images[0].Path != lightPNG {
 		t.Fatalf("reload (light) = %+v, want the light-resolved d2 entry", m.images)
 	}
-	if !m.isPending(m.images[0].Path) {
+	if !m.isPending(m.images[0]) {
 		t.Fatalf("isPending does not match the re-resolved light path %q against pending %q",
 			m.images[0].Path, m.pending.path)
 	}

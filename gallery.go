@@ -287,7 +287,7 @@ func (m *galleryModel) reload() {
 	if m.pending != nil {
 		found := false
 		for _, e := range m.images {
-			if e.Path == m.pending.path {
+			if m.isPending(e.Path) {
 				found = true
 				break
 			}
@@ -307,6 +307,7 @@ func (m *galleryModel) markPending() {
 	e := m.images[m.cursor]
 	if m.pending != nil {
 		m.commitPending()
+		m.reload()
 	}
 	m.pending = &pendingDeletion{
 		path:     e.Path,
@@ -339,6 +340,14 @@ func (m *galleryModel) commitPending() {
 		os.Remove(f)
 	}
 	m.pending = nil
+}
+
+// isPending reports whether path is the entry currently marked for deletion,
+// comparing theme-canonically so a d2 diagram still matches after a live theme
+// switch re-resolves its -light/-dark variant (withTheme is a no-op on paths
+// without a theme suffix, so plain captures still match exactly).
+func (m *galleryModel) isPending(path string) bool {
+	return m.pending != nil && withTheme(path, "dark") == withTheme(m.pending.path, "dark")
 }
 
 func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -777,7 +786,7 @@ func (m galleryModel) renderView() string {
 		}
 	}
 	frameColor := selColor
-	if m.pending != nil && len(m.images) > 0 && m.images[m.cursor].Path == m.pending.path {
+	if len(m.images) > 0 && m.isPending(m.images[m.cursor].Path) {
 		frameColor = m.dangerColor
 	}
 	preview = borderWithTitle(preview, m.l.previewW, context, frameColor)
@@ -791,7 +800,7 @@ func (m galleryModel) renderView() string {
 		lipgloss.NewStyle().Foreground(hintFg).Render("  "+version()))
 	capText := m.images[m.cursor].caption()
 	capFg := textFg
-	if m.pending != nil && m.images[m.cursor].Path == m.pending.path {
+	if m.isPending(m.images[m.cursor].Path) {
 		capText = "✗ " + capText
 		capFg = m.dangerColor
 	}
@@ -823,7 +832,7 @@ func (m galleryModel) renderView() string {
 		if idx == m.cursor {
 			border = selColor
 		}
-		if m.pending != nil && m.images[idx].Path == m.pending.path {
+		if m.isPending(m.images[idx].Path) {
 			border = m.dangerColor
 		}
 		cells = append(cells, lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).
@@ -868,8 +877,9 @@ func borderWithTitle(inner string, innerW int, title string, c imgcolor.Color) s
 	return top
 }
 
-// truncateToWidth cuts s to at most w display columns (ASCII-safe; bar text is
-// filenames + hints, no wide runes).
+// truncateToWidth cuts s to at most w display columns, on a rune boundary —
+// the countdown line packs multibyte glyphs (▓ ░ ✗ —) and an interpolated
+// diagram/user name, so a byte slice could split a multibyte rune mid-sequence.
 func truncateToWidth(s string, w int) string {
 	if lipgloss.Width(s) <= w {
 		return s
@@ -877,7 +887,15 @@ func truncateToWidth(s string, w int) string {
 	if w <= 0 {
 		return ""
 	}
-	return s[:w]
+	var out strings.Builder
+	for _, r := range s {
+		prefix := out.String() + string(r)
+		if lipgloss.Width(prefix) > w {
+			break
+		}
+		out.WriteRune(r)
+	}
+	return out.String()
 }
 
 // thmColor reads a tmux @thm_* color option, falling back per theme.

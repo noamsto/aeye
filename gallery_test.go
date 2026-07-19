@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
+
+	"charm.land/lipgloss/v2"
 )
 
 func TestTmuxPassthrough(t *testing.T) {
@@ -467,5 +470,98 @@ func TestActionRowIdleShowsKeys(t *testing.T) {
 	got := m.actionRow()
 	if !strings.Contains(got, "x del") {
 		t.Fatalf("actionRow() = %q, want the x del hint", got)
+	}
+}
+
+func TestIsPending(t *testing.T) {
+	d2 := &galleryModel{pending: &pendingDeletion{path: "/d/h-dark.png"}}
+	if !d2.isPending("/d/h-light.png") {
+		t.Fatalf("isPending should match a d2 entry's -light variant against a -dark pending path")
+	}
+	if d2.isPending("/d/other-light.png") {
+		t.Fatalf("isPending should not match a different hash")
+	}
+
+	// Non-d2 paths carry no theme suffix, so withTheme is a no-op: exact match only.
+	plain := &galleryModel{pending: &pendingDeletion{path: "/shots/login.png"}}
+	if !plain.isPending("/shots/login.png") {
+		t.Fatalf("isPending should match an identical non-d2 path")
+	}
+	if plain.isPending("/shots/other.png") {
+		t.Fatalf("isPending should not match a different non-d2 path")
+	}
+
+	if (&galleryModel{}).isPending("/shots/login.png") {
+		t.Fatalf("isPending with no pending deletion should never match")
+	}
+}
+
+// TestPendingSurvivesThemeSwitch guards against a pending d2 deletion silently
+// cancelling on a live theme flip: pending.path is captured already
+// theme-resolved (e.g. "-dark"), and reload() re-resolves every d2 entry to the
+// new theme's variant, so a byte-exact path match would find no survivor and
+// wrongly clear m.pending.
+func TestPendingSurvivesThemeSwitch(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AEYE_DIR", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "images"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	darkPNG := filepath.Join(dir, "h-dark.png")
+	lightPNG := filepath.Join(dir, "h-light.png")
+	writeTestImage(t, darkPNG, 4, 4)
+	writeTestImage(t, lightPNG, 4, 4)
+	darkSVG := filepath.Join(dir, "h-dark.svg")
+	lightSVG := filepath.Join(dir, "h-light.svg")
+	for _, p := range []string{darkSVG, lightSVG} {
+		if err := os.WriteFile(p, []byte("<svg/>"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	manifest := filepath.Join(dir, "images", "p1.jsonl")
+	line := `{"type":"image","path":"` + darkPNG + `","vector":"` + darkSVG + `","source":"d2","name":"diagram","mtime":1}` + "\n"
+	if err := os.WriteFile(manifest, []byte(line), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &galleryModel{pane: "p1", theme: "dark"}
+	m.reload()
+	if len(m.images) != 1 || m.images[0].Path != darkPNG {
+		t.Fatalf("reload (dark) = %+v, want the dark-resolved d2 entry", m.images)
+	}
+	m.cursor = 0
+	m.markPending()
+	if m.pending == nil || m.pending.path != darkPNG {
+		t.Fatalf("markPending did not set pending for %q: %+v", darkPNG, m.pending)
+	}
+
+	// Live theme switch, mirroring the galleryTickMsg handler's reload() call.
+	m.theme = "light"
+	m.reload()
+
+	if m.pending == nil {
+		t.Fatalf("pending was cleared across a theme switch (d2 path resolution changed underneath it)")
+	}
+	if len(m.images) != 1 || m.images[0].Path != lightPNG {
+		t.Fatalf("reload (light) = %+v, want the light-resolved d2 entry", m.images)
+	}
+	if !m.isPending(m.images[0].Path) {
+		t.Fatalf("isPending does not match the re-resolved light path %q against pending %q",
+			m.images[0].Path, m.pending.path)
+	}
+}
+
+func TestTruncateToWidthRuneSafe(t *testing.T) {
+	s := "✗ Deleting café  ▓▓░░░ 2s"
+	for w := 1; w < len(s); w++ {
+		got := truncateToWidth(s, w)
+		if !utf8.ValidString(got) {
+			t.Fatalf("truncateToWidth(%q, %d) = %q, contains a partial rune", s, w, got)
+		}
+		if lipgloss.Width(got) > w {
+			t.Fatalf("truncateToWidth(%q, %d) = %q, display width %d > %d", s, w, got, lipgloss.Width(got), w)
+		}
 	}
 }

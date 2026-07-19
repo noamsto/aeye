@@ -35,9 +35,11 @@ buffer, so no trash indirection is needed; these are transient files under the
 status dir):
 
 - **Plain image** (screenshot): remove `entry.Path`.
-- **d2 diagram**: remove the whole cluster so a theme switch cannot resurrect a
-  half-deleted diagram — both theme PNG files (`-light`/`-dark`), both SVGs, and the
-  `.d2` source. Missing siblings are ignored.
+- **d2 diagram**: remove the whole rendered-artifact cluster so a theme switch
+  cannot resurrect a half-deleted diagram — both theme PNG files
+  (`-light`/`-dark`) and both SVGs. Missing siblings are ignored. The `.d2`
+  source is deliberately left untouched — it lives in the adapter-owned src
+  dir, and the viewer stays decoupled from the hook's layout.
 
 **No manifest rewrite.** The viewer stays a read-only manifest consumer — it
 never writes `images/<pane>.jsonl`, avoiding a write race with the append-only
@@ -135,7 +137,7 @@ already takes over that row for pending feedback.
 - `pendingDeletion` lifecycle: `x` sets pending + bumps `delGen`; `u` clears it;
   a stale commit tick (gen mismatch) is dropped; a current one removes files.
 - File-cluster resolution: plain entry → `[Path]`; d2 entry → both theme PNG files,
-  both SVGs, `.d2` source (with missing siblings tolerated).
+  both SVGs (with missing siblings tolerated; `.d2` source left untouched).
 - Reload re-applies the pending mark by path match and does not lose it across a
   poll.
 - Second `x` commits the prior pending deletion.

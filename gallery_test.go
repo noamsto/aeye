@@ -420,6 +420,27 @@ func TestMarkPendingCommitsPrior(t *testing.T) {
 	}
 }
 
+func TestMarkPendingSameEntryTwiceKeepsWindow(t *testing.T) {
+	f := writeTestPNG(t)
+	m := &galleryModel{images: []imageEntry{{Path: f, Source: "Read"}}}
+
+	m.markPending() // arm the undo window
+	gen := m.delGen
+
+	// A stray second x on the same entry must not commit early: the file stays
+	// on disk, pending is unchanged, and the generation doesn't advance.
+	m.markPending()
+	if _, err := os.Stat(f); err != nil {
+		t.Fatalf("second x deleted the file before its undo window elapsed: %v", err)
+	}
+	if m.pending == nil || m.pending.path != f {
+		t.Fatalf("second x cleared or re-marked pending: %+v", m.pending)
+	}
+	if m.delGen != gen {
+		t.Fatalf("second x bumped delGen (%d -> %d), invalidating the armed ticks", gen, m.delGen)
+	}
+}
+
 func TestDeleteCommitMsgGenGate(t *testing.T) {
 	f := writeTestPNG(t)
 	base := galleryModel{

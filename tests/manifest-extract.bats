@@ -31,9 +31,23 @@ setup() {
 }
 
 @test "extract_image_path: phase-2 scan of tool_response" {
-	payload="$(jq -nc --arg p "$IMG" '{cwd:"/work",tool_input:{},tool_response:{content:[{type:"text",text:("saved to "+$p)}]}}')"
+	mkdir -p "$BATS_TEST_TMPDIR/proj"
+	shot="$BATS_TEST_TMPDIR/proj/shot.png"
+	printf 'x' >"$shot"
+	payload="$(jq -nc --arg c "$BATS_TEST_TMPDIR/proj" --arg p "$shot" '{cwd:$c,tool_input:{},tool_response:{content:[{type:"text",text:("saved to "+$p)}]}}')"
 	run extract_image_path "$payload"
-	[ "$output" = "$IMG" ]
+	[ "$output" = "$shot" ]
+}
+
+@test "extract_image_path: phase-2 ignores a path outside cwd" {
+	# A Bash command whose output merely mentions an existing image in an
+	# unrelated project must not land in this pane's carousel (#139).
+	mkdir -p "$BATS_TEST_TMPDIR/proj" "$BATS_TEST_TMPDIR/other"
+	foreign="$BATS_TEST_TMPDIR/other/pic.png"
+	printf 'x' >"$foreign"
+	payload="$(jq -nc --arg c "$BATS_TEST_TMPDIR/proj" --arg p "$foreign" '{cwd:$c,tool_input:{},tool_response:{content:[{type:"text",text:("ls: "+$p)}]}}')"
+	run extract_image_path "$payload"
+	[ -z "$output" ]
 }
 
 @test "extract_image_path: non-image payload -> empty" {

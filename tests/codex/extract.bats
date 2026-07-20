@@ -40,9 +40,9 @@ setup() {
 	[ -z "$output" ]
 }
 
-@test "codex_extract_touched_paths: Bash tool_response embedding a screenshot path is captured" {
+@test "codex_extract_touched_paths: Bash tool_response embedding a screenshot path under cwd is captured" {
 	PNG="$FIXTURES/screenshot.png"
-	payload="$(jq -nc --arg p "$PNG" '{tool_name:"Bash",tool_input:{command:"ls"},tool_response:("saved to "+$p),cwd:"/repo"}')"
+	payload="$(jq -nc --arg c "$FIXTURES" --arg p "$PNG" '{tool_name:"Bash",tool_input:{command:"ls"},tool_response:("saved to "+$p),cwd:$c}')"
 
 	# Consume via a read-loop, like diagrams.sh / session-backfill.sh do, so a
 	# dropped final (non-newline-terminated) line fails this test.

@@ -28,6 +28,9 @@ _manifest_lock() {
 # nothing. Scans tool_response strings for an embedded path — the agent-agnostic
 # Phase-2 half of Claude's extract_image_path, carved out so a second adapter's
 # extract_image_path can delegate to it after its own Phase-1 (tool-input) check.
+# The path must resolve under cwd: Phase 2 catches a tool that *saved* an image
+# into the session's project, so a path outside cwd is an incidental mention in
+# shell output (e.g. an `ls` of another repo) and never enters the carousel (#139).
 scan_response_image_path() {
 	local payload="$1" cwd response_path
 	cwd="$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null)"
@@ -48,7 +51,7 @@ scan_response_image_path() {
   ' <<<"$payload" 2>/dev/null)"
 	if [[ -n $response_path ]]; then
 		response_path="$(resolve "$response_path")"
-		if is_ext "$response_path" && [[ -f $response_path ]]; then
+		if is_ext "$response_path" && [[ -n $cwd && $response_path == "$cwd"/* ]] && [[ -f $response_path ]]; then
 			printf '%s' "$response_path"
 		fi
 	fi

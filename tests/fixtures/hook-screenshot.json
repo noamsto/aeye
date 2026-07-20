@@ -1,1 +1,1 @@
-{"tool_name":"mcp__playwright__browser_take_screenshot","cwd":"/work","tool_input":{"filename":"shot.png"},"tool_response":{"content":[{"type":"text","text":"Saved to IMGPATH"}]}}
+{"tool_name":"mcp__playwright__browser_take_screenshot","cwd":"CWDPATH","tool_input":{"filename":"shot.png"},"tool_response":{"content":[{"type":"text","text":"Saved to IMGPATH"}]}}

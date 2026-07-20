@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.11.0](https://github.com/noamsto/aeye/compare/v0.10.0...v0.11.0) (2026-07-20)
+
+
+### Features
+
+* **carousel:** delete image with x + undo window ([#137](https://github.com/noamsto/aeye/issues/137)) ([#138](https://github.com/noamsto/aeye/issues/138)) ([68d7920](https://github.com/noamsto/aeye/commit/68d7920e64c64838c93b7e6683ec05eac23e7a53))
+
+
+### Bug Fixes
+
+* **carousel:** scope Phase-2 response scan to cwd ([#139](https://github.com/noamsto/aeye/issues/139)) ([#140](https://github.com/noamsto/aeye/issues/140)) ([1a43461](https://github.com/noamsto/aeye/commit/1a43461d72ed1d55df9ab0856410743f1cde81be))
+* **contrast:** re-ink labels on named-color fills, not just hex ([#136](https://github.com/noamsto/aeye/issues/136)) ([8f25a5c](https://github.com/noamsto/aeye/commit/8f25a5c33a5cf0e46e7d700161f0e19e0099e9c7))
+* **diagram:** contrast labels on named/shorthand fills, not just hex ([#134](https://github.com/noamsto/aeye/issues/134)) ([967432a](https://github.com/noamsto/aeye/commit/967432a86c788d3b01ead923ac14ce7260f63804))
+
 ## [0.10.0](https://github.com/noamsto/aeye/compare/v0.9.1...v0.10.0) (2026-07-15)
 
 

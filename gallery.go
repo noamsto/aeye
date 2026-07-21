@@ -299,12 +299,17 @@ func (m *galleryModel) reload() {
 }
 
 // markPending marks the selected entry for deletion. Any prior pending deletion
-// commits first (single-level undo). No-op on an empty carousel.
+// on a different entry commits first (single-level undo). Re-marking the entry
+// that is already pending is a no-op, so a stray second x can't skip the undo
+// window and delete it early. No-op on an empty carousel.
 func (m *galleryModel) markPending() {
 	if len(m.images) == 0 {
 		return
 	}
 	e := m.images[m.cursor]
+	if m.isPending(e) {
+		return
+	}
 	if m.pending != nil {
 		m.commitPending()
 		m.reload()

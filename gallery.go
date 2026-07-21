@@ -933,9 +933,10 @@ func (m galleryModel) thmColor(opt, dark, light string) imgcolor.Color {
 func runGallery(pane string) error {
 	tty, _ := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
 	theme := detectTheme()
+	// Init tracing before the first load so its owner decision is captured too.
+	traceInit(pane)
 	images := loadManifest(pane, theme)
 	backend, rasterFmt := chooseGridBackend(termName(), os.Getenv("TMUX") != "", os.Getenv("TERM_PROGRAM"), os.Getenv("LC_TERMINAL"), os.Getenv("WEZTERM_PANE"), os.Getenv("TERM"), probeSixel)
-	traceInit(pane)
 	tracef("start backend=%v nimg=%d tmux=%v term=%q", backend, len(images), os.Getenv("TMUX") != "", termName())
 	m := galleryModel{
 		pane:         pane,

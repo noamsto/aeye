@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -71,5 +72,48 @@ func TestLoadManifestRefusesForeignOwner(t *testing.T) {
 	}
 	if got := loadManifest("p9", "dark"); len(got) != 1 {
 		t.Errorf("ownerless manifest should load, got %d images", len(got))
+	}
+}
+
+// An intermittent bleed can only be attributed after the fact if the viewer
+// records why a load was accepted or rejected. With AEYE_DEBUG on, loadManifest
+// must trace the manifest key, this viewer's identity, the manifest's stamped
+// owner, and whether they disagreed.
+func TestLoadManifestTracesOwnerDecision(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AEYE_DIR", dir)
+	t.Setenv("AEYE_OWNER", "session-A")
+	imagesDir := filepath.Join(dir, "images")
+	if err := os.MkdirAll(imagesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	img := filepath.Join(dir, "shot.png")
+	writeTestImage(t, img, 8, 8)
+	if err := os.WriteFile(filepath.Join(imagesDir, "p9.jsonl"),
+		[]byte(`{"type":"image","path":"`+img+`","source":"Read","mtime":1}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(imagesDir, "p9.owner"), []byte("session-B"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tracePath := filepath.Join(dir, "trace.log")
+	t.Setenv("AEYE_DEBUG", tracePath)
+	resetTrace()
+	defer resetTrace()
+	traceInit("p9")
+
+	loadManifest("p9", "dark")
+	traceFile.Sync()
+
+	b, err := os.ReadFile(tracePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(b)
+	for _, want := range []string{"key=p9", `self="session-A"`, `owner="session-B"`, "foreign=true"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("trace missing %q; got:\n%s", want, got)
+		}
 	}
 }

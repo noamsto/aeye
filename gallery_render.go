@@ -76,26 +76,29 @@ func manifestPath(pane string) string {
 	return dir + "/images/" + strings.TrimPrefix(pane, "%") + ".jsonl"
 }
 
-// foreignManifest reports whether the pane's manifest is owned by a different
-// session than this viewer's. The capture hooks stamp <pane>.owner with the
-// writing session's id; when this viewer knows its own identity (AEYE_OWNER, or
-// the Claude session id the adapter forwards) and the sidecar names someone
-// else, the manifest is a prior session's images left under a reused tmux pane
-// id — show nothing rather than bleed them in. Absent identity or sidecar, the
-// check is inert, so a manual/standalone launch behaves exactly as before.
-func foreignManifest(pane string) bool {
-	self := os.Getenv("AEYE_OWNER")
+// ownerCheck reports this viewer's identity (self), the manifest's stamped
+// owner, and whether they disagree (foreign) — the signal that a reused tmux
+// pane id is serving a prior session's manifest, which loadManifest then refuses
+// rather than bleed in. The capture hooks stamp <pane>.owner with the writing
+// session's id; self comes from AEYE_OWNER, else the Claude session id the
+// adapter forwards. self and owner are returned (not just the bool) so the trace
+// can record why a load was accepted or rejected — the only way to attribute an
+// intermittent bleed after the fact. Absent identity or sidecar the check is
+// inert (foreign=false), so a manual/standalone launch behaves as before.
+func ownerCheck(pane string) (self, owner string, foreign bool) {
+	self = os.Getenv("AEYE_OWNER")
 	if self == "" {
 		self = os.Getenv("CLAUDE_CODE_SESSION_ID")
 	}
 	if self == "" {
-		return false
+		return self, "", false
 	}
-	owner, err := os.ReadFile(strings.TrimSuffix(manifestPath(pane), ".jsonl") + ".owner")
+	b, err := os.ReadFile(strings.TrimSuffix(manifestPath(pane), ".jsonl") + ".owner")
 	if err != nil {
-		return false
+		return self, "", false
 	}
-	return strings.TrimSpace(string(owner)) != self
+	owner = strings.TrimSpace(string(b))
+	return self, owner, owner != self
 }
 
 // loadManifest reads and parses the pane's image manifest, resolves each d2
@@ -106,11 +109,14 @@ func foreignManifest(pane string) bool {
 // dark render whose light sibling is missing is dropped, not painted blank. A
 // path that becomes valid later is picked up on the next reload.
 func loadManifest(pane, theme string) []imageEntry {
-	if foreignManifest(pane) {
+	self, owner, foreign := ownerCheck(pane)
+	tracef("manifest key=%s self=%q owner=%q foreign=%v", pane, self, owner, foreign)
+	if foreign {
 		return nil
 	}
 	data, err := os.ReadFile(manifestPath(pane))
 	if err != nil {
+		tracef("manifest read err: %v", err)
 		return nil
 	}
 	entries := resolveThemeVariants(parseManifest(data), theme)
@@ -122,6 +128,7 @@ func loadManifest(pane, theme string) []imageEntry {
 		}
 		out = append(out, e)
 	}
+	tracef("manifest loaded raw=%d kept=%d", len(entries), len(out))
 	return out
 }
 

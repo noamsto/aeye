@@ -118,9 +118,16 @@ launch_tmux() {
 	[[ -n ${AEYE_DEBUG:-} ]] && env_args+=(-e AEYE_DEBUG="$AEYE_DEBUG")
 	local cmd
 	printf -v cmd '%q %q' "$VIEWER_BIN" "$KEY"
+	# Split along the host window's longer axis (overridable via AEYE_SPLIT); record
+	# the choice as a pane option so the viewer's `s` toggle knows the current state.
+	local w h axis flag
+	read -r w h < <(tmux display-message -p -t "$KEY" '#{window_width} #{window_height}' 2>/dev/null) || true
+	axis="$(resolve_axis "$w" "$h")"
+	[[ $axis == bottom ]] && flag=-v || flag=-h
 	local viewer
-	viewer="$(tmux split-window -h "${detach[@]}" ${env_args[@]+"${env_args[@]}"} -t "$KEY" -P -F '#{pane_id}' "$cmd")"
+	viewer="$(tmux split-window "$flag" "${detach[@]}" ${env_args[@]+"${env_args[@]}"} -t "$KEY" -P -F '#{pane_id}' "$cmd")"
 	tmux set-option -p -t "$viewer" @claude_img_src "$KEY"
+	tmux set-option -p -t "$viewer" @claude_img_axis "$axis"
 }
 
 # Echo (NUL-separated) the `kitty @ launch` placement args for a vsplit beside

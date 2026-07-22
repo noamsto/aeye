@@ -144,18 +144,26 @@ launch_tmux() {
 # steals focus.
 kitty_place_args() {
 	local tab="" win_dims="" w="" h="" axis loc
-	if [[ -n ${KITTY_WINDOW_ID:-} ]]; then
-		tab="$(kitty @ ls 2>/dev/null |
-			jq -r --argjson w "$KITTY_WINDOW_ID" \
-				'first(.[].tabs[] | select(any(.windows[]; .id == $w)) | .id) // empty')"
-		win_dims="$(kitty @ ls 2>/dev/null |
-			jq -r --argjson w "$KITTY_WINDOW_ID" \
-				'first(.[].tabs[].windows[] | select(.id == $w) | "\(.columns) \(.lines)") // empty')"
+	# Cache one `kitty @ ls` round trip and query it repeatedly — this is the
+	# shared launch/reconcile hot path, so avoid a remote-control call per query.
+	# Guarded so a failed/empty `@ ls` can't abort under set -e or feed jq empty
+	# stdin; ls_json staying empty just leaves win_dims empty (side fallback).
+	local ls_json
+	ls_json="$(kitty @ ls 2>/dev/null || true)"
+	if [[ -n $ls_json && -n ${KITTY_WINDOW_ID:-} ]]; then
+		tab="$(jq -r --argjson w "$KITTY_WINDOW_ID" \
+			'first(.[].tabs[] | select(any(.windows[]; .id == $w)) | .id) // empty' <<<"$ls_json")"
+		# .columns/.lines default to 0 (not missing) so a window object lacking
+		# them still yields numeric "0 0" for resolve_axis's (( )) arithmetic,
+		# instead of the literal string "null null" aborting under set -u.
+		win_dims="$(jq -r --argjson w "$KITTY_WINDOW_ID" \
+			'first(.[].tabs[].windows[] | select(.id == $w) | "\(.columns // 0) \(.lines // 0)") // empty' <<<"$ls_json")"
 	fi
 	# Fall back to the focused window's geometry when the host id is stale/unset.
-	[[ -z $win_dims ]] && win_dims="$(kitty @ ls 2>/dev/null |
-		jq -r 'first(.[].tabs[] | select(.is_focused) | .windows[] | select(.is_focused) |
-			"\(.columns) \(.lines)") // empty')"
+	if [[ -z $win_dims && -n $ls_json ]]; then
+		win_dims="$(jq -r 'first(.[].tabs[] | select(.is_focused) | .windows[] | select(.is_focused) |
+			"\(.columns // 0) \(.lines // 0)") // empty' <<<"$ls_json")"
+	fi
 	read -r w h <<<"$win_dims" || true
 	axis="$(resolve_axis "$w" "$h")"
 	[[ $axis == bottom ]] && loc=hsplit || loc=vsplit

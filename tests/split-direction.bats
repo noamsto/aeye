@@ -153,3 +153,28 @@ T
 	run env -u AEYE_SPLIT bash "$APP"
 	grep -q 'location=vsplit' "$KITTY_LOG"
 }
+
+@test "kitty: matched window missing columns/lines falls back to vsplit, no crash" {
+	kitty_stub_setup
+	export KITTY_WINDOW_ID=1
+	# Matched window (id 1) has no columns/lines at all — regression check for
+	# the jq // 0 default: without it this interpolates the literal string
+	# "null null" and resolve_axis's (( )) arithmetic aborts under set -u.
+	cat >"$STUB/kitty" <<'K'
+#!/usr/bin/env bash
+shift; sub="$1"; shift
+case "$sub" in
+ls)
+	[[ "${1:-}" == "--match" ]] && exit 1
+	printf '[{"tabs":[{"id":1,"is_focused":true,"windows":[{"id":1,"is_focused":true}]}]}]\n'
+	;;
+goto-layout) : ;;
+launch) printf 'launch %s\n' "$*" >>"$KITTY_LOG" ;;
+*) printf '%s %s\n' "$sub" "$*" >>"$KITTY_LOG" ;;
+esac
+K
+	chmod +x "$STUB/kitty"
+	run env -u AEYE_SPLIT bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q 'location=vsplit' "$KITTY_LOG"
+}

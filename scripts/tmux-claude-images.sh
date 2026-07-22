@@ -34,6 +34,8 @@ resolve_axis() {
 		;;
 	esac
 	local w=${1:-0} h=${2:-0}
+	[[ $w =~ ^[0-9]+$ ]] || w=0
+	[[ $h =~ ^[0-9]+$ ]] || h=0
 	if ((w > 0 && h > 0 && w <= CELL_ASPECT * h)); then
 		printf 'bottom\n'
 	else
@@ -152,17 +154,17 @@ kitty_place_args() {
 	ls_json="$(kitty @ ls 2>/dev/null || true)"
 	if [[ -n $ls_json && -n ${KITTY_WINDOW_ID:-} ]]; then
 		tab="$(jq -r --argjson w "$KITTY_WINDOW_ID" \
-			'first(.[].tabs[] | select(any(.windows[]; .id == $w)) | .id) // empty' <<<"$ls_json")"
+			'first(.[].tabs[] | select(any(.windows[]; .id == $w)) | .id) // empty' <<<"$ls_json" || true)"
 		# .columns/.lines default to 0 (not missing) so a window object lacking
 		# them still yields numeric "0 0" for resolve_axis's (( )) arithmetic,
 		# instead of the literal string "null null" aborting under set -u.
 		win_dims="$(jq -r --argjson w "$KITTY_WINDOW_ID" \
-			'first(.[].tabs[].windows[] | select(.id == $w) | "\(.columns // 0) \(.lines // 0)") // empty' <<<"$ls_json")"
+			'first(.[].tabs[].windows[] | select(.id == $w) | "\(.columns // 0) \(.lines // 0)") // empty' <<<"$ls_json" || true)"
 	fi
 	# Fall back to the focused window's geometry when the host id is stale/unset.
 	if [[ -z $win_dims && -n $ls_json ]]; then
 		win_dims="$(jq -r 'first(.[].tabs[] | select(.is_focused) | .windows[] | select(.is_focused) |
-			"\(.columns // 0) \(.lines // 0)") // empty' <<<"$ls_json")"
+			"\(.columns // 0) \(.lines // 0)") // empty' <<<"$ls_json" || true)"
 	fi
 	read -r w h <<<"$win_dims" || true
 	axis="$(resolve_axis "$w" "$h")"

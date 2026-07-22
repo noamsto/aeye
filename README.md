@@ -181,6 +181,11 @@ no key needed. Everywhere else, the `d` key opens a small drag window via
 [`dragon`](https://github.com/mwh/dragon) if one is on PATH (Linux/X11/Wayland),
 and otherwise copies the image to the clipboard.
 
+`AEYE_SPLIT` controls where the viewer opens its split, on any backend: `auto`
+(default) splits along the window's longer axis, `side` forces a left/right
+split, `bottom` forces a top/bottom split. In tmux, press `s` in the viewer to
+toggle it live.
+
 ### Enable kitty-pane mode (native drag-out inside tmux)
 
 Native drag-out needs a real kitty pane — tmux can't carry the protocol. To make
@@ -199,10 +204,6 @@ the viewer open as a kitty split instead of a tmux split while you work in tmux:
 
 If the socket isn't reachable, aeye falls back to a tmux split (drag-out then
 uses `ripdrag`/`dragon` or the clipboard).
-
-- `AEYE_SPLIT` — carousel split direction: `auto` (default) splits along the
-  window's longer axis, `side` forces a left/right split, `bottom` forces a
-  top/bottom split. In tmux, press `s` in the viewer to toggle it live.
 
 **Seamless `Ctrl-hjkl`.** Once kitty-pane mode is on, the carousel viewer crosses
 back into tmux on `Ctrl-h/j/k/l` itself (via `kitty @ action neighboring_window`)

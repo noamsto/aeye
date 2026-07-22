@@ -134,6 +134,7 @@ session reads/writes/screenshots images.
 | `y` | Copy the selected image to the clipboard |
 | `d` | Drag the selected image out — in kitty just drag it with the mouse; `d` opens a `ripdrag`/`dragon` window elsewhere, else copies to the clipboard |
 | `x` | Delete the selected image — marks it for deletion with a 5s undo window; press `u` to undo, or it's removed from disk when the countdown ends |
+| `s` | Toggle the carousel between a side and bottom split (tmux only) |
 | `r` | Reload the manifest |
 | `q` / `Ctrl-C` | Quit |
 
@@ -179,6 +180,11 @@ no key needed. Everywhere else, the `d` key opens a small drag window via
 [`ripdrag`](https://github.com/nik012003/ripdrag) or
 [`dragon`](https://github.com/mwh/dragon) if one is on PATH (Linux/X11/Wayland),
 and otherwise copies the image to the clipboard.
+
+`AEYE_SPLIT` controls where the viewer opens its split, on any backend: `auto`
+(default) splits along the window's longer axis, `side` forces a left/right
+split, `bottom` forces a top/bottom split. In tmux, press `s` in the viewer to
+toggle it live.
 
 ### Enable kitty-pane mode (native drag-out inside tmux)
 

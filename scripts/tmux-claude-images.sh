@@ -261,7 +261,18 @@ launch_wezterm() {
 	# agent. env forwards the state dir — the mux server never saw our env.
 	local dbg=()
 	[[ -n ${AEYE_DEBUG:-} ]] && dbg=(AEYE_DEBUG="$AEYE_DEBUG")
-	pane="$(wezterm cli split-pane --right --percent 40 --cwd "$STATE_DIR" -- \
+	# Host pane size in cells: `wezterm cli list` gives .size.cols/.size.rows for
+	# the $WEZTERM_PANE entry. Split its longer axis (overridable via AEYE_SPLIT).
+	# // 0 defaults absent fields so resolve_axis never sees literal "null null"
+	# under set -u; the read is guarded (|| true) since an empty/failed list
+	# would otherwise hit set -e's read-at-EOF trap.
+	local w h axis dir
+	read -r w h < <(wezterm cli list --format json 2>/dev/null |
+		jq -r --argjson p "${WEZTERM_PANE:-0}" \
+			'first(.[] | select(.pane_id == $p) | "\(.size.cols // 0) \(.size.rows // 0)") // empty') || true
+	axis="$(resolve_axis "$w" "$h")"
+	[[ $axis == bottom ]] && dir=--bottom || dir=--right
+	pane="$(wezterm cli split-pane "$dir" --percent 40 --cwd "$STATE_DIR" -- \
 		env ${dbg[@]+"${dbg[@]}"} AEYE_DIR="$STATE_DIR" CLAUDE_STATUS_DIR="$STATE_DIR" "$VIEWER_BIN" "$KEY")"
 	printf '%s\n' "$pane" >"$panefile"
 }
@@ -297,17 +308,33 @@ launch_ghostty() {
 # viewer, persist the new session's unique id (keyed by cc session id), and close by
 # id on toggle. pgrep-on-viewer (ghostty's trick) can kill the viewer but not reliably
 # close the split pane — that depends on the profile's "When session ends" setting.
+# iterm_dims -> "COLUMNS ROWS" of the current session (empty on failure).
+iterm_dims() {
+	osascript \
+		-e 'tell application "iTerm2"' \
+		-e 'tell current session of current window' \
+		-e 'return (columns as text) & " " & (rows as text)' \
+		-e 'end tell' \
+		-e 'end tell' 2>/dev/null || true
+}
+
+# iterm_split VERB COMMAND -> new session id. VERB is "vertically" (SIDE) or
+# "horizontally" (BOTTOM).
 iterm_split() {
 	osascript \
 		-e 'on run argv' \
 		-e 'tell application "iTerm2"' \
 		-e 'tell current session of current window' \
-		-e 'set s to (split horizontally with default profile command (item 1 of argv))' \
+		-e 'if (item 1 of argv) is "vertically" then' \
+		-e 'set s to (split vertically with default profile command (item 2 of argv))' \
+		-e 'else' \
+		-e 'set s to (split horizontally with default profile command (item 2 of argv))' \
+		-e 'end if' \
 		-e 'end tell' \
 		-e 'return id of s' \
 		-e 'end tell' \
 		-e 'end run' \
-		-- "$1"
+		-- "$1" "$2"
 }
 
 iterm_alive() {
@@ -364,7 +391,14 @@ launch_iterm() {
 	[[ -n ${AEYE_DEBUG:-} ]] && printf -v dbg_frag 'AEYE_DEBUG=%q ' "$AEYE_DEBUG"
 	local cmd
 	cmd="env ${dbg_frag}AEYE_DIR=$(printf '%q' "$STATE_DIR") CLAUDE_STATUS_DIR=$(printf '%q' "$STATE_DIR") $(printf '%q' "$VIEWER_BIN") $(printf '%q' "$KEY")"
-	session="$(iterm_split "$cmd")"
+	# Split along the current session's longer axis (overridable via AEYE_SPLIT);
+	# the read is guarded (|| true) since a failed/empty iterm_dims would otherwise
+	# hit set -e's read-at-EOF trap.
+	local w h axis verb
+	read -r w h < <(iterm_dims) || true
+	axis="$(resolve_axis "$w" "$h")"
+	[[ $axis == bottom ]] && verb=horizontally || verb=vertically
+	session="$(iterm_split "$verb" "$cmd")"
 	printf '%s\n' "$session" >"$idfile"
 }
 

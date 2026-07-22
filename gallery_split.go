@@ -48,5 +48,7 @@ func (m *galleryModel) toggleSplitAxis() {
 		return
 	}
 	m.splitAxis = next
-	_ = exec.Command("tmux", "set-option", "-p", "-t", self, "@claude_img_axis", next).Run()
+	if err := exec.Command("tmux", "set-option", "-p", "-t", self, "@claude_img_axis", next).Run(); err != nil {
+		tracef("set-option @claude_img_axis=%s failed: %v", next, err)
+	}
 }

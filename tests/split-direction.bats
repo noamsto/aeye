@@ -97,3 +97,59 @@ T
 	AEYE_SPLIT=bottom run bash "$APP"
 	grep -q 'split-window -v ' "$SPLIT_LOG"
 }
+
+kitty_stub_setup() {
+	export CLAUDE_STATUS_DIR="$BATS_TEST_TMPDIR/state"
+	mkdir -p "$CLAUDE_STATUS_DIR/images"
+	export AEYE_HOST=kitty TMUX_PANE='%9' TMUX='/tmp/fake-tmux,123,0'
+	unset KITTY_WINDOW_ID
+	echo '{"type":"image","path":"/x.png","source":"d2"}' >"$CLAUDE_STATUS_DIR/images/9.jsonl"
+	STUB="$BATS_TEST_TMPDIR/bin"
+	mkdir -p "$STUB"
+	printf '#!/usr/bin/env bash\n:\n' >"$STUB/aeye"
+	chmod +x "$STUB/aeye"
+	export KITTY_LOG="$BATS_TEST_TMPDIR/kitty.log"
+	: >"$KITTY_LOG"
+	export KITTY_DIMS="$BATS_TEST_TMPDIR/kdims"
+	printf '90 50\n' >"$KITTY_DIMS"
+	# `@ ls` (bare) returns one os-window whose active window has the configured
+	# columns/lines; `@ ls --match ...` = no match (exit 1); launch is logged.
+	cat >"$STUB/kitty" <<'K'
+#!/usr/bin/env bash
+shift; sub="$1"; shift
+case "$sub" in
+ls)
+	[[ "${1:-}" == "--match" ]] && exit 1
+	read -r c l <"$KITTY_DIMS"
+	printf '[{"tabs":[{"id":1,"is_focused":true,"windows":[{"id":1,"is_focused":true,"columns":%s,"lines":%s}]}]}]\n' "$c" "$l"
+	;;
+goto-layout) : ;;
+launch) printf 'launch %s\n' "$*" >>"$KITTY_LOG" ;;
+*) printf '%s %s\n' "$sub" "$*" >>"$KITTY_LOG" ;;
+esac
+K
+	chmod +x "$STUB/kitty"
+	# tmux stub: _key_on_screen must report %9 on the active attached window.
+	cat >"$STUB/tmux" <<'T'
+#!/usr/bin/env bash
+[[ "${1:-}" == list-panes ]] && printf '%%9 1 1\n'
+exit 0
+T
+	chmod +x "$STUB/tmux"
+	export PATH="$STUB:$PATH"
+}
+
+@test "kitty: portrait window uses hsplit (bottom)" {
+	kitty_stub_setup
+	printf '90 50\n' >"$KITTY_DIMS"
+	run env -u AEYE_SPLIT bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q 'location=hsplit' "$KITTY_LOG"
+}
+
+@test "kitty: landscape window uses vsplit (side)" {
+	kitty_stub_setup
+	printf '200 50\n' >"$KITTY_DIMS"
+	run env -u AEYE_SPLIT bash "$APP"
+	grep -q 'location=vsplit' "$KITTY_LOG"
+}

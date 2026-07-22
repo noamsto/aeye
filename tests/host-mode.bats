@@ -85,7 +85,7 @@ STUB
 @test "kitty launch resolves a live KITTY_WINDOW_ID to its host tab id" {
 	export AEYE_HOST=kitty
 	export KITTY_WINDOW_ID=21
-	export STUB_KITTY_LS='[{"tabs":[{"id":3,"windows":[{"id":21}]}]}]'
+	export STUB_KITTY_LS='[{"tabs":[{"id":3,"windows":[{"id":21,"columns":200,"lines":50}]}]}]'
 	run bash "$APP"
 	[ "$status" -eq 0 ]
 	grep -q -- "--match id:3" "$KITTY_LOG"

@@ -18,6 +18,29 @@ STATE_DIR="${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}"
 IMAGES_DIR="$STATE_DIR/images"
 ENSURE_OPEN=""
 
+# A terminal cell is roughly twice as tall as it is wide, so the window's pixel
+# aspect ratio is cols : (CELL_ASPECT * rows). Split the longer pixel axis so
+# both panes stay usable: a landscape window splits SIDE, a portrait one BOTTOM.
+readonly CELL_ASPECT=2
+
+# resolve_axis WIDTH HEIGHT -> "side" | "bottom".
+# AEYE_SPLIT=side|bottom forces the axis; unset/auto/any-other-value measures.
+# Empty or non-positive dims fall back to "side" (today's behavior; no regression).
+resolve_axis() {
+	case "${AEYE_SPLIT:-auto}" in
+	side | bottom)
+		printf '%s\n' "$AEYE_SPLIT"
+		return
+		;;
+	esac
+	local w=${1:-0} h=${2:-0}
+	if ((w > 0 && h > 0 && w <= CELL_ASPECT * h)); then
+		printf 'bottom\n'
+	else
+		printf 'side\n'
+	fi
+}
+
 # resolve_target sets MODE/KEY/MANIFEST from the environment. KEY is always
 # ${TMUX_PANE:-cc session id} (the capture hook's key), independent of MODE.
 #   MODE=tmux       inside tmux
@@ -414,6 +437,10 @@ _ensure_stash_tab() {
 main() {
 	if [[ ${1:-} == --reconcile ]]; then
 		reconcile
+		return
+	fi
+	if [[ ${1:-} == --resolve-axis ]]; then # test seam: resolve axis from given dims
+		resolve_axis "${2:-}" "${3:-}"
 		return
 	fi
 	resolve_target

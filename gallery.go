@@ -97,6 +97,7 @@ func countdownBar(remaining, total time.Duration, width int) string {
 
 type galleryModel struct {
 	pane         string
+	splitAxis    string // "side" | "bottom"; current tmux split, toggled by `s`
 	images       []imageEntry
 	backend      gridBackend
 	rasterFormat string // chafa -f value when backend == backendRaster (formatSixel/formatITerm)
@@ -508,6 +509,9 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "u":
 			m.undoPending()
 			return m, m.schedulePaint()
+		case "s":
+			m.toggleSplitAxis()
+			return m, nil
 		default:
 			if d := digitKey(msg.String()); d >= 1 && d-1 < len(m.images) {
 				m.selectIndex(d - 1)
@@ -757,7 +761,7 @@ func (m galleryModel) View() tea.View {
 // actionRow is the footer's second line: the pending-deletion countdown when a
 // deletion is in flight, else a transient status, else the action-key hints.
 func (m galleryModel) actionRow() string {
-	actionKeys := "↵ open · O folder · y copy · d drag · x del · r reload · q quit"
+	actionKeys := "↵ open · O folder · y copy · d drag · x del · s split · r reload · q quit"
 	if m.pending != nil {
 		line := fmt.Sprintf("✗ Deleting %s  %s — u to undo",
 			m.pending.name, countdownBar(time.Until(m.pending.deadline), undoWindow, 5))
@@ -945,6 +949,7 @@ func runGallery(pane string) error {
 	tracef("start backend=%v nimg=%d tmux=%v term=%q", backend, len(images), os.Getenv("TMUX") != "", termName())
 	m := galleryModel{
 		pane:         pane,
+		splitAxis:    tmuxPaneAxis(),
 		images:       images,
 		backend:      backend,
 		rasterFormat: rasterFmt,

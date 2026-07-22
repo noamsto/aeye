@@ -134,6 +134,7 @@ session reads/writes/screenshots images.
 | `y` | Copy the selected image to the clipboard |
 | `d` | Drag the selected image out — in kitty just drag it with the mouse; `d` opens a `ripdrag`/`dragon` window elsewhere, else copies to the clipboard |
 | `x` | Delete the selected image — marks it for deletion with a 5s undo window; press `u` to undo, or it's removed from disk when the countdown ends |
+| `s` | Toggle the carousel between a side and bottom split (tmux only) |
 | `r` | Reload the manifest |
 | `q` / `Ctrl-C` | Quit |
 
@@ -198,6 +199,10 @@ the viewer open as a kitty split instead of a tmux split while you work in tmux:
 
 If the socket isn't reachable, aeye falls back to a tmux split (drag-out then
 uses `ripdrag`/`dragon` or the clipboard).
+
+- `AEYE_SPLIT` — carousel split direction: `auto` (default) splits along the
+  window's longer axis, `side` forces a left/right split, `bottom` forces a
+  top/bottom split. In tmux, press `s` in the viewer to toggle it live.
 
 **Seamless `Ctrl-hjkl`.** Once kitty-pane mode is on, the carousel viewer crosses
 back into tmux on `Ctrl-h/j/k/l` itself (via `kitty @ action neighboring_window`)

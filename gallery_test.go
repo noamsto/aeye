@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -38,10 +39,24 @@ func TestTransmitVirtual(t *testing.T) {
 	}
 }
 
-func TestDeleteAll(t *testing.T) {
+func TestDeleteImage(t *testing.T) {
 	t.Setenv("TMUX", "")
-	if got := deleteAll(); got != "\x1b_Ga=d,d=A,q=2\x1b\\" {
-		t.Errorf("deleteAll = %q", got)
+	if got := deleteImage(250); got != "\x1b_Ga=d,d=I,i=250,q=2\x1b\\" {
+		t.Errorf("deleteImage = %q", got)
+	}
+}
+
+// Carousels sharing one terminal (tmux passthrough → one kitty store) collide
+// unless each viewer namespaces its image ids by pane. Disjoint blocks keep one
+// pane's top id below the next pane's base.
+func TestPaneImageIDsDisjoint(t *testing.T) {
+	a := galleryModel{pane: "%30"}
+	b := galleryModel{pane: "%38"}
+	if a.previewID() == b.previewID() {
+		t.Fatalf("preview ids collide: both %d", a.previewID())
+	}
+	if top := a.stripID(maxCellDim - 1); top >= b.previewID() {
+		t.Fatalf("id blocks overlap: pane %%30 top %d >= pane %%38 base %d", top, b.previewID())
 	}
 }
 
@@ -321,10 +336,17 @@ func TestSettleMsgReTransmits(t *testing.T) {
 	m.Update(settleMsg{})
 	w.Close()
 
-	// deleteAll() is transmitView's first write; its absence means the settle
-	// handler skipped the re-store.
-	if out := <-got; !bytes.Contains(out, []byte("\x1b_Ga=d,d=A")) {
+	// The store (a=T) under this pane's own preview id is transmitView's core
+	// write; its absence means the settle handler skipped the re-store. A global
+	// d=A wipe must not appear — that would clear sibling carousels on the shared
+	// store.
+	out := <-got
+	store := []byte(fmt.Sprintf("\x1b_Gi=%d,a=T", m.previewID()))
+	if !bytes.Contains(out, store) {
 		t.Fatalf("settleMsg did not re-transmit the image store to the tty; got %q", out)
+	}
+	if bytes.Contains(out, []byte("d=A")) {
+		t.Fatalf("settleMsg emitted a global delete-all; got %q", out)
 	}
 }
 

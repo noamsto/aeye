@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"image"
 	imgcolor "image/color"
+	"io"
 	"math"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -20,7 +22,6 @@ import (
 )
 
 const (
-	previewID      = 250 // kitty image id for the big preview
 	stripThumbW    = 18  // filmstrip thumbnail width in cells
 	stripGutter    = 1   // blank columns between filmstrip thumbs (borders add separation)
 	previewBoxCols = 355 // preview box cols per 100 rows (~16:9 given ~1:2.1 cells)
@@ -79,6 +80,44 @@ func stripStart(cursor, stripCols, n int) int {
 	return clamp(cursor-stripCols/2, 0, n-stripCols)
 }
 
+// paneImageIDBase maps a tmux pane id to the base of a disjoint kitty image-id
+// block. Every carousel forwards its graphics to the one kitty store the tmux
+// server shares (passthrough), so a fixed id would collide and one viewer's image
+// would bleed into another's unicode placeholder. The numeric pane id (unique per
+// pane) seeds a block wide enough for the preview (base) plus every filmstrip
+// thumb (base+1 .. base+maxCellDim, the stripCols cap). A non-numeric pane — a
+// standalone launch outside tmux, hence the only instance — takes block 0.
+func paneImageIDBase(pane string) int {
+	n, err := strconv.Atoi(strings.TrimPrefix(pane, "%"))
+	if err != nil {
+		n = 0
+	}
+	return (n + 1) * (maxCellDim + 1)
+}
+
+func (m *galleryModel) previewID() int    { return paneImageIDBase(m.pane) }
+func (m *galleryModel) stripID(s int) int { return paneImageIDBase(m.pane) + 1 + s }
+
+// clearStored deletes, by id, every image this viewer stored on its last
+// transmit, so a re-store starts clean (dropping thumbs a shrunken filmstrip no
+// longer shows) without touching a sibling carousel's images on the shared store.
+func (m *galleryModel) clearStored() {
+	for _, id := range m.storedIDs {
+		fmt.Fprint(m.tty, deleteImage(id))
+	}
+	m.storedIDs = m.storedIDs[:0]
+}
+
+// clearPaneImages deletes a pane's whole reserved id block on teardown, where the
+// value-copied model's live storedIDs is out of reach. Scoped to this pane's block
+// so toggling one carousel off never wipes a sibling's images.
+func clearPaneImages(w io.Writer, pane string) {
+	base := paneImageIDBase(pane)
+	for id := base; id <= base+maxCellDim; id++ {
+		fmt.Fprint(w, deleteImage(id))
+	}
+}
+
 // countdownBar renders a depleting bar of `width` cells for `remaining` of a
 // `total` window, suffixed with whole seconds remaining (e.g. "▓▓░░░ 2s"). Used
 // for the pending-deletion undo countdown. Text only — no raster work.
@@ -107,6 +146,7 @@ type galleryModel struct {
 	width        int
 	height       int
 	tty          *os.File // raw graphics sink (bypasses bubbletea's stdout)
+	storedIDs    []int    // kitty image ids stored last transmit, cleared before the next
 	mtime        int64    // manifest mtime at last load (for auto-refresh)
 	ready        bool
 	pinned       bool        // follow the newest image until the user first navigates
@@ -216,18 +256,20 @@ func (m *galleryModel) transmitView() {
 	if m.backend != backendKitty || m.tty == nil || len(m.images) == 0 {
 		return
 	}
-	fmt.Fprint(m.tty, deleteAll())
+	m.clearStored()
 	src := m.images[m.cursor].Path
 	if m.curImg != nil && !m.crop.isFull() {
 		src = m.renderZoom(m.l.previewW, m.l.previewH)
 	} else {
 		src = cachedPNG(src, m.l.previewW, m.l.previewH)
 	}
-	apc := transmitVirtual(previewID, src, m.l.previewW, m.l.previewH)
+	pid := m.previewID()
+	apc := transmitVirtual(pid, src, m.l.previewW, m.l.previewH)
 	n, err := fmt.Fprint(m.tty, apc)
+	m.storedIDs = append(m.storedIDs, pid)
 	if traceEnabled {
 		tracef("store preview id=%d bytes=%d n=%d err=%v cur=%d %dx%d nimg=%d",
-			previewID, len(apc), n, err, m.cursor, m.l.previewW, m.l.previewH, len(m.images))
+			pid, len(apc), n, err, m.cursor, m.l.previewW, m.l.previewH, len(m.images))
 	}
 	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
 	stripCells, stripBytes, stripWritten := 0, 0, 0
@@ -237,8 +279,10 @@ func (m *galleryModel) transmitView() {
 		if idx >= len(m.images) {
 			break
 		}
-		sapc := transmitVirtual(s+1, cachedPNG(m.images[idx].Path, m.l.stripW, m.l.stripH), m.l.stripW, m.l.stripH)
+		sid := m.stripID(s)
+		sapc := transmitVirtual(sid, cachedPNG(m.images[idx].Path, m.l.stripW, m.l.stripH), m.l.stripW, m.l.stripH)
 		sn, serr := fmt.Fprint(m.tty, sapc)
+		m.storedIDs = append(m.storedIDs, sid)
 		stripCells++
 		stripBytes += len(sapc)
 		stripWritten += sn
@@ -554,7 +598,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		src := writePNGEnc(m.zoomScratchPath(),
 			fitToBox(msg.raster, m.l.previewW*cellPxW, m.l.previewH*cellPxH),
 			m.images[m.cursor].Path, fastPNG.Encode)
-		fmt.Fprint(m.tty, transmitVirtual(previewID, src, m.l.previewW, m.l.previewH))
+		fmt.Fprint(m.tty, transmitVirtual(m.previewID(), src, m.l.previewW, m.l.previewH))
 		return m, nil
 	case deleteCommitMsg:
 		if msg.gen != m.delGen || m.pending == nil {
@@ -796,7 +840,7 @@ func (m galleryModel) renderView() string {
 	var preview string
 	switch m.backend {
 	case backendKitty:
-		preview = placeholderBlock(previewID, m.l.previewW, m.l.previewH)
+		preview = placeholderBlock(m.previewID(), m.l.previewW, m.l.previewH)
 	case backendRaster:
 		preview = blankBlock(m.l.previewW, m.l.previewH)
 	default:
@@ -848,7 +892,7 @@ func (m galleryModel) renderView() string {
 		var thumb string
 		switch m.backend {
 		case backendKitty:
-			thumb = placeholderBlock(s+1, m.l.stripW, m.l.stripH)
+			thumb = placeholderBlock(m.stripID(s), m.l.stripW, m.l.stripH)
 		case backendRaster:
 			thumb = blankBlock(m.l.stripW, m.l.stripH)
 		default:
@@ -978,13 +1022,13 @@ func runGallery(pane string) error {
 		signal.Notify(sig, syscall.SIGTERM, syscall.SIGHUP)
 		go func() {
 			<-sig
-			fmt.Fprint(tty, deleteAll())
+			clearPaneImages(tty, pane)
 			os.Exit(0)
 		}()
 	}
 	_, err := tea.NewProgram(m).Run()
 	if tty != nil {
-		fmt.Fprint(tty, deleteAll())
+		clearPaneImages(tty, pane)
 		_ = tty.Close()
 	}
 	return err

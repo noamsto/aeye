@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/noamsto/aeye/compare/v0.12.0...v0.13.0) (2026-07-22)
+
+
+### Features
+
+* **carousel:** width-aware split direction (side vs. bottom) ([#144](https://github.com/noamsto/aeye/issues/144)) ([#148](https://github.com/noamsto/aeye/issues/148)) ([437e35c](https://github.com/noamsto/aeye/commit/437e35c0ccde42ccaf80f9cfdfc71b3b697d58ca))
+
 ## [0.12.0](https://github.com/noamsto/aeye/compare/v0.11.0...v0.12.0) (2026-07-22)
 
 

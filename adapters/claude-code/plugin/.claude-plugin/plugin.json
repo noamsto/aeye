@@ -1,6 +1,6 @@
 {
   "name": "aeye",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Capture images this Claude Code session touches and browse them in a tmux/kitty carousel.",
   "skills": "./skills"
 }

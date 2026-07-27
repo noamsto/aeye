@@ -330,9 +330,13 @@ func transmitVirtual(id int, path string, cols, rows int) string {
 		id, cols, rows, enc))
 }
 
-// deleteAll removes all stored images + placements (kitty graphics a=d,d=A).
-// q=2 suppresses the response (see transmitVirtual).
-func deleteAll() string { return tmuxPassthrough("\x1b_Ga=d,d=A,q=2\x1b\\") }
+// deleteImage removes one stored image and its placements by id (a=d,d=I). Scoped
+// by id so a viewer clears only its own images, never a sibling carousel's on the
+// shared kitty store reached through tmux passthrough. q=2 suppresses the response
+// (see transmitVirtual).
+func deleteImage(id int) string {
+	return tmuxPassthrough(fmt.Sprintf("\x1b_Ga=d,d=I,i=%d,q=2\x1b\\", id))
+}
 
 // placeholderRune is kitty's Unicode image placeholder (U+10EEEE).
 const placeholderRune = "\U0010EEEE"

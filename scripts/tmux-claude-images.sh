@@ -18,6 +18,31 @@ STATE_DIR="${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}"
 IMAGES_DIR="$STATE_DIR/images"
 ENSURE_OPEN=""
 
+# A terminal cell is roughly twice as tall as it is wide, so the window's pixel
+# aspect ratio is cols : (CELL_ASPECT * rows). Split the longer pixel axis so
+# both panes stay usable: a landscape window splits SIDE, a portrait one BOTTOM.
+readonly CELL_ASPECT=2
+
+# resolve_axis WIDTH HEIGHT -> "side" | "bottom".
+# AEYE_SPLIT=side|bottom forces the axis; unset/auto/any-other-value measures.
+# Empty or non-positive dims fall back to "side" (today's behavior; no regression).
+resolve_axis() {
+	case "${AEYE_SPLIT:-auto}" in
+	side | bottom)
+		printf '%s\n' "$AEYE_SPLIT"
+		return
+		;;
+	esac
+	local w=${1:-0} h=${2:-0}
+	[[ $w =~ ^[0-9]+$ ]] || w=0
+	[[ $h =~ ^[0-9]+$ ]] || h=0
+	if ((w > 0 && h > 0 && w <= CELL_ASPECT * h)); then
+		printf 'bottom\n'
+	else
+		printf 'side\n'
+	fi
+}
+
 # resolve_target sets MODE/KEY/MANIFEST from the environment. KEY is always
 # ${TMUX_PANE:-cc session id} (the capture hook's key), independent of MODE.
 #   MODE=tmux       inside tmux
@@ -95,34 +120,61 @@ launch_tmux() {
 	[[ -n ${AEYE_DEBUG:-} ]] && env_args+=(-e AEYE_DEBUG="$AEYE_DEBUG")
 	local cmd
 	printf -v cmd '%q %q' "$VIEWER_BIN" "$KEY"
+	# Split along the host window's longer axis (overridable via AEYE_SPLIT); record
+	# the choice as a pane option so the viewer's `s` toggle knows the current state.
+	local w h axis flag
+	read -r w h < <(tmux display-message -p -t "$KEY" '#{window_width} #{window_height}' 2>/dev/null) || true
+	axis="$(resolve_axis "$w" "$h")"
+	[[ $axis == bottom ]] && flag=-v || flag=-h
 	local viewer
-	viewer="$(tmux split-window -h "${detach[@]}" ${env_args[@]+"${env_args[@]}"} -t "$KEY" -P -F '#{pane_id}' "$cmd")"
+	viewer="$(tmux split-window "$flag" "${detach[@]}" ${env_args[@]+"${env_args[@]}"} -t "$KEY" -P -F '#{pane_id}' "$cmd")"
 	tmux set-option -p -t "$viewer" @claude_img_src "$KEY"
+	tmux set-option -p -t "$viewer" @claude_img_axis "$axis"
 }
 
-# Echo (NUL-separated) the `kitty @ launch` placement args for a vsplit beside
-# the tmux-hosting window. Inside tmux, KITTY_WINDOW_ID is frozen at whatever it
-# was when the tmux server started, so it can name a since-closed kitty window;
+# Echo (NUL-separated) the `kitty @ launch` placement args for a split beside
+# the tmux-hosting window, along the host window's longer axis (resolve_axis,
+# same rule as launch_tmux). Inside tmux, KITTY_WINDOW_ID is frozen at whatever
+# it was when the tmux server started, so it can name a since-closed kitty window;
 # `kitty @ launch --match window_id:<gone>` then errors and kills the toggle. So
 # look the id up in `@ ls` first: when it resolves, pin its tab with --match (so
 # --next-to, otherwise ignored across tabs, anchors the viewer beside Claude even
-# when another tab is active); when it's stale or unset, fall back to the active
-# window. vsplit only takes effect in the splits layout, so switch the target tab
-# to it first, else a stacking layout drops the viewer in the bottom row.
-# --keep-focus so it never steals focus.
+# when another tab is active) and read that window's own dims; when it's stale
+# or unset, fall back to the focused window's dims and layout. vsplit/hsplit only
+# takes effect in the splits layout, so switch the target tab to it first, else a
+# stacking layout drops the viewer in the bottom row. --keep-focus so it never
+# steals focus.
 kitty_place_args() {
-	local tab=""
-	if [[ -n ${KITTY_WINDOW_ID:-} ]]; then
-		tab="$(kitty @ ls 2>/dev/null |
-			jq -r --argjson w "$KITTY_WINDOW_ID" \
-				'first(.[].tabs[] | select(any(.windows[]; .id == $w)) | .id) // empty')"
+	local tab="" win_dims="" w="" h="" axis loc
+	# Cache one `kitty @ ls` round trip and query it repeatedly — this is the
+	# shared launch/reconcile hot path, so avoid a remote-control call per query.
+	# Guarded so a failed/empty `@ ls` can't abort under set -e or feed jq empty
+	# stdin; ls_json staying empty just leaves win_dims empty (side fallback).
+	local ls_json
+	ls_json="$(kitty @ ls 2>/dev/null || true)"
+	if [[ -n $ls_json && -n ${KITTY_WINDOW_ID:-} ]]; then
+		tab="$(jq -r --argjson w "$KITTY_WINDOW_ID" \
+			'first(.[].tabs[] | select(any(.windows[]; .id == $w)) | .id) // empty' <<<"$ls_json" || true)"
+		# .columns/.lines default to 0 (not missing) so a window object lacking
+		# them still yields numeric "0 0" for resolve_axis's (( )) arithmetic,
+		# instead of the literal string "null null" aborting under set -u.
+		win_dims="$(jq -r --argjson w "$KITTY_WINDOW_ID" \
+			'first(.[].tabs[].windows[] | select(.id == $w) | "\(.columns // 0) \(.lines // 0)") // empty' <<<"$ls_json" || true)"
 	fi
+	# Fall back to the focused window's geometry when the host id is stale/unset.
+	if [[ -z $win_dims && -n $ls_json ]]; then
+		win_dims="$(jq -r 'first(.[].tabs[] | select(.is_focused) | .windows[] | select(.is_focused) |
+			"\(.columns // 0) \(.lines // 0)") // empty' <<<"$ls_json" || true)"
+	fi
+	read -r w h <<<"$win_dims" || true
+	axis="$(resolve_axis "$w" "$h")"
+	[[ $axis == bottom ]] && loc=hsplit || loc=vsplit
 	if [[ -n $tab ]]; then
 		kitty @ goto-layout --match "id:$tab" splits >/dev/null 2>&1 || true
-		printf '%s\0' --match "id:$tab" --location=vsplit --next-to "id:$KITTY_WINDOW_ID" --keep-focus
+		printf '%s\0' --match "id:$tab" --location="$loc" --next-to "id:$KITTY_WINDOW_ID" --keep-focus
 	else
 		kitty @ goto-layout splits >/dev/null 2>&1 || true
-		printf '%s\0' --location=vsplit --keep-focus
+		printf '%s\0' --location="$loc" --keep-focus
 	fi
 }
 
@@ -211,7 +263,18 @@ launch_wezterm() {
 	# agent. env forwards the state dir — the mux server never saw our env.
 	local dbg=()
 	[[ -n ${AEYE_DEBUG:-} ]] && dbg=(AEYE_DEBUG="$AEYE_DEBUG")
-	pane="$(wezterm cli split-pane --right --percent 40 --cwd "$STATE_DIR" -- \
+	# Host pane size in cells: `wezterm cli list` gives .size.cols/.size.rows for
+	# the $WEZTERM_PANE entry. Split its longer axis (overridable via AEYE_SPLIT).
+	# // 0 defaults absent fields so resolve_axis never sees literal "null null"
+	# under set -u; the read is guarded (|| true) since an empty/failed list
+	# would otherwise hit set -e's read-at-EOF trap.
+	local w h axis dir
+	read -r w h < <(wezterm cli list --format json 2>/dev/null |
+		jq -r --argjson p "${WEZTERM_PANE:-0}" \
+			'first(.[] | select(.pane_id == $p) | "\(.size.cols // 0) \(.size.rows // 0)") // empty') || true
+	axis="$(resolve_axis "$w" "$h")"
+	[[ $axis == bottom ]] && dir=--bottom || dir=--right
+	pane="$(wezterm cli split-pane "$dir" --percent 40 --cwd "$STATE_DIR" -- \
 		env ${dbg[@]+"${dbg[@]}"} AEYE_DIR="$STATE_DIR" CLAUDE_STATUS_DIR="$STATE_DIR" "$VIEWER_BIN" "$KEY")"
 	printf '%s\n' "$pane" >"$panefile"
 }
@@ -247,17 +310,33 @@ launch_ghostty() {
 # viewer, persist the new session's unique id (keyed by cc session id), and close by
 # id on toggle. pgrep-on-viewer (ghostty's trick) can kill the viewer but not reliably
 # close the split pane — that depends on the profile's "When session ends" setting.
+# iterm_dims -> "COLUMNS ROWS" of the current session (empty on failure).
+iterm_dims() {
+	osascript \
+		-e 'tell application "iTerm2"' \
+		-e 'tell current session of current window' \
+		-e 'return (columns as text) & " " & (rows as text)' \
+		-e 'end tell' \
+		-e 'end tell' 2>/dev/null || true
+}
+
+# iterm_split VERB COMMAND -> new session id. VERB is "vertically" (SIDE) or
+# "horizontally" (BOTTOM).
 iterm_split() {
 	osascript \
 		-e 'on run argv' \
 		-e 'tell application "iTerm2"' \
 		-e 'tell current session of current window' \
-		-e 'set s to (split horizontally with default profile command (item 1 of argv))' \
+		-e 'if (item 1 of argv) is "vertically" then' \
+		-e 'set s to (split vertically with default profile command (item 2 of argv))' \
+		-e 'else' \
+		-e 'set s to (split horizontally with default profile command (item 2 of argv))' \
+		-e 'end if' \
 		-e 'end tell' \
 		-e 'return id of s' \
 		-e 'end tell' \
 		-e 'end run' \
-		-- "$1"
+		-- "$1" "$2"
 }
 
 iterm_alive() {
@@ -314,7 +393,14 @@ launch_iterm() {
 	[[ -n ${AEYE_DEBUG:-} ]] && printf -v dbg_frag 'AEYE_DEBUG=%q ' "$AEYE_DEBUG"
 	local cmd
 	cmd="env ${dbg_frag}AEYE_DIR=$(printf '%q' "$STATE_DIR") CLAUDE_STATUS_DIR=$(printf '%q' "$STATE_DIR") $(printf '%q' "$VIEWER_BIN") $(printf '%q' "$KEY")"
-	session="$(iterm_split "$cmd")"
+	# Split along the current session's longer axis (overridable via AEYE_SPLIT);
+	# the read is guarded (|| true) since a failed/empty iterm_dims would otherwise
+	# hit set -e's read-at-EOF trap.
+	local w h axis verb
+	read -r w h < <(iterm_dims) || true
+	axis="$(resolve_axis "$w" "$h")"
+	[[ $axis == bottom ]] && verb=horizontally || verb=vertically
+	session="$(iterm_split "$verb" "$cmd")"
 	printf '%s\n' "$session" >"$idfile"
 }
 
@@ -414,6 +500,10 @@ _ensure_stash_tab() {
 main() {
 	if [[ ${1:-} == --reconcile ]]; then
 		reconcile
+		return
+	fi
+	if [[ ${1:-} == --resolve-axis ]]; then # test seam: resolve axis from given dims
+		resolve_axis "${2:-}" "${3:-}"
 		return
 	fi
 	resolve_target

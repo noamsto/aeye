@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.13.1](https://github.com/noamsto/aeye/compare/v0.13.0...v0.13.1) (2026-07-23)
+
+
+### Bug Fixes
+
+* **carousel:** namespace kitty image ids per pane to stop cross-window bleed ([#151](https://github.com/noamsto/aeye/issues/151)) ([3013263](https://github.com/noamsto/aeye/commit/301326314d8bef09d6d002654574bf6303b4e68c)), closes [#150](https://github.com/noamsto/aeye/issues/150)
+
+## [0.13.0](https://github.com/noamsto/aeye/compare/v0.12.0...v0.13.0) (2026-07-22)
+
+
+### Features
+
+* **carousel:** width-aware split direction (side vs. bottom) ([#144](https://github.com/noamsto/aeye/issues/144)) ([#148](https://github.com/noamsto/aeye/issues/148)) ([437e35c](https://github.com/noamsto/aeye/commit/437e35c0ccde42ccaf80f9cfdfc71b3b697d58ca))
+
+## [0.12.0](https://github.com/noamsto/aeye/compare/v0.11.0...v0.12.0) (2026-07-22)
+
+
+### Features
+
+* **viewer:** trace manifest owner decision to attribute carousel bleed ([#142](https://github.com/noamsto/aeye/issues/142)) ([4993339](https://github.com/noamsto/aeye/commit/49933397588bc7c17ffbfb6e0691d959d8248393))
+
+
+### Bug Fixes
+
+* **carousel:** don't let a second x delete the pending image early ([#141](https://github.com/noamsto/aeye/issues/141)) ([81046c4](https://github.com/noamsto/aeye/commit/81046c4f503bbb7300f5945c9782ff773c388b62))
+
 ## [0.11.0](https://github.com/noamsto/aeye/compare/v0.10.0...v0.11.0) (2026-07-20)
 
 

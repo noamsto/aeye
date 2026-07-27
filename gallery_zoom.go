@@ -214,5 +214,5 @@ func (m *galleryModel) transmitPreviewOnly() {
 	if m.backend != backendKitty || m.tty == nil || len(m.images) == 0 {
 		return
 	}
-	fmt.Fprint(m.tty, transmitVirtual(previewID, m.renderZoom(m.l.previewW, m.l.previewH), m.l.previewW, m.l.previewH))
+	fmt.Fprint(m.tty, transmitVirtual(m.previewID(), m.renderZoom(m.l.previewW, m.l.previewH), m.l.previewW, m.l.previewH))
 }

@@ -51,6 +51,15 @@ run_app() { # $1 = fixture name, remaining args are sed "s#FROM#TO#g" pairs
 	[ "$output" = "view_image" ]
 }
 
+@test "view_image of a generated d2 theme variant appends nothing" {
+	PNG="$AEYE_DIR/images/diagrams/0123456789abcdef-light.png"
+	mkdir -p "$(dirname "$PNG")"
+	printf 'x' >"$PNG"
+
+	run_app view-image.json PNGPATH "$PNG"
+	[ ! -f "$MANIFEST" ]
+}
+
 @test "apply_patch adding a .d2 appends nothing (that's diagrams.sh's job)" {
 	D2="$BATS_TEST_TMPDIR/flow.d2"
 	printf 'a -> b\n' >"$D2"

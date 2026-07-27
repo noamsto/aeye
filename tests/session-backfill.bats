@@ -48,6 +48,20 @@ run_app() { # $1 = source
 	[ -f "$output" ]
 }
 
+@test "resume does not backfill a Read of a generated d2 theme variant" {
+	generated="$CLAUDE_STATUS_DIR/images/diagrams/0123456789abcdef-light.png"
+	mkdir -p "$(dirname "$generated")"
+	printf 'x' >"$generated"
+	sed -e "s#IMGPATH#$generated#g" -e "s#DOTD2#$DOTD2#g" \
+		"$BATS_TEST_DIRNAME/fixtures/transcript-basic.jsonl" >"$TRANSCRIPT"
+
+	run_app resume
+	run jq -s --arg p "$generated" '[.[] | select(.path == $p)] | length' "$MANIFEST"
+	[ "$output" -eq 0 ]
+	run jq -s '[.[] | select(.source == "d2")] | length' "$MANIFEST"
+	[ "$output" -eq 1 ]
+}
+
 @test "ts is taken from the transcript (chronological)" {
 	run_app resume
 	run jq -r 'select(.path=="'"$IMG"'") | .ts' "$MANIFEST"

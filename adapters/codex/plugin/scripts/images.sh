@@ -35,6 +35,9 @@ paths=()
 while IFS= read -r p; do
 	[[ -n $p ]] || continue
 	[[ ${p,,} == *.d2 ]] && continue
+	# diagrams.sh already owns these dual-theme renders. A view_image used to
+	# inspect one must not add that fixed theme as a second, plain image.
+	is_d2_render_artifact "$p" "$DIAGRAMS_DIR" && continue
 	paths+=("$p")
 done < <(codex_extract_touched_paths "$payload")
 [[ ${#paths[@]} -gt 0 ]] || exit 0

@@ -26,6 +26,9 @@ payload="$(cat)"
 source_tool="$(jq -r '.tool_name // "?"' <<<"$payload" 2>/dev/null)"
 path="$(extract_image_path "$payload")"
 [[ -n $path ]] || exit 0
+# diagrams.sh already owns these dual-theme renders. A Read/view used to inspect
+# one must not add that fixed theme as a second, plain carousel image.
+is_d2_render_artifact "$path" "$DIAGRAMS_DIR" && exit 0
 
 printf -v now '%(%FT%T%z)T' -1
 

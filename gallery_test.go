@@ -298,6 +298,51 @@ func TestLoadManifestDropsUndecodableFiles(t *testing.T) {
 	}
 }
 
+func TestLoadManifestSuppressesCapturedD2ThemeVariant(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AEYE_DIR", dir)
+	imagesDir := filepath.Join(dir, "images")
+	diagramsDir := filepath.Join(imagesDir, "diagrams")
+	if err := os.MkdirAll(diagramsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	dark := filepath.Join(diagramsDir, "0123456789abcdef-dark.png")
+	light := filepath.Join(diagramsDir, "0123456789abcdef-light.png")
+	ordinary := filepath.Join(dir, "ordinary.png")
+	for _, path := range []string{dark, light, ordinary} {
+		writeTestImage(t, path, 4, 4)
+	}
+
+	manifest := filepath.Join(imagesDir, "p1.jsonl")
+	lines := `{"type":"image","path":"` + dark + `","source":"d2","name":"flow","mtime":1}
+{"type":"image","path":"` + light + `","source":"view_image","mtime":2}
+{"type":"image","path":"` + ordinary + `","source":"view_image","mtime":3}
+`
+	if err := os.WriteFile(manifest, []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		theme string
+		want  string
+	}{
+		{theme: "dark", want: dark},
+		{theme: "light", want: light},
+	} {
+		got := loadManifest("p1", tc.theme)
+		if len(got) != 2 {
+			t.Fatalf("loadManifest(%q) = %+v, want one d2 entry and one ordinary image", tc.theme, got)
+		}
+		if got[0].Source != "d2" || got[0].Path != tc.want {
+			t.Errorf("loadManifest(%q) d2 entry = %+v, want path %q", tc.theme, got[0], tc.want)
+		}
+		if got[1].Path != ordinary {
+			t.Errorf("loadManifest(%q) ordinary entry = %+v, want %q", tc.theme, got[1], ordinary)
+		}
+	}
+}
+
 func TestParseManifestVectorField(t *testing.T) {
 	got := parseManifest([]byte(`{"type":"image","path":"/d/a.png","vector":"/d/a.svg","source":"d2"}`))
 	if len(got) != 1 || got[0].Vector != "/d/a.svg" {

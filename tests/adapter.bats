@@ -31,6 +31,16 @@ run_app() { # $1 = fixture name
 	[ "$output" = "Write" ]
 }
 
+@test "Read of a generated d2 theme variant is ignored" {
+	generated="$CLAUDE_STATUS_DIR/images/diagrams/0123456789abcdef-light.png"
+	mkdir -p "$(dirname "$generated")"
+	printf 'x' >"$generated"
+
+	sed -e "s#IMGPATH#$generated#g" -e "s#CWDPATH#$BATS_TEST_TMPDIR#g" \
+		"$BATS_TEST_DIRNAME/fixtures/hook-read-image.json" | bash "$APP"
+	[ ! -f "$MANIFEST" ]
+}
+
 @test "screenshot path is extracted from tool_response" {
 	run_app hook-screenshot.json
 	[ -f "$MANIFEST" ]

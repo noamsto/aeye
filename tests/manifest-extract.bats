@@ -56,6 +56,25 @@ setup() {
 	[ -z "$output" ]
 }
 
+@test "is_d2_render_artifact: matches only direct themed render outputs" {
+	dir="$BATS_TEST_TMPDIR/images/diagrams"
+
+	run is_d2_render_artifact "$dir/0123456789abcdef-light.png" "$dir"
+	[ "$status" -eq 0 ]
+
+	run is_d2_render_artifact "$dir/0123456789abcdef-dark.svg" "$dir"
+	[ "$status" -eq 0 ]
+
+	run is_d2_render_artifact "$dir/preview-light.png" "$dir"
+	[ "$status" -ne 0 ]
+
+	run is_d2_render_artifact "$dir/nested/0123456789abcdef-light.png" "$dir"
+	[ "$status" -ne 0 ]
+
+	run is_d2_render_artifact "${dir}-backup/0123456789abcdef-light.png" "$dir"
+	[ "$status" -ne 0 ]
+}
+
 @test "extract_d2_path: existing .d2 file_path" {
 	d2="$BATS_TEST_TMPDIR/flow.d2"
 	printf 'a -> b\n' >"$d2"

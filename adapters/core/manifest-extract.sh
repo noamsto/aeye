@@ -11,6 +11,18 @@ _mtime() {
 	stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0
 }
 
+# is_d2_render_artifact PATH DIAGRAMS_DIR -> true only for aeye's direct,
+# content-hashed light/dark render outputs. Agents may inspect these files with
+# an image-reading tool, but diagrams.sh already records the canonical d2 entry;
+# capturing the inspection as a plain image would pin one theme beside it.
+is_d2_render_artifact() {
+	local path="$1" dir="$2" base
+	[[ -n $path && -n $dir && $path == "$dir/"* ]] || return 1
+	base="${path#"$dir/"}"
+	[[ $base != */* ]] || return 1
+	[[ $base =~ ^[[:xdigit:]]{16}-(light|dark)\.(png|svg)$ ]]
+}
+
 # _manifest_lock LOCKPATH -> take an exclusive advisory lock on fd 9, serializing
 # the concurrent hook mutations of one pane's manifest (images.sh appends,
 # diagrams.sh's read-modify-write prune, session-backfill's rebuild,

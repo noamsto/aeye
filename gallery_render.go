@@ -119,7 +119,20 @@ func loadManifest(pane, theme string) []imageEntry {
 		tracef("manifest read err: %v", err)
 		return nil
 	}
-	entries := resolveThemeVariants(parseManifest(data), theme)
+	entries := parseManifest(data)
+	rawCount := len(entries)
+	diagramsDir := filepath.Join(filepath.Dir(manifestPath(pane)), "diagrams")
+	filtered := entries[:0]
+	for _, e := range entries {
+		// Older hooks recorded an agent's inspection of a generated light/dark
+		// PNG as a plain image beside the canonical d2 entry. Suppress those
+		// stale records on read as well as preventing new ones at capture time.
+		if e.Source != "d2" && isD2RenderArtifact(e.Path, diagramsDir) {
+			continue
+		}
+		filtered = append(filtered, e)
+	}
+	entries = resolveThemeVariants(filtered, theme)
 	out := entries[:0]
 	for _, e := range entries {
 		if err := decodeErr(e.Path); err != nil {
@@ -128,8 +141,38 @@ func loadManifest(pane, theme string) []imageEntry {
 		}
 		out = append(out, e)
 	}
-	tracef("manifest loaded raw=%d kept=%d", len(entries), len(out))
+	tracef("manifest loaded raw=%d kept=%d", rawCount, len(out))
 	return out
+}
+
+// isD2RenderArtifact reports whether path is one of aeye's direct,
+// content-hashed light/dark render outputs under diagramsDir.
+func isD2RenderArtifact(path, diagramsDir string) bool {
+	rel, err := filepath.Rel(diagramsDir, path)
+	if err != nil || rel == "." || filepath.Dir(rel) != "." {
+		return false
+	}
+	ext := filepath.Ext(rel)
+	if ext != ".png" && ext != ".svg" {
+		return false
+	}
+	stem := strings.TrimSuffix(rel, ext)
+	var hash string
+	for _, suffix := range []string{"-light", "-dark"} {
+		if strings.HasSuffix(stem, suffix) {
+			hash = strings.TrimSuffix(stem, suffix)
+			break
+		}
+	}
+	if len(hash) != 16 {
+		return false
+	}
+	for _, r := range hash {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
+			return false
+		}
+	}
+	return true
 }
 
 // resolveThemeVariants rewrites each d2 entry's Path/Vector to the variant for

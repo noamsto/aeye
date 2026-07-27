@@ -59,6 +59,8 @@ rm -f "$manifest"
 declare -A seen=()
 
 append_image() { # $1 path  $2 source  $3 ts
+	# A diagram inspection is already represented by its canonical d2 entry.
+	is_d2_render_artifact "$1" "$DIAGRAMS_DIR" && return 0
 	[[ -n ${seen["$1"]:-} ]] && return 0
 	seen["$1"]=1
 	append_image_line "$manifest" "$1" "$2" "$3"

@@ -54,6 +54,20 @@ run_app() { # $1 = source
 	[ -f "$output" ]
 }
 
+@test "resume does not backfill view_image of a generated d2 theme variant" {
+	generated="$AEYE_DIR/images/diagrams/0123456789abcdef-light.png"
+	mkdir -p "$(dirname "$generated")"
+	printf 'x' >"$generated"
+	sed -e "s#WORKDIR#$WORKDIR#g" -e "s#PNGPATH#$generated#g" -e "s#SHOTPATH#$WORKDIR/shot2.png#g" \
+		"$FIXTURES/rollout-basic.jsonl" >"$ROLLOUT"
+
+	run_app resume
+	run jq -s --arg p "$generated" '[.[] | select(.path == $p)] | length' "$MANIFEST"
+	[ "$output" -eq 0 ]
+	run jq -s '[.[] | select(.source == "d2")] | length' "$MANIFEST"
+	[ "$output" -eq 2 ]
+}
+
 @test "resume backfills the legacy direct custom_tool_call/apply_patch as a rendered diagram" {
 	run_app resume
 	run jq -rc 'select(.name=="legacy") | .path' "$MANIFEST"

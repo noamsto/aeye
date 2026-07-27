@@ -42,3 +42,25 @@ func TestFilesToDeleteD2NoVector(t *testing.T) {
 		t.Fatalf("filesToDelete() = %v, want the two png variants only", got)
 	}
 }
+
+func TestIsD2RenderArtifact(t *testing.T) {
+	dir := "/state/images/diagrams"
+	for _, path := range []string{
+		dir + "/0123456789abcdef-light.png",
+		dir + "/ABCDEF0123456789-dark.svg",
+	} {
+		if !isD2RenderArtifact(path, dir) {
+			t.Errorf("isD2RenderArtifact(%q) = false, want true", path)
+		}
+	}
+	for _, path := range []string{
+		dir + "/preview-light.png",
+		dir + "/0123456789abcdef.png",
+		dir + "/nested/0123456789abcdef-light.png",
+		dir + "-backup/0123456789abcdef-light.png",
+	} {
+		if isD2RenderArtifact(path, dir) {
+			t.Errorf("isD2RenderArtifact(%q) = true, want false", path)
+		}
+	}
+}

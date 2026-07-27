@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/noamsto/aeye/compare/v0.13.0...v0.13.1) (2026-07-23)
+
+
+### Bug Fixes
+
+* **carousel:** namespace kitty image ids per pane to stop cross-window bleed ([#151](https://github.com/noamsto/aeye/issues/151)) ([3013263](https://github.com/noamsto/aeye/commit/301326314d8bef09d6d002654574bf6303b4e68c)), closes [#150](https://github.com/noamsto/aeye/issues/150)
+
 ## [0.13.0](https://github.com/noamsto/aeye/compare/v0.12.0...v0.13.0) (2026-07-22)
 
 

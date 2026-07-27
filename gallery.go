@@ -22,9 +22,8 @@ import (
 )
 
 const (
-	stripThumbW    = 18  // filmstrip thumbnail width in cells
-	stripGutter    = 1   // blank columns between filmstrip thumbs (borders add separation)
-	previewBoxCols = 355 // preview box cols per 100 rows (~16:9 given ~1:2.1 cells)
+	stripThumbW = 18 // filmstrip thumbnail width in cells
+	stripGutter = 1  // blank columns between filmstrip thumbs (borders add separation)
 
 	galleryTitleIcon = "󰋩" // nerd: nf-md-image_multiple
 )
@@ -47,28 +46,21 @@ type layout struct {
 }
 
 // computeLayout splits the pane into a big preview on top and a filmstrip row
-// above a one-line status bar. The preview is the largest ~16:9 box that fits
-// the area left over after the filmstrip (so landscape images barely letterbox).
+// above a one-line status bar. The preview fills the whole area left over after
+// the filmstrip and status lines. Images are letterboxed to fit, so a larger
+// box never shrinks an image — there's no aspect to preserve. (The old fixed
+// ~16:9 cap did preserve one, which left tall images — portrait screenshots,
+// `direction: down` diagrams — using a third of the frame.)
 func computeLayout(paneW, paneH int) layout {
 	stripH := clamp(paneH/4, 5, 12)
 	stripW := stripThumbW
 	// +2 per thumb for its border frame.
 	stripCols := clamp((paneW+stripGutter)/(stripW+2+stripGutter), 1, maxCellDim)
 
-	// Area left for the preview after title(1) + subtitle(1) +
-	// filmstrip(stripH+2 border) + legend(2), minus 2 for the preview border.
-	availW := clamp(paneW-2, 1, maxCellDim)
-	availH := clamp(paneH-stripH-8, 1, maxCellDim)
-
-	// Largest box with cols:rows ≈ previewBoxCols/100 that fits availW × availH.
-	previewW := availW
-	previewH := availW * 100 / previewBoxCols
-	if previewH > availH {
-		previewH = availH
-		previewW = clamp(availH*previewBoxCols/100, 1, availW)
-	}
-	previewW = clamp(previewW, 1, maxCellDim)
-	previewH = clamp(previewH, 1, maxCellDim)
+	// Rows the preview can't have: title(1) + subtitle(1) + legend(2) +
+	// filmstrip(stripH+2 border) + preview border(2). Cols: preview border(2).
+	previewW := clamp(paneW-2, 1, maxCellDim)
+	previewH := clamp(paneH-stripH-8, 1, maxCellDim)
 	return layout{previewW: previewW, previewH: previewH, stripW: stripW, stripH: stripH, stripCols: stripCols}
 }
 

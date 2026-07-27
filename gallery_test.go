@@ -169,10 +169,11 @@ func TestComputeLayout(t *testing.T) {
 	if l.previewW < 1 || l.previewH < 1 || l.stripCols < 1 {
 		t.Errorf("dims must be >= 1: %+v", l)
 	}
-	// preview(+2 border) + filmstrip(stripH+2 border) + title + subtitle + hints
-	// must fit the pane height (the full row budget computeLayout reserves).
-	if l.previewH+2+l.stripH+2+3 > 50 {
-		t.Errorf("rows overflow pane height: %+v", l)
+	// preview(+2 border) + filmstrip(stripH+2 border) + title(1) + subtitle(1) +
+	// legend(2) must exactly fill the pane height — the preview claims every row
+	// the chrome leaves, with no letterboxing slack.
+	if l.previewH+2+l.stripH+2+4 != 50 {
+		t.Errorf("preview must fill leftover rows exactly: %+v", l)
 	}
 	// filmstrip thumbnails + gutters must fit the pane width.
 	if l.stripCols*l.stripW+(l.stripCols-1)*stripGutter > 120 {

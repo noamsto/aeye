@@ -15,6 +15,16 @@ TINY_PNG_B64='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDw
 setup() {
 	command -v tmux >/dev/null || skip "needs a real tmux server"
 	command -v script >/dev/null || skip "needs util-linux script for a pty"
+	command -v tic >/dev/null || skip "needs ncurses tic to synthesize a terminfo entry"
+
+	# The viewer only reaches its kitty store path when #{client_termname} looks
+	# like kitty, and tmux refuses to attach a client whose TERM has no terminfo
+	# entry — which a bare CI runner has no reason to carry. Alias xterm-256color
+	# under the name the viewer matches on; only the name is load-bearing.
+	export TERMINFO="$BATS_TEST_TMPDIR/terminfo"
+	mkdir -p "$TERMINFO"
+	printf 'xterm-kitty|kitty stand-in for tests,\n\tuse=xterm-256color,\n' >"$BATS_TEST_TMPDIR/kitty.ti"
+	tic -x -o "$TERMINFO" "$BATS_TEST_TMPDIR/kitty.ti"
 
 	export SOCK="aeye-bats-$$"
 	export CAP="$BATS_TEST_TMPDIR/client.raw"

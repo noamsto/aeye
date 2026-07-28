@@ -63,7 +63,10 @@
           AEYE_D2_FONT_DIR = d2FontDir;
           packages =
             config.pre-commit.settings.enabledPackages
-            ++ [pkgs.go pkgs.gopls pkgs.gotools pkgs.golangci-lint pkgs.chafa pkgs.bats pkgs.goreleaser pkgs.gh pkgs.d2 pkgs.resvg pkgs.source-sans pkgs.source-code-pro pkgs.just];
+            # tmux + util-linux (script): the passthrough drop the
+            # window-visibility test guards happens inside tmux, so that test
+            # needs a real server and a real pty client — a stub can't show it.
+            ++ [pkgs.go pkgs.gopls pkgs.gotools pkgs.golangci-lint pkgs.chafa pkgs.bats pkgs.goreleaser pkgs.gh pkgs.d2 pkgs.resvg pkgs.source-sans pkgs.source-code-pro pkgs.just pkgs.tmux pkgs.util-linux];
         };
 
         # `nix develop .#verify` — the real terminal hosts for manually checking the

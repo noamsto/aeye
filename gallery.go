@@ -146,6 +146,11 @@ type galleryModel struct {
 	crop         cropFrac    // visible sub-rectangle of the source (fullCrop = fit)
 	curImg       image.Image // decoded source of the current selection
 	curImgPath   string      // path curImg was decoded from
+	// Terminal cell size in pixels, measured once at startup (CSI 16 t), with the
+	// cellPxW/cellPxH estimates as fallback. Load-bearing for crop geometry: the
+	// estimates assume a 1:2 cell, so a real 10x22 cell skews every crop shaped
+	// against them — measured here at 2.2, not 2.0.
+	cellW, cellH int
 	regions      *regionTree // parsed lazily for the current d2 entry; nil when none
 	regionPath   []string    // current drill level (container path components); empty = root
 	regionIdx    int         // focused sibling index at the current level; -1 = not in region mode
@@ -162,9 +167,12 @@ type galleryModel struct {
 	pending *pendingDeletion
 	delGen  uint64
 
-	// Mouse drag state for preview panning.
+	// Mouse drag state for preview panning. lastPanAt/panGen throttle the re-store
+	// to panFrameGap so a fast drag renders current positions, not a backlog.
 	dragging             bool
 	lastDragX, lastDragY int
+	lastPanAt            time.Time
+	panGen               uint64
 
 	// Native kitty OSC 72 drag-out: dragNative is probed once at startup and the
 	// terminal is armed as a drag source; dragInFlight stops a second drag from
@@ -590,6 +598,15 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// passes events it doesn't model through verbatim).
 		m.handleDragEvent(string(msg))
 		return m, nil
+	case panFlushMsg:
+		// Trailing frame of a throttled drag burst: only the newest survives, so a
+		// fast drag paints the position it ended at rather than every one it queued.
+		if msg.gen != m.panGen {
+			return m, nil
+		}
+		m.transmitPreviewOnly()
+		m.lastPanAt = time.Now()
+		return m, nil
 	case vectorKickMsg:
 		// Stale tick: a later keystroke superseded this one. Drop it; only the
 		// latest generation gets to kick resvg.
@@ -609,7 +626,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// parses the placement we emit right after, so a later render can't
 		// overwrite it mid-fetch.
 		src := writePNGEnc(m.zoomScratchPath(),
-			fitToBox(msg.raster, m.l.previewW*cellPxW, m.l.previewH*cellPxH),
+			fitToBox(msg.raster, m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx()),
 			m.images[m.cursor].Path, fastPNG.Encode)
 		fmt.Fprint(m.tty, transmitVirtual(m.previewID(), src, m.l.previewW, m.l.previewH))
 		return m, nil
@@ -1019,8 +1036,18 @@ func runGallery(pane string) error {
 	images := loadManifest(pane, theme)
 	backend, rasterFmt := chooseGridBackend(termName(), os.Getenv("TMUX") != "", os.Getenv("TERM_PROGRAM"), os.Getenv("LC_TERMINAL"), os.Getenv("WEZTERM_PANE"), os.Getenv("TERM"), probeSixel)
 	tracef("start backend=%v nimg=%d tmux=%v term=%q", backend, len(images), os.Getenv("TMUX") != "", termName())
+	// Only the kitty backend maps cells to pixels; on the others the query would
+	// block for its timeout and a late reply could land on bubbletea's stdin, where
+	// a digit is a navigation key.
+	cellW, cellH := cellPxW, cellPxH
+	if backend == backendKitty {
+		cellW, cellH = queryCellPx()
+	}
+	tracef("cell size %dx%d px", cellW, cellH)
 	m := galleryModel{
 		pane:         pane,
+		cellW:        cellW,
+		cellH:        cellH,
 		splitAxis:    tmuxPaneAxis(),
 		images:       images,
 		backend:      backend,

@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"golang.org/x/image/draw"
 )
 
@@ -59,7 +61,7 @@ func (m *galleryModel) baseFillCrop() cropFrac {
 		return fullCrop()
 	}
 	b := m.curImg.Bounds()
-	frac := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*cellPxW, m.l.previewH*cellPxH)
+	frac := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
 	w, h := 1.0, 1.0
 	if frac <= 1 {
 		w = frac
@@ -91,7 +93,7 @@ func (m *galleryModel) cropFillsBox() bool {
 		return true
 	}
 	b := m.curImg.Bounds()
-	want := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*cellPxW, m.l.previewH*cellPxH)
+	want := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
 	return math.Abs(m.crop.w()/m.crop.h()-want) < want*1e-3
 }
 
@@ -167,10 +169,15 @@ func (m *galleryModel) ensureDecoded() {
 // b.Min so callers can sample the source directly.
 func cropPixels(b image.Rectangle, c cropFrac) image.Rectangle {
 	w, h := float64(b.Dx()), float64(b.Dy())
-	return image.Rect(
-		b.Min.X+int(c.x0*w), b.Min.Y+int(c.y0*h),
-		b.Min.X+int(c.x1*w), b.Min.Y+int(c.y1*h),
-	)
+	// Round the origin and the SIZE separately. Truncating both edges independently
+	// lets a constant-size crop yield rects that differ by a pixel as it pans, so the
+	// downscale target changes every frame and the image visibly shimmers — measured
+	// as the raster oscillating between 1179 and 1180 px wide during a drag.
+	cw := clamp(int(math.Round(c.w()*w)), 1, b.Dx())
+	ch := clamp(int(math.Round(c.h()*h)), 1, b.Dy())
+	x0 := clamp(int(math.Round(c.x0*w)), 0, b.Dx()-cw)
+	y0 := clamp(int(math.Round(c.y0*h)), 0, b.Dy()-ch)
+	return image.Rect(b.Min.X+x0, b.Min.Y+y0, b.Min.X+x0+cw, b.Min.Y+y0+ch)
 }
 
 // zoomScratchPath is a per-pane scratch file so concurrently-zoomed panes don't
@@ -179,23 +186,41 @@ func (m *galleryModel) zoomScratchPath() string {
 	return filepath.Join(os.TempDir(), "aeye-zoom-"+strings.TrimPrefix(m.pane, "%")+".png")
 }
 
+// zoomRawPath is the raw-RGBA sibling of zoomScratchPath. A distinct extension so a
+// stale file of one kind is never handed to kitty as the other.
+func (m *galleryModel) zoomRawPath() string {
+	return filepath.Join(os.TempDir(), "aeye-zoom-"+strings.TrimPrefix(m.pane, "%")+".raw")
+}
+
 // renderCropOf crops src to m.crop, downscales to the cols×rows cell box, writes
 // the scratch PNG, and returns its path. raw is the fallback path on any miss.
 func (m *galleryModel) renderCropOf(src image.Image, cols, rows int, raw string) string {
-	if src == nil || m.crop.isFull() {
+	dst := m.cropRaster(src, cols, rows)
+	if dst == nil {
 		return raw
 	}
+	return writePNGEnc(m.zoomScratchPath(), dst, raw, fastPNG.Encode)
+}
+
+// cropRaster crops src to m.crop and downscales it into the cols x rows cell box,
+// returning nil when there is nothing to render (no source, or an unzoomed view —
+// where the original file is served as-is). Shared by the PNG path the raster
+// backend needs and the raw-RGBA path kitty prefers.
+func (m *galleryModel) cropRaster(src image.Image, cols, rows int) *image.RGBA {
+	if src == nil || m.crop.isFull() {
+		return nil
+	}
 	r := cropPixels(src.Bounds(), m.crop)
-	tw, th := cols*cellPxW, rows*cellPxH
+	tw, th := cols*m.cellWpx(), rows*m.cellHpx()
 	scale := min(float64(tw)/float64(r.Dx()), float64(th)/float64(r.Dy()))
 	if scale > 1 {
 		scale = 1 // never upscale past source resolution (bitmap layer; Layer 2 lifts this for d2)
 	}
 	dst := image.NewRGBA(image.Rect(0, 0, int(float64(r.Dx())*scale), int(float64(r.Dy())*scale)))
-	// ApproxBiLinear + fast PNG: this runs on every pan/zoom keystroke, so encode
-	// speed matters more than the last bit of quality or file size.
+	// ApproxBiLinear: this runs on every pan/zoom keystroke, so speed matters more
+	// than the last bit of quality.
 	draw.ApproxBiLinear.Scale(dst, dst.Bounds(), src, r, draw.Src, nil)
-	return writePNGEnc(m.zoomScratchPath(), dst, raw, fastPNG.Encode)
+	return dst
 }
 
 // renderZoom crops m.curImg to m.crop, downscales the crop to the cols×rows cell
@@ -206,6 +231,25 @@ func (m *galleryModel) renderZoom(cols, rows int) string {
 	return m.renderCropOf(m.curImg, cols, rows, m.images[m.cursor].Path)
 }
 
+// storePreviewCrop emits the store for the preview at the current crop, skipping
+// the PNG encode: kitty reads raw RGBA straight from the file, which measured 2.5x
+// faster per frame than a fast PNG encode (6.7ms -> 2.6ms on a 1220x814 box) and is
+// the dominant per-pan cost. Falls back to storing the original file when there is
+// nothing to crop (unzoomed) or the raw write fails.
+func (m *galleryModel) storePreviewCrop() string {
+	orig := m.images[m.cursor].Path
+	dst := m.cropRaster(m.curImg, m.l.previewW, m.l.previewH)
+	if dst == nil {
+		return transmitVirtual(m.previewID(), orig, m.l.previewW, m.l.previewH)
+	}
+	b := dst.Bounds()
+	if out := writeRaw(m.zoomRawPath(), dst); out != "" {
+		return transmitVirtualRaw(m.previewID(), out, b.Dx(), b.Dy(), m.l.previewW, m.l.previewH)
+	}
+	return transmitVirtual(m.previewID(),
+		writePNGEnc(m.zoomScratchPath(), dst, orig, fastPNG.Encode), m.l.previewW, m.l.previewH)
+}
+
 // transmitPreviewOnly re-renders the preview at the current crop and re-places
 // it under the same id (a=T) WITHOUT deleting first. Re-placing in place keeps
 // the image visible (a data-only a=t update leaves the unicode placeholder
@@ -214,5 +258,28 @@ func (m *galleryModel) transmitPreviewOnly() {
 	if m.backend != backendKitty || m.tty == nil || len(m.images) == 0 {
 		return
 	}
-	fmt.Fprint(m.tty, transmitVirtual(m.previewID(), m.renderZoom(m.l.previewW, m.l.previewH), m.l.previewW, m.l.previewH))
+	fmt.Fprint(m.tty, m.storePreviewCrop())
+}
+
+// panFrameGap is the minimum spacing between preview re-stores while dragging. A
+// drag delivers motion faster than a frame costs, so without this the work queues
+// up: the image trails the cursor and keeps moving after it stops. Throttling makes
+// each frame render the CURRENT position instead of a stale backlogged one.
+const panFrameGap = 8 * time.Millisecond
+
+// panFlushMsg re-stores the final framing of a throttled drag burst. Generation
+// gated, so only the newest arms a paint (mirroring vectorKickMsg).
+type panFlushMsg struct{ gen uint64 }
+
+// transmitPanFrame re-stores at most once per panFrameGap. When it throttles, it
+// returns a trailing flush so the last position of a burst is never dropped.
+func (m *galleryModel) transmitPanFrame() tea.Cmd {
+	if time.Since(m.lastPanAt) >= panFrameGap {
+		m.transmitPreviewOnly()
+		m.lastPanAt = time.Now()
+		return nil
+	}
+	m.panGen++
+	g := m.panGen
+	return tea.Tick(panFrameGap, func(time.Time) tea.Msg { return panFlushMsg{gen: g} })
 }

@@ -98,6 +98,7 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 	}
 	e := msg.Mouse()
 	changed := false
+	var panCmd tea.Cmd // trailing flush when a drag frame was throttled
 	switch msg.(type) {
 	case tea.MouseWheelMsg:
 		dir := 0
@@ -145,7 +146,7 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 			dy := float64(e.Y-m.lastDragY) / float64(pr.h)
 			if dx != 0 || dy != 0 {
 				m.panBy(-dx, -dy) // crop moves opposite the cursor
-				m.transmitPreviewOnly()
+				panCmd = m.transmitPanFrame()
 				m.lastDragX, m.lastDragY = e.X, e.Y
 				changed = true
 			}
@@ -157,5 +158,5 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 		return m, nil
 	}
 	m.status = "" // a navigation/zoom dismisses the transient message, like a keypress
-	return m, m.scheduleVector()
+	return m, tea.Batch(panCmd, m.scheduleVector())
 }

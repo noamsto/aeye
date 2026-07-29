@@ -101,22 +101,22 @@ func wideModel() *galleryModel {
 	}
 }
 
-func TestZoomBySnapsToBoxAspectFill(t *testing.T) {
+func TestZoomByFirstStepPreservesImageAspect(t *testing.T) {
 	m := wideModel()
-	m.zoomBy(1.25) // first zoom-in from rest snaps to the fill crop
-	if !approx(m.crop.w(), 2.0/9.0) || !approx(m.crop.h(), 1) {
-		t.Errorf("fill snap = %+v, want w=2/9 h=1", m.crop)
+	m.zoomBy(1.25) // must magnify gradually — no snap to box-aspect fill
+	if !approx(m.crop.w(), 1/1.25) || !approx(m.crop.h(), 1/1.25) {
+		t.Errorf("first zoom-in crop = %+v, want w=h=0.8", m.crop)
 	}
-	if !approx(m.crop.cx(), 0.5) || m.crop.isFull() {
-		t.Errorf("fill crop must be centered and non-full, got %+v", m.crop)
+	if !approx(m.crop.cx(), 0.5) || !approx(m.crop.cy(), 0.5) {
+		t.Errorf("first zoom must stay centered, got %+v", m.crop)
 	}
 }
 
 func TestZoomDeeperPreservesAspect(t *testing.T) {
 	m := wideModel()
-	m.zoomBy(1.25) // snap to fill
+	m.zoomBy(1.25)
 	want := m.crop.w() / m.crop.h()
-	m.zoomBy(1.25) // deeper: uniform scale, aspect preserved
+	m.zoomBy(1.25)
 	if got := m.crop.w() / m.crop.h(); !approx(got, want) {
 		t.Errorf("deeper zoom changed aspect: %v -> %v", want, got)
 	}
@@ -157,12 +157,12 @@ func TestZoomInClampsLongSideAtMax(t *testing.T) {
 	}
 }
 
-func TestZoomOutFromFillSnapsToRest(t *testing.T) {
+func TestZoomOutFromFillReachesFull(t *testing.T) {
 	m := wideModel()
-	m.zoomBy(1.25) // snap to fill (h == 1)
+	m.crop = m.baseFillCrop() // full-height slice; h == 1
 	m.zoomBy(1 / 1.25)
 	if !m.crop.isFull() {
-		t.Errorf("zoom-out from a full-height fill must snap to rest, got %+v", m.crop)
+		t.Errorf("zoom-out from a full-height fill must reach full, got %+v", m.crop)
 	}
 }
 

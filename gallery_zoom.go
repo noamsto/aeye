@@ -97,19 +97,13 @@ func (m *galleryModel) cropFillsBox() bool {
 	return math.Abs(m.crop.w()/m.crop.h()-want) < want*1e-3
 }
 
-// zoomBy moves the crop one zoom step (factor > 1 zooms in). The first zoom-in
-// from the rest view of a non-square image snaps to the box-aspect fill crop, so
-// a wide diagram fills the box instead of staying a letterboxed strip. Any other
-// crop — a Tab-framed region, or an already-zoomed view — is magnified in place:
-// scaled about its own center with aspect preserved, so zoom stays on what's
-// framed rather than jumping back out to the full diagram. Zooming out grows the
-// crop until it spills past the image, then snaps back to the rest view.
+// zoomBy moves the crop one zoom step (factor > 1 zooms in). Every step scales
+// the current crop about its center with aspect preserved — including the first
+// zoom-in from the letterboxed rest view of a wide/tall image. Use toggleFill
+// (key f) to pack the preview to the box. Zooming out grows the crop until it
+// spills past the image, then snaps back to the rest view.
 func (m *galleryModel) zoomBy(factor float64) {
 	if factor > 1 {
-		if m.crop.isFull() && !m.cropFillsBox() {
-			m.crop = m.baseFillCrop()
-			return
-		}
 		m.crop = scaleCropAbout(m.crop, 1/factor)
 		return
 	}

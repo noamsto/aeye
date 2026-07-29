@@ -118,6 +118,21 @@ func (m *galleryModel) zoomBy(factor float64) {
 	m.crop = recenterScaled(m.crop.cx(), m.crop.cy(), w, h)
 }
 
+// toggleFill switches between letterboxed full-image framing and a box-aspect
+// fill crop centered on the current view. Magnification is not preserved — this
+// is a framing rewrite. When the image already matches the preview box,
+// baseFillCrop equals fullCrop, so the call is a no-op.
+func (m *galleryModel) toggleFill() {
+	if m.curImg == nil {
+		return
+	}
+	if m.cropFillsBox() && !m.crop.isFull() {
+		m.crop = fullCrop()
+		return
+	}
+	m.crop = m.baseFillCrop()
+}
+
 // panBy shifts the crop by a fraction of its own size, so a keypress feels like
 // a constant on-screen distance regardless of zoom. The shift is clamped so the
 // crop stays inside [0,1] without resizing.

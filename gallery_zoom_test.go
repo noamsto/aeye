@@ -201,6 +201,47 @@ func TestEnsureDecodedCropResetOnNewPath(t *testing.T) {
 	}
 }
 
+func TestToggleFillFromFull(t *testing.T) {
+	m := wideModel()
+	m.toggleFill()
+	if !approx(m.crop.w(), 2.0/9.0) || !approx(m.crop.h(), 1) {
+		t.Errorf("fill from full = %+v, want w=2/9 h=1", m.crop)
+	}
+	if !approx(m.crop.cx(), 0.5) {
+		t.Errorf("fill crop must be centered, got %+v", m.crop)
+	}
+}
+
+func TestToggleFillFromFill(t *testing.T) {
+	m := wideModel()
+	m.crop = m.baseFillCrop()
+	m.toggleFill()
+	if !m.crop.isFull() {
+		t.Errorf("fill -> full = %+v", m.crop)
+	}
+}
+
+func TestToggleFillNoopWhenMatched(t *testing.T) {
+	// preview box pixels = 160*10 × 50*20 = 1600×1000 (1.6:1); image 160×100 matches.
+	m := &galleryModel{
+		curImg: image.NewRGBA(image.Rect(0, 0, 160, 100)),
+		l:      layout{previewW: 160, previewH: 50},
+		crop:   fullCrop(),
+	}
+	m.toggleFill()
+	if !m.crop.isFull() {
+		t.Errorf("matched aspect must stay full, got %+v", m.crop)
+	}
+}
+
+func TestToggleFillNilImage(t *testing.T) {
+	m := &galleryModel{crop: fullCrop()}
+	m.toggleFill() // must not panic
+	if !m.crop.isFull() {
+		t.Errorf("nil image toggle changed crop: %+v", m.crop)
+	}
+}
+
 func TestCropGeometryUsesMeasuredCellSize(t *testing.T) {
 	// Regression: the crop math used to be shaped against the hardcoded 1:2
 	// cellPxW/cellPxH estimate while the real cell here is 10x22. Anything that maps

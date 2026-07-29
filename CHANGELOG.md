@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.14.0](https://github.com/noamsto/aeye/compare/v0.13.1...v0.14.0) (2026-07-28)
+
+
+### Features
+
+* **carousel:** fill the preview box instead of forcing 16:9 ([#154](https://github.com/noamsto/aeye/issues/154)) ([d05cf07](https://github.com/noamsto/aeye/commit/d05cf07ec18e69e7d2937c5b877fade0cac687e6)), closes [#153](https://github.com/noamsto/aeye/issues/153)
+
+
+### Bug Fixes
+
+* **diagrams:** suppress captured theme variants ([#156](https://github.com/noamsto/aeye/issues/156)) ([1f50b62](https://github.com/noamsto/aeye/commit/1f50b62cd129812cfb60b68ee5d57700308c4f52))
+
 ## [0.13.1](https://github.com/noamsto/aeye/compare/v0.13.0...v0.13.1) (2026-07-23)
 
 

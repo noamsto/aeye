@@ -3,6 +3,8 @@ package main
 import (
 	"image"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func approx(a, b float64) bool { return a-b < 1e-9 && b-a < 1e-9 }
@@ -238,22 +240,33 @@ func TestToggleFillFromZoomed(t *testing.T) {
 func TestToggleFillFromRegionClearsFocus(t *testing.T) {
 	rs := []region{{path: "a", x0: 0.1, y0: 0.45, x1: 0.9, y1: 0.55}}
 	m := wideModel()
+	m.ready = true
 	m.regions = newRegionTree(rs)
 	m.regionIdx = 0
 	m.frameFocused()
 	if m.regionIdx < 0 {
 		t.Fatal("setup: need focused region")
 	}
-	if m.regionIdx >= 0 {
-		m.exitRegions()
+	if m.crop.isFull() {
+		t.Fatal("setup: need non-full crop from framed region")
 	}
-	m.toggleFill()
-	if m.regionIdx != -1 || m.regionPath != nil {
-		t.Errorf("region focus not cleared: idx=%d path=%v", m.regionIdx, m.regionPath)
+	want := wideModel()
+	want.ready = true
+	want.regions = newRegionTree(rs)
+	want.regionIdx = 0
+	want.frameFocused()
+	if want.regionIdx >= 0 {
+		want.exitRegions()
 	}
-	fill := m.baseFillCrop()
-	if !approx(m.crop.w(), fill.w()) || !approx(m.crop.h(), fill.h()) {
-		t.Errorf("toggle from region = %+v, want fill %+v", m.crop, fill)
+	want.toggleFill()
+
+	out, _ := m.Update(tea.KeyPressMsg{Text: "f", Code: 'f'})
+	got := out.(galleryModel)
+	if got.regionIdx != -1 || got.regionPath != nil {
+		t.Errorf("region focus not cleared: idx=%d path=%v", got.regionIdx, got.regionPath)
+	}
+	if !approx(got.crop.w(), want.crop.w()) || !approx(got.crop.h(), want.crop.h()) {
+		t.Errorf("f key from region = %+v, want %+v", got.crop, want.crop)
 	}
 }
 

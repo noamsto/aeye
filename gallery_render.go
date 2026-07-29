@@ -483,3 +483,12 @@ func blankBlock(w, h int) string {
 	}
 	return strings.Join(rows, "\n")
 }
+
+// transmitVirtualRaw is transmitVirtual for raw RGBA pixels (f=32) rather than an
+// encoded file: kitty cannot infer the dimensions, so s/v declare them. Used on the
+// pan/zoom path, where skipping the PNG encode is the win.
+func transmitVirtualRaw(id int, path string, pxW, pxH, cols, rows int) string {
+	enc := base64.StdEncoding.EncodeToString([]byte(path))
+	return tmuxPassthrough(fmt.Sprintf("\x1b_Gi=%d,a=T,U=1,q=2,f=32,s=%d,v=%d,c=%d,r=%d,t=f;%s\x1b\\",
+		id, pxW, pxH, cols, rows, enc))
+}

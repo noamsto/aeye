@@ -525,6 +525,9 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "Z", "-", "_":
 			m.zoomBy(1 / 1.25)
 			m.transmitPreviewOnly()
+		case "f":
+			m.toggleFill()
+			m.transmitPreviewOnly()
 		case "0", "esc":
 			m.exitRegions()
 			m.transmitPreviewOnly()
@@ -961,7 +964,7 @@ func (m galleryModel) renderView() string {
 	// they apply to plain images and diagrams alike; the region keys ride on the
 	// preview's top border instead (see above).
 	hintStyle := lipgloss.NewStyle().Foreground(hintFg)
-	navKeys := "h/l move · n/p page · g/G ends · z/Z zoom · hjkl pan · 0 reset"
+	navKeys := "h/l move · n/p page · g/G ends · z/Z zoom · f fill · hjkl pan · 0 reset"
 	second := m.actionRow()
 	legend := lipgloss.JoinVertical(lipgloss.Left,
 		center(hintStyle.Render(truncateToWidth(navKeys, m.width))),

@@ -85,9 +85,8 @@ func scaleCropAbout(c cropFrac, s float64) cropFrac {
 }
 
 // cropFillsBox reports whether the crop already fills the preview box — its pixel
-// aspect matches the box's. False for the rest view of a non-square image (which
-// is what gates the snap-to-fill on the first zoom-in) and for a Tab-framed region
-// wider/taller than the box, though zoomBy no longer passes a non-full crop here.
+// aspect matches the box's. False for the letterboxed rest view of a non-square
+// image; toggleFill uses this to decide whether to switch to fullCrop or baseFillCrop.
 func (m *galleryModel) cropFillsBox() bool {
 	if m.curImg == nil {
 		return true

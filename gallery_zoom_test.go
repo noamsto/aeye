@@ -114,8 +114,9 @@ func TestZoomByFirstStepPreservesImageAspect(t *testing.T) {
 
 func TestZoomDeeperPreservesAspect(t *testing.T) {
 	m := wideModel()
-	m.zoomBy(1.25)
+	m.crop = m.baseFillCrop()
 	want := m.crop.w() / m.crop.h()
+	m.zoomBy(1.25)
 	m.zoomBy(1.25)
 	if got := m.crop.w() / m.crop.h(); !approx(got, want) {
 		t.Errorf("deeper zoom changed aspect: %v -> %v", want, got)
@@ -218,6 +219,41 @@ func TestToggleFillFromFill(t *testing.T) {
 	m.toggleFill()
 	if !m.crop.isFull() {
 		t.Errorf("fill -> full = %+v", m.crop)
+	}
+}
+
+func TestToggleFillFromZoomed(t *testing.T) {
+	m := wideModel()
+	m.zoomBy(1.25) // image-aspect zoomed crop
+	m.toggleFill()
+	fill := m.baseFillCrop()
+	if !approx(m.crop.w(), fill.w()) || !approx(m.crop.h(), fill.h()) {
+		t.Errorf("toggle from zoomed = %+v, want fill shape %+v", m.crop, fill)
+	}
+	if !approx(m.crop.cx(), fill.cx()) || !approx(m.crop.cy(), fill.cy()) {
+		t.Errorf("toggle from zoomed must center, got %+v want %+v", m.crop, fill)
+	}
+}
+
+func TestToggleFillFromRegionClearsFocus(t *testing.T) {
+	rs := []region{{path: "a", x0: 0.1, y0: 0.45, x1: 0.9, y1: 0.55}}
+	m := wideModel()
+	m.regions = newRegionTree(rs)
+	m.regionIdx = 0
+	m.frameFocused()
+	if m.regionIdx < 0 {
+		t.Fatal("setup: need focused region")
+	}
+	if m.regionIdx >= 0 {
+		m.exitRegions()
+	}
+	m.toggleFill()
+	if m.regionIdx != -1 || m.regionPath != nil {
+		t.Errorf("region focus not cleared: idx=%d path=%v", m.regionIdx, m.regionPath)
+	}
+	fill := m.baseFillCrop()
+	if !approx(m.crop.w(), fill.w()) || !approx(m.crop.h(), fill.h()) {
+		t.Errorf("toggle from region = %+v, want fill %+v", m.crop, fill)
 	}
 }
 

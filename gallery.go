@@ -526,6 +526,9 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.zoomBy(1 / 1.25)
 			m.transmitPreviewOnly()
 		case "f":
+			if m.regionIdx >= 0 {
+				m.exitRegions()
+			}
 			m.toggleFill()
 			m.transmitPreviewOnly()
 		case "0", "esc":

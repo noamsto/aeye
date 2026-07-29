@@ -124,11 +124,12 @@ session reads/writes/screenshots images.
 
 | Key | Action |
 |---|---|
-| `←` `→` `↑` `↓` / `h` `l` `k` `j` | Move selection (**pan** when zoomed in) |
+| `←` `→` `↑` `↓` / `h` `l` `k` `j` | Move selection (**pan** when zoomed in or fill-framed) |
 | `n` / `p` | Page the filmstrip |
 | `g` / `G` (or `Home` / `End`) | First / last image |
 | `1`–`9` | Jump to the Nth image |
 | `z` `+` `=` / `Z` `-` `_` | Zoom in / out |
+| `f` | Toggle fill ↔ full framing |
 | `Enter` / `o` | Open in the default app |
 | `O` | Open the containing folder |
 | `y` | Copy the selected image to the clipboard |
@@ -138,8 +139,9 @@ session reads/writes/screenshots images.
 | `r` | Reload the manifest |
 | `q` / `Ctrl-C` | Quit |
 
-When zoomed in, the arrows/`hjkl` pan the preview instead of moving the
-selection — use `n`/`p`/`g`/`G` (or `0`/`Esc`) to change image while zoomed.
+When zoomed in or fill-framed (`f`), the arrows/`hjkl` pan the preview instead
+of moving the selection — use `n`/`p`/`g`/`G` (or `0`/`Esc`) to change image
+while the crop is not full.
 
 #### Diagrams (D2)
 

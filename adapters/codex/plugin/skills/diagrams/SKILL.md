@@ -91,11 +91,42 @@ Why these choices:
 
 ## Flow direction
 
-Default to `direction: right`. The carousel preview is landscape, so a
-left-to-right flow fills the frame; a tall stack wastes it. Use
-`direction: down` only for things that are inherently vertical — sequence
-diagrams and deep trees. When a chain gets long and thin, **group** related
-nodes into a container instead of stringing one more box on the end.
+Pick the axis from the diagram's structure, not from the preview's shape: **the
+chain runs along the long axis, the branching across the wide one.** The carousel
+has zoom, pan, and region drill-in, so a diagram that needs panning is fine — one
+that's illegible at any zoom is not. Never cut content or squash a layout to make
+something fit the frame.
+
+`direction: right` is the right default for a short chain. Reach for
+`direction: down` when the branching is the widest thing on the board, or when the
+chain's edges carry labels: an edge label consumes space *along* the flow axis
+(layered engines lay labels out as dummy nodes, so each one occupies a layer). A
+labeled five-stage chain that renders as a 5:1 strip left-to-right comes out
+1:1.6 top-to-bottom, same content. Sequence diagrams and deep trees stay `down`.
+
+An extreme ratio in either axis is a symptom, not the bug — nodes carrying prose
+is the usual cause. Fix the content per the next section; the proportions follow.
+
+## What goes in a node
+
+- **Nodes are the things; edges carry what happens between them.** Follow the
+  convention of the kind of diagram you're drawing: in state machines and ERDs the
+  nodes are nouns and the edge carries the verb, event, or guard — a three-way
+  verdict is a condition on a transition, not three stages, so it belongs on the
+  arrows. Data flow diagrams invert this (processes are verb phrases, the flows
+  are the nouns); don't carry the rule across that line.
+- **~3 short lines per node.** A node's width is set by its longest label line
+  before layout runs, so paragraph labels multiply the board's width and then no
+  direction rescues it. If a box needs more room, it's prose, or it's two nodes.
+- **No conclusions, no recommendations.** "SO THE LOW END IS UNREACHABLE" is the
+  argument; "THREE POSSIBLE FIXES" is the remediation. Both belong in the message
+  text — the diagram shows the mechanism the reader reasons *from*.
+- **One abstraction level per canvas.** Mechanism, observed numbers, conclusion,
+  and fix list are four diagrams' worth of material, not one.
+
+Moving the verbs onto the edges is the highest-leverage edit available — it usually
+deletes nodes and crossings at once, and
+[crossings damage comprehension more than any other layout property](https://link.springer.com/chapter/10.1007/3-540-63938-1_67).
 
 ## Core syntax
 
@@ -310,13 +341,30 @@ transform.enrich -> alerts: anomalies
   on the container's own title right where the edge enters. Label an edge only
   with what the target's name doesn't already say.
 - **One concept per diagram.** Don't merge the architecture and the data model.
-- **`direction: right` unless it's inherently tall** (sequence, deep tree).
-- **Let layout breathe** — prefer grouping over one long thin chain.
+- **Direction follows the structure** — see Flow direction above.
+- **Containers are for meaning, not for layout.** Group a genuine subsystem (it
+  becomes a carousel drill-in region too). Grouping will *not* fold a long chain:
+  under ELK a nested container's `direction:` is ignored — children follow the
+  root direction. Measured on a 9-node board, adding `direction: down` to each
+  container moved the width from 2897px to 2841px.
+- **Don't reshape a flow with `grid-rows` / `grid-columns`.** Under ELK they place
+  badly. `grid-columns: 3` over three mutually exclusive outcomes laid them in a
+  row with arrows running between them — the alternatives read as a three-stage
+  pipeline, and one edge crossed a node's label. `grid-rows: 2` put a store behind
+  the start node, doubling its edge back across another branch.
 - **An arrow cutting through a node's label?** Switch to ELK —
   `vars: { d2-config: { layout-engine: elk } }`. The default engine (dagre)
   draws straight lines that can cross a box; ELK routes orthogonally from node
   borders, so edges attach instead of slicing through text. A good default for
   any branchy flow with a node that several edges converge on, not just ERDs.
+
+## Check the render
+
+Look at the rendered PNG once before you rely on the diagram — the renders land
+beside the source, at `<state-dir>/images/diagrams/<hash>-{light,dark}.png`. A
+size measurement catches none of the failures that actually happen: alternatives
+that read as a pipeline, an edge crossing a node's label, an unconnected node
+parked in a corner where it reads as a mistake.
 
 ## Requirements
 

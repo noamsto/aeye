@@ -59,7 +59,7 @@ func (m *galleryModel) baseFillCrop() cropFrac {
 		return fullCrop()
 	}
 	b := m.curImg.Bounds()
-	frac := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*cellPxW, m.l.previewH*cellPxH)
+	frac := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
 	w, h := 1.0, 1.0
 	if frac <= 1 {
 		w = frac
@@ -91,7 +91,7 @@ func (m *galleryModel) cropFillsBox() bool {
 		return true
 	}
 	b := m.curImg.Bounds()
-	want := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*cellPxW, m.l.previewH*cellPxH)
+	want := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
 	return math.Abs(m.crop.w()/m.crop.h()-want) < want*1e-3
 }
 
@@ -186,7 +186,7 @@ func (m *galleryModel) renderCropOf(src image.Image, cols, rows int, raw string)
 		return raw
 	}
 	r := cropPixels(src.Bounds(), m.crop)
-	tw, th := cols*cellPxW, rows*cellPxH
+	tw, th := cols*m.cellWpx(), rows*m.cellHpx()
 	scale := min(float64(tw)/float64(r.Dx()), float64(th)/float64(r.Dy()))
 	if scale > 1 {
 		scale = 1 // never upscale past source resolution (bitmap layer; Layer 2 lifts this for d2)

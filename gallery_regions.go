@@ -402,7 +402,7 @@ func (m *galleryModel) frameFocused() {
 		return
 	}
 	b := m.curImg.Bounds()
-	m.crop = frameRegion(r, b.Dx(), b.Dy(), m.l.previewW*cellPxW, m.l.previewH*cellPxH)
+	m.crop = frameRegion(r, b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
 }
 
 // ensureRegions parses the current d2 entry's SVG into m.regions on first use.

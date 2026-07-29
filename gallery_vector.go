@@ -166,7 +166,7 @@ func (m *galleryModel) kickVector() tea.Cmd {
 	if v == "" || m.backend != backendKitty {
 		return nil
 	}
-	return renderVectorCmd(v, m.crop, m.l.previewW*cellPxW)
+	return renderVectorCmd(v, m.crop, m.l.previewW*m.cellWpx())
 }
 
 // fitToBox scales src to fit tw×th preserving aspect, upscaling if smaller — the

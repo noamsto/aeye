@@ -63,7 +63,12 @@
           AEYE_D2_FONT_DIR = d2FontDir;
           packages =
             config.pre-commit.settings.enabledPackages
-            ++ [pkgs.go pkgs.gopls pkgs.gotools pkgs.golangci-lint pkgs.chafa pkgs.bats pkgs.goreleaser pkgs.gh pkgs.d2 pkgs.resvg pkgs.source-sans pkgs.source-code-pro pkgs.just];
+            # The window-visibility test needs a real tmux server and a real pty
+            # client, because the passthrough drop it guards happens inside tmux
+            # and a stub can't show it: tmux, script (util-linux), and ncurses for
+            # the xterm-kitty terminfo entry it synthesizes — a bare CI runner has
+            # none, and tmux refuses to attach a client whose TERM it can't find.
+            ++ [pkgs.go pkgs.gopls pkgs.gotools pkgs.golangci-lint pkgs.chafa pkgs.bats pkgs.goreleaser pkgs.gh pkgs.d2 pkgs.resvg pkgs.source-sans pkgs.source-code-pro pkgs.just pkgs.tmux pkgs.util-linux pkgs.ncurses];
         };
 
         # `nix develop .#verify` — the real terminal hosts for manually checking the

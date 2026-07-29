@@ -141,6 +141,7 @@ type galleryModel struct {
 	storedIDs    []int    // kitty image ids stored last transmit, cleared before the next
 	mtime        int64    // manifest mtime at last load (for auto-refresh)
 	ready        bool
+	visible      bool        // pane reachable by the image store at the last tick (see paneVisible)
 	pinned       bool        // follow the newest image until the user first navigates
 	crop         cropFrac    // visible sub-rectangle of the source (fullCrop = fit)
 	curImg       image.Image // decoded source of the current selection
@@ -285,6 +286,26 @@ func (m *galleryModel) transmitView() {
 	if traceEnabled {
 		tracef("store strip cells=%d bytes=%d written=%d firstErr=%v", stripCells, stripBytes, stripWritten, stripErr)
 	}
+}
+
+// repaintCmd forces the frame to be redrawn. A kitty placeholder cell only
+// resolves its image id when the cell is painted, so a fresh store stays
+// invisible until the screen is redrawn.
+func (m *galleryModel) repaintCmd() tea.Cmd {
+	if m.backend == backendRaster {
+		// ClearScreen forces a full redraw of the blank holes; repaint the sixel
+		// overlay just after, on top of them.
+		return tea.Batch(tea.ClearScreen, m.schedulePaint())
+	}
+	return tea.ClearScreen
+}
+
+// restoreView re-stores the images and repaints. Every route back from a state
+// where the store couldn't land — the first frame before the alt-screen, a
+// window tmux wasn't displaying — needs both halves.
+func (m *galleryModel) restoreView() tea.Cmd {
+	m.transmitView()
+	return m.repaintCmd()
 }
 
 // selectIndex moves the selection (clamped) and re-transmits. Any manual
@@ -607,6 +628,18 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Tick(countdownTick, func(time.Time) tea.Msg { return deleteCountdownMsg{msg.gen} })
 	case galleryTickMsg:
+		// Anything stored while the pane was off screen was dropped by tmux, and a
+		// window switch replays the pane from tmux's screen buffer without waking
+		// us — so the hidden→visible edge is the only place to notice. Reload as
+		// well: the manifest may have moved on while we were away.
+		if v := paneVisible(); v != m.visible {
+			m.visible = v
+			tracef("visibility %v", v)
+			if v {
+				m.reload() // re-stores as a side effect
+				return m, tea.Batch(galleryTickCmd(), m.kickVector(), m.repaintCmd())
+			}
+		}
 		// A live light/dark switch repaints from the already-rendered variant —
 		// reload() re-resolves every d2 path to the new theme. Force the reload by
 		// clearing mtime so the diff below always fires.
@@ -636,19 +669,19 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, sizeRetryCmd(msg.attempt + 1)
 	case settleMsg:
 		tracef("settleMsg re-store")
-		// Re-store before the repaint: the first transmitView (in the
-		// WindowSizeMsg handler) runs before bubbletea switches to the alt-screen,
-		// so on a freshly spawned window (e.g. a ghostty window outside tmux) the
-		// initial store doesn't stick. Re-transmitting here — now that the
-		// alt-screen is active — is what a resize would otherwise have to do.
-		// (No-op on raster, whose overlay is driven by the scheduled repaint below.)
-		m.transmitView()
-		if m.backend == backendRaster {
-			// ClearScreen forces a full redraw of the blank holes; repaint the
-			// sixel overlay just after, on top of them.
-			return m, tea.Batch(tea.ClearScreen, m.schedulePaint())
-		}
-		return m, tea.ClearScreen
+		// The first transmitView (in the WindowSizeMsg handler) runs before
+		// bubbletea switches to the alt-screen, so on a freshly spawned window
+		// (e.g. a ghostty window outside tmux) the initial store doesn't stick.
+		// Re-storing here — now that the alt-screen is active — is what a resize
+		// would otherwise have to do.
+		return m, m.restoreView()
+	case tea.FocusMsg:
+		// Focus back on a pane whose store may have been dropped while its window
+		// was off screen. The tick catches this too, but only up to 1.5s later —
+		// long enough to watch the boxes sit blank.
+		tracef("focus re-store")
+		m.visible = true
+		return m, m.restoreView()
 	case rasterPaintMsg:
 		if msg.gen == m.rasterGen {
 			m.paintRaster()
@@ -791,6 +824,9 @@ func (m galleryModel) View() tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
+	// Focus-in is the fast signal that a dropped store needs redoing; tmux only
+	// forwards it with focus-events on, so the tick poll stays the backstop.
+	v.ReportFocus = true
 	return v
 }
 
@@ -992,6 +1028,7 @@ func runGallery(pane string) error {
 		theme:        theme,
 		tty:          tty,
 		mtime:        manifestMtime(pane),
+		visible:      paneVisible(),
 		cursor:       max(0, len(images)-1),
 		pinned:       true,
 		crop:         fullCrop(),
@@ -1046,6 +1083,45 @@ func tmuxPaneSize() (int, int) {
 	var w, h int
 	fmt.Sscanf(strings.TrimSpace(string(out)), "%d %d", &w, &h)
 	return w, h
+}
+
+// paneVisible reports whether the image store can currently reach the terminal.
+// Indirected so tests can drive the transition without a tmux server.
+var paneVisible = tmuxPaneVisible
+
+// tmuxPaneVisible asks tmux whether this pane is on screen. tmux discards DCS
+// passthrough written by a pane no client is displaying, so a store issued then
+// is lost while its placeholder cells survive in the pane's screen buffer —
+// blank boxes that no repaint fixes. Outside tmux nothing intercepts the write,
+// so assume reachable.
+func tmuxPaneVisible() bool {
+	if os.Getenv("TMUX") == "" {
+		return true
+	}
+	// -t is load-bearing: an untargeted display-message evaluates window_active
+	// against the session's current window, where it is always 1 — which hides
+	// the very transition this exists to catch.
+	out, err := exec.Command("tmux", "display-message", "-p", "-t", os.Getenv("TMUX_PANE"),
+		"#{window_active} #{session_attached} #{window_zoomed_flag} #{pane_active}").Output()
+	if err != nil {
+		return true
+	}
+	return parsePaneVisible(string(out))
+}
+
+// parsePaneVisible mirrors tmux's own gate: tty_write skips clients whose
+// current window isn't the pane's, and window_pane_visible hides every
+// non-active pane of a zoomed window. Pane focus plays no part.
+func parsePaneVisible(out string) bool {
+	var windowActive, attached, zoomed, paneActive int
+	if _, err := fmt.Sscanf(strings.TrimSpace(out), "%d %d %d %d",
+		&windowActive, &attached, &zoomed, &paneActive); err != nil {
+		return true
+	}
+	if windowActive == 0 || attached == 0 {
+		return false
+	}
+	return zoomed == 0 || paneActive == 1
 }
 
 // manifestMtime returns the manifest file's mtime in ns, or 0 if absent.

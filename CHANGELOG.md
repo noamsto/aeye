@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.1](https://github.com/noamsto/aeye/compare/v0.14.0...v0.14.1) (2026-07-29)
+
+
+### Performance Improvements
+
+* **carousel:** make panning ~15x cheaper per frame (raw RGBA, measured cell, coalesced drags) ([#163](https://github.com/noamsto/aeye/issues/163)) ([4097d2b](https://github.com/noamsto/aeye/commit/4097d2becfaf97808790d6706d8cb721a806ddfe))
+
 ## [0.14.0](https://github.com/noamsto/aeye/compare/v0.13.1...v0.14.0) (2026-07-28)
 
 

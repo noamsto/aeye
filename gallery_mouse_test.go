@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -235,5 +236,41 @@ func TestHandleMouseWheelFilmstrip(t *testing.T) {
 	up, _ := m.handleMouse(tea.MouseWheelMsg{X: 1, Y: y, Button: tea.MouseWheelUp})
 	if up.cursor != 4 {
 		t.Errorf("wheel up over filmstrip: cursor = %d, want 4", up.cursor)
+	}
+}
+
+func TestDragFramesAreThrottledWithATrailingFlush(t *testing.T) {
+	// A drag delivers motion faster than a frame costs. Without throttling the work
+	// queues up and the image trails the cursor; without the trailing flush the final
+	// position of a burst would never paint.
+	m := &galleryModel{l: layout{previewW: 20, previewH: 10}}
+
+	m.lastPanAt = time.Time{} // never painted: the first frame must go out immediately
+	if cmd := m.transmitPanFrame(); cmd != nil {
+		t.Error("first drag frame was throttled; it must paint immediately")
+	}
+
+	m.lastPanAt = time.Now() // a frame just went out: the next must be deferred
+	cmd := m.transmitPanFrame()
+	if cmd == nil {
+		t.Fatal("a frame inside panFrameGap painted immediately; it must defer")
+	}
+	// A tea.Tick Cmd is single-use: its timer channel drains on the first call, so
+	// invoking one twice blocks forever. Evaluate exactly once.
+	msg := cmd()
+	if _, ok := msg.(panFlushMsg); !ok {
+		t.Errorf("deferred frame returned %T, want a panFlushMsg so the last position lands", msg)
+	}
+}
+
+func TestOnlyTheNewestPanFlushSurvives(t *testing.T) {
+	m := &galleryModel{l: layout{previewW: 20, previewH: 10}, lastPanAt: time.Now()}
+	first, second := m.transmitPanFrame(), m.transmitPanFrame()
+	firstMsg, secondMsg := first().(panFlushMsg), second().(panFlushMsg)
+	if firstMsg.gen == secondMsg.gen {
+		t.Error("two deferred frames share a generation; the stale one would repaint")
+	}
+	if secondMsg.gen != m.panGen {
+		t.Errorf("newest deferred gen = %d, live gen = %d", secondMsg.gen, m.panGen)
 	}
 }

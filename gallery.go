@@ -167,9 +167,12 @@ type galleryModel struct {
 	pending *pendingDeletion
 	delGen  uint64
 
-	// Mouse drag state for preview panning.
+	// Mouse drag state for preview panning. lastPanAt/panGen throttle the re-store
+	// to panFrameGap so a fast drag renders current positions, not a backlog.
 	dragging             bool
 	lastDragX, lastDragY int
+	lastPanAt            time.Time
+	panGen               uint64
 
 	// Native kitty OSC 72 drag-out: dragNative is probed once at startup and the
 	// terminal is armed as a drag source; dragInFlight stops a second drag from
@@ -594,6 +597,15 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Native drag-out: the terminal's OSC 72 frames arrive here (bubbletea
 		// passes events it doesn't model through verbatim).
 		m.handleDragEvent(string(msg))
+		return m, nil
+	case panFlushMsg:
+		// Trailing frame of a throttled drag burst: only the newest survives, so a
+		// fast drag paints the position it ended at rather than every one it queued.
+		if msg.gen != m.panGen {
+			return m, nil
+		}
+		m.transmitPreviewOnly()
+		m.lastPanAt = time.Now()
 		return m, nil
 	case vectorKickMsg:
 		// Stale tick: a later keystroke superseded this one. Drop it; only the

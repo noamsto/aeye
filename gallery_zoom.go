@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"golang.org/x/image/draw"
 )
 
@@ -257,4 +259,27 @@ func (m *galleryModel) transmitPreviewOnly() {
 		return
 	}
 	fmt.Fprint(m.tty, m.storePreviewCrop())
+}
+
+// panFrameGap is the minimum spacing between preview re-stores while dragging. A
+// drag delivers motion faster than a frame costs, so without this the work queues
+// up: the image trails the cursor and keeps moving after it stops. Throttling makes
+// each frame render the CURRENT position instead of a stale backlogged one.
+const panFrameGap = 8 * time.Millisecond
+
+// panFlushMsg re-stores the final framing of a throttled drag burst. Generation
+// gated, so only the newest arms a paint (mirroring vectorKickMsg).
+type panFlushMsg struct{ gen uint64 }
+
+// transmitPanFrame re-stores at most once per panFrameGap. When it throttles, it
+// returns a trailing flush so the last position of a burst is never dropped.
+func (m *galleryModel) transmitPanFrame() tea.Cmd {
+	if time.Since(m.lastPanAt) >= panFrameGap {
+		m.transmitPreviewOnly()
+		m.lastPanAt = time.Now()
+		return nil
+	}
+	m.panGen++
+	g := m.panGen
+	return tea.Tick(panFrameGap, func(time.Time) tea.Msg { return panFlushMsg{gen: g} })
 }

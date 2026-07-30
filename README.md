@@ -252,8 +252,8 @@ this repo as a flake input.
 
 ## Status
 
-Live standalone repo — the viewer binary, the Claude Code and Codex capture
-adapters, and plugin skills all build and are consumed by
+Live standalone repo — the viewer binary, the Claude Code, Codex, and Cursor
+capture adapters, and plugin skills all build and are consumed by
 [lazytmux](https://github.com/noamsto/lazytmux) as a flake input. Zoom/pan and D2
 diagram navigation are implemented; see
 [docs/2026-06-10-design.md](docs/2026-06-10-design.md) for the design notes.

@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      { "command": "<ADAPTER_DIR>/scripts/diagram-guidance.sh", "timeout": 15 },
+      { "command": "<ADAPTER_DIR>/scripts/session-reset.sh", "timeout": 15 },
+      { "command": "<ADAPTER_DIR>/scripts/session-backfill.sh", "timeout": 30 }
+    ],
+    "postToolUse": [
+      { "command": "<ADAPTER_DIR>/scripts/images.sh", "matcher": "Read|Write|Shell", "timeout": 15 },
+      { "command": "<ADAPTER_DIR>/scripts/diagrams.sh", "matcher": "Write|Shell", "timeout": 60 }
+    ]
+  }
+}

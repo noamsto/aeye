@@ -12,9 +12,9 @@ user/project `hooks.json` — not a Cursor plugin.
 
 On PATH:
 
-- `aeye` — the carousel viewer
+- `aeye` — the carousel viewer (embeds the d2 compiler; `aeye render-diagram`)
 - `tmux-claude-images` — toggle that opens the viewer
-- `resvg` — D2 → PNG raster (also needs `d2` for diagrams)
+- `resvg` — SVG → PNG raster for diagram renders
 
 ## Install
 
@@ -42,7 +42,7 @@ Requires `jq` on PATH.
    `$AEYE_DIR/images/*.jsonl` (default state dir:
    `${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}`).
 2. **Write a `.d2`** under the scratch dir named in the SessionStart
-   guidance → a PNG lands in the carousel (needs `d2` + `resvg`).
+   guidance → a PNG lands in the carousel (needs `aeye` + `resvg`).
 3. Open the carousel: `tmux-claude-images`.
 
 ## Limitations

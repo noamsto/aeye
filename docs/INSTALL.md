@@ -143,8 +143,9 @@ Needs `jq` on PATH. Override the Cursor config home with `AEYE_CURSOR_HOME`
 prior aeye hook entries and refreshes the skill symlinks.
 
 Requires the binaries from Step 1 (`aeye`, `tmux-claude-images`) and, for
-diagrams, `d2` + `resvg` from Step 2. Open the carousel with
-`tmux-claude-images` after an image is captured.
+diagrams, `resvg` on PATH (`aeye` embeds the d2 compiler and runs
+`aeye render-diagram`). Open the carousel with `tmux-claude-images` after an
+image is captured.
 
 Primary runtime is Cursor CLI (`cursor-agent`) in tmux. See
 [`adapters/cursor/README.md`](../adapters/cursor/README.md) for smoke steps

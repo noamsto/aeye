@@ -7,7 +7,8 @@ description: Use when a picture beats prose — drawing architecture, data flow,
 
 When structure is clearer seen than read, write a [D2](https://d2lang.com)
 diagram as a `.d2` file with the `Write` tool. A `postToolUse` hook renders it
-browser-free (`d2 → svg → resvg → png`) into the per-pane image manifest, and
+browser-free (`aeye render-diagram` → svg → resvg → png) into the per-pane image
+manifest, and
 the carousel shows it like any other image — auto-opening once per session.
 
 This skill is the authoring reference: house style, the syntax you'll reach
@@ -320,10 +321,10 @@ transform.enrich -> alerts: anomalies
 
 ## Requirements
 
-Rendering needs `d2` and `resvg` on PATH. If either is missing the hook no-ops
-silently (no diagram, no error) — install both to enable diagrams. The optional
-`svg-contrast` label-recolor backstop — which re-inks the label of any hand-filled
-node, whether the fill is a `#hex` or a CSS name like `green` — runs only when the
-`aeye` binary is also on PATH (it is, in the nix package); without it, a filled
-node's label falls back to the theme default, which is why the stroke-coded
-diagrams this skill recommends stay readable with or without it.
+Rendering needs `aeye` (embeds the d2 compiler; runs `aeye render-diagram`) and
+`resvg` on PATH. If either is missing the hook no-ops silently (no diagram, no
+error) — install both to enable diagrams. Theme and contrast handling run inside
+`aeye` when it is present (it is, in the nix package): the label-recolor backstop
+re-inks the label of any hand-filled node, whether the fill is a `#hex` or a CSS
+name like `green`, which is why the stroke-coded diagrams this skill recommends
+stay readable under both themes.

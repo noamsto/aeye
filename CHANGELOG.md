@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.2](https://github.com/noamsto/aeye/compare/v0.14.1...v0.14.2) (2026-07-30)
+
+
+### Bug Fixes
+
+* **carousel:** gradual zoom and f fill/full toggle ([#166](https://github.com/noamsto/aeye/issues/166)) ([9b902a3](https://github.com/noamsto/aeye/commit/9b902a315e836c7e0ad4d2eb40668c9cf8e248a4))
+
 ## [0.14.1](https://github.com/noamsto/aeye/compare/v0.14.0...v0.14.1) (2026-07-29)
 
 

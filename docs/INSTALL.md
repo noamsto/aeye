@@ -129,6 +129,27 @@ so a plugin update requires re-running `/hooks`.
 <!-- TODO(codex): finalize once Nix wiring lands (Nix/Home-Manager auto-install
 for the Codex plugin is not done yet). -->
 
+### Cursor Agent
+
+Run in a shell (not inside Cursor). Installs hooks into `~/.cursor/hooks.json`
+and symlinks the skills:
+
+```bash
+<path-to-aeye>/adapters/cursor/install.sh
+```
+
+Needs `jq` on PATH. Override the Cursor config home with `AEYE_CURSOR_HOME`
+(default `$HOME/.cursor`). The install is idempotent — re-running replaces
+prior aeye hook entries and refreshes the skill symlinks.
+
+Requires the binaries from Step 1 (`aeye`, `tmux-claude-images`) and, for
+diagrams, `d2` + `resvg` from Step 2. Open the carousel with
+`tmux-claude-images` after an image is captured.
+
+Primary runtime is Cursor CLI (`cursor-agent`) in tmux. See
+[`adapters/cursor/README.md`](../adapters/cursor/README.md) for smoke steps
+and limitations.
+
 ## Step 4 — Smoke test
 
 1. Cause an image to be captured — e.g. have the session `Read` any

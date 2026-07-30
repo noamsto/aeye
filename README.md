@@ -244,8 +244,8 @@ the manifest; the viewer never changes.
 - **Viewer** (Go binary) — reads
   `${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}/images/<pane>.jsonl`
   and renders via the kitty graphics protocol (or chafa fallback).
-- **Adapters** (`adapters/`) — per-agent capture, at parity: `claude-code/`
-  and `codex/` (each a PostToolUse/SessionStart hook + plugin + skill).
+- **Adapters** (`adapters/`) — per-agent capture, at parity: `claude-code/`,
+  `codex/`, and `cursor/` (each a PostToolUse/SessionStart hook + skills).
 
 Extracted from [lazytmux](https://github.com/noamsto/lazytmux), which consumes
 this repo as a flake input.

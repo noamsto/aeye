@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/noamsto/aeye/compare/v0.14.2...v0.15.0) (2026-07-30)
+
+
+### Features
+
+* **cursor:** Cursor Agent capture adapter via hooks.json ([#157](https://github.com/noamsto/aeye/issues/157)) ([#168](https://github.com/noamsto/aeye/issues/168)) ([150976d](https://github.com/noamsto/aeye/commit/150976de07cc18c138a7b9b8f8f1f8b0368135af))
+
 ## [0.14.2](https://github.com/noamsto/aeye/compare/v0.14.1...v0.14.2) (2026-07-30)
 
 

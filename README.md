@@ -246,16 +246,16 @@ the manifest; the viewer never changes.
 - **Viewer** (Go binary) — reads
   `${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}/images/<pane>.jsonl`
   and renders via the kitty graphics protocol (or chafa fallback).
-- **Adapters** (`adapters/`) — per-agent capture, at parity: `claude-code/`
-  and `codex/` (each a PostToolUse/SessionStart hook + plugin + skill).
+- **Adapters** (`adapters/`) — per-agent capture, at parity: `claude-code/`,
+  `codex/`, and `cursor/` (each a PostToolUse/SessionStart hook + skills).
 
 Extracted from [lazytmux](https://github.com/noamsto/lazytmux), which consumes
 this repo as a flake input.
 
 ## Status
 
-Live standalone repo — the viewer binary, the Claude Code and Codex capture
-adapters, and plugin skills all build and are consumed by
+Live standalone repo — the viewer binary, the Claude Code, Codex, and Cursor
+capture adapters, and plugin skills all build and are consumed by
 [lazytmux](https://github.com/noamsto/lazytmux) as a flake input. Zoom/pan and D2
 diagram navigation are implemented; see
 [docs/2026-06-10-design.md](docs/2026-06-10-design.md) for the design notes.

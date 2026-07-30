@@ -37,9 +37,9 @@ _manifest_lock() {
 }
 
 # scan_response_image_path PAYLOAD -> echoes a resolved, existing image path or
-# nothing. Scans tool_response strings for an embedded path — the agent-agnostic
-# Phase-2 half of Claude's extract_image_path, carved out so a second adapter's
-# extract_image_path can delegate to it after its own Phase-1 (tool-input) check.
+# nothing. Scans tool_response (Claude/Codex) or tool_output (Cursor) strings for
+# an embedded path — the agent-agnostic Phase-2 half of extract_image_path.
+# Cursor's tool_output is a JSON-encoded string, so fromjson? it first.
 # The path must resolve under cwd: Phase 2 catches a tool that *saved* an image
 # into the session's project, so a path outside cwd is an incidental mention in
 # shell output (e.g. an `ls` of another repo) and never enters the carousel (#139).
@@ -55,7 +55,7 @@ scan_response_image_path() {
 	is_ext() { [[ ${1,,} =~ \.(png|jpe?g|gif|webp|bmp)$ ]]; }
 
 	response_path="$(jq -r '
-    [.tool_response | .. | strings
+    [ (.tool_response // ((.tool_output | fromjson?) // .tool_output)) | .. | strings
       | select(length < 4096)
       | capture("(?<p>(?:/|\\./)[^\\s]*\\.(?:png|jpe?g|gif|webp|bmp))"; "i")
       | .p

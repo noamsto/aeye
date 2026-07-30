@@ -752,6 +752,27 @@ git status
 
 ---
 
+## Pivot addendum (2026-07-30, post-spike)
+
+Spike (`docs/superpowers/spikes/2026-07-28-cursor-hook-contract.md`) proved
+plugin-bundled hooks **never fire on the Cursor CLI** (the primary runtime),
+while user/project `hooks.json` hooks fire with the full contract. Distribution
+pivots accordingly:
+
+- `adapters/cursor/` ships hook scripts + a `hooks.json` template +
+  `install.sh` that merges entries into `~/.cursor/hooks.json` (absolute
+  script paths) and links skills into `~/.cursor/skills/`. The
+  `.cursor-plugin` / marketplace layout is **dropped** (IDE plugin path
+  unproven — follow-up issue, not this PR).
+- Field deltas all tasks must honor: `cwd` is an empty string in CLI payloads
+  → resolve against `workspace_roots[0]`; Read/Write path =
+  `tool_input.file_path`; `tool_output` is a JSON-encoded **string**
+  (`fromjson?` before walking it); no `source` on sessionStart → reset always
+  applies startup semantics; `transcript_path` is null at sessionStart but set
+  on postToolUse → backfill stays a deferred stub in v1.
+- Wherever task text below says plugin layout, `hooks/hooks.json` relative
+  commands, or `./scripts/…` paths, read it as the hooks.json layout above.
+
 ## Spec coverage self-check
 
 | Spec requirement | Task |

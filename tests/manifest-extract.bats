@@ -56,6 +56,34 @@ setup() {
 	[ -z "$output" ]
 }
 
+@test "scan_response_image_path: tool_output JSON string (Cursor)" {
+	mkdir -p "$BATS_TEST_TMPDIR/proj"
+	shot="$BATS_TEST_TMPDIR/proj/shot.png"
+	printf 'x' >"$shot"
+	inner="$(jq -nc --arg p "$shot" '{output:("saved to "+$p),exitCode:0}')"
+	payload="$(jq -nc --arg c "$BATS_TEST_TMPDIR/proj" --arg o "$inner" '{cwd:$c,tool_output:$o}')"
+	run scan_response_image_path "$payload"
+	[ "$status" -eq 0 ]
+	[ "$output" = "$shot" ]
+}
+
+@test "scan_response_image_path: tool_output plain non-JSON string" {
+	mkdir -p "$BATS_TEST_TMPDIR/proj"
+	shot="$BATS_TEST_TMPDIR/proj/shot.png"
+	printf 'x' >"$shot"
+	payload="$(jq -nc --arg c "$BATS_TEST_TMPDIR/proj" --arg p "$shot" '{cwd:$c,tool_output:("saved to "+$p)}')"
+	run scan_response_image_path "$payload"
+	[ "$status" -eq 0 ]
+	[ "$output" = "$shot" ]
+}
+
+@test "scan_response_image_path: neither tool_response nor tool_output -> empty" {
+	payload="$(jq -nc --arg c "$BATS_TEST_TMPDIR/proj" '{cwd:$c}')"
+	run scan_response_image_path "$payload"
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
 @test "is_d2_render_artifact: matches only direct themed render outputs" {
 	dir="$BATS_TEST_TMPDIR/images/diagrams"
 

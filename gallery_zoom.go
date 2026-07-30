@@ -85,9 +85,8 @@ func scaleCropAbout(c cropFrac, s float64) cropFrac {
 }
 
 // cropFillsBox reports whether the crop already fills the preview box — its pixel
-// aspect matches the box's. False for the rest view of a non-square image (which
-// is what gates the snap-to-fill on the first zoom-in) and for a Tab-framed region
-// wider/taller than the box, though zoomBy no longer passes a non-full crop here.
+// aspect matches the box's. False for the letterboxed rest view of a non-square
+// image; toggleFill uses this to decide whether to switch to fullCrop or baseFillCrop.
 func (m *galleryModel) cropFillsBox() bool {
 	if m.curImg == nil {
 		return true
@@ -97,19 +96,13 @@ func (m *galleryModel) cropFillsBox() bool {
 	return math.Abs(m.crop.w()/m.crop.h()-want) < want*1e-3
 }
 
-// zoomBy moves the crop one zoom step (factor > 1 zooms in). The first zoom-in
-// from the rest view of a non-square image snaps to the box-aspect fill crop, so
-// a wide diagram fills the box instead of staying a letterboxed strip. Any other
-// crop — a Tab-framed region, or an already-zoomed view — is magnified in place:
-// scaled about its own center with aspect preserved, so zoom stays on what's
-// framed rather than jumping back out to the full diagram. Zooming out grows the
-// crop until it spills past the image, then snaps back to the rest view.
+// zoomBy moves the crop one zoom step (factor > 1 zooms in). Every step scales
+// the current crop about its center with aspect preserved — including the first
+// zoom-in from the letterboxed rest view of a wide/tall image. Use toggleFill
+// (key f) to pack the preview to the box. Zooming out grows the crop until it
+// spills past the image, then snaps back to the rest view.
 func (m *galleryModel) zoomBy(factor float64) {
 	if factor > 1 {
-		if m.crop.isFull() && !m.cropFillsBox() {
-			m.crop = m.baseFillCrop()
-			return
-		}
 		m.crop = scaleCropAbout(m.crop, 1/factor)
 		return
 	}
@@ -122,6 +115,21 @@ func (m *galleryModel) zoomBy(factor float64) {
 		return
 	}
 	m.crop = recenterScaled(m.crop.cx(), m.crop.cy(), w, h)
+}
+
+// toggleFill switches between letterboxed full-image framing and a box-aspect
+// fill crop centered on the current view. Magnification is not preserved — this
+// is a framing rewrite. When the image already matches the preview box,
+// baseFillCrop equals fullCrop, so the call is a no-op.
+func (m *galleryModel) toggleFill() {
+	if m.curImg == nil {
+		return
+	}
+	if m.cropFillsBox() && !m.crop.isFull() {
+		m.crop = fullCrop()
+		return
+	}
+	m.crop = m.baseFillCrop()
 }
 
 // panBy shifts the crop by a fraction of its own size, so a keypress feels like

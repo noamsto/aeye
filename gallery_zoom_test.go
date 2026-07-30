@@ -3,6 +3,8 @@ package main
 import (
 	"image"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func approx(a, b float64) bool { return a-b < 1e-9 && b-a < 1e-9 }
@@ -101,22 +103,23 @@ func wideModel() *galleryModel {
 	}
 }
 
-func TestZoomBySnapsToBoxAspectFill(t *testing.T) {
+func TestZoomByFirstStepPreservesImageAspect(t *testing.T) {
 	m := wideModel()
-	m.zoomBy(1.25) // first zoom-in from rest snaps to the fill crop
-	if !approx(m.crop.w(), 2.0/9.0) || !approx(m.crop.h(), 1) {
-		t.Errorf("fill snap = %+v, want w=2/9 h=1", m.crop)
+	m.zoomBy(1.25) // must magnify gradually — no snap to box-aspect fill
+	if !approx(m.crop.w(), 1/1.25) || !approx(m.crop.h(), 1/1.25) {
+		t.Errorf("first zoom-in crop = %+v, want w=h=0.8", m.crop)
 	}
-	if !approx(m.crop.cx(), 0.5) || m.crop.isFull() {
-		t.Errorf("fill crop must be centered and non-full, got %+v", m.crop)
+	if !approx(m.crop.cx(), 0.5) || !approx(m.crop.cy(), 0.5) {
+		t.Errorf("first zoom must stay centered, got %+v", m.crop)
 	}
 }
 
 func TestZoomDeeperPreservesAspect(t *testing.T) {
 	m := wideModel()
-	m.zoomBy(1.25) // snap to fill
+	m.crop = m.baseFillCrop()
 	want := m.crop.w() / m.crop.h()
-	m.zoomBy(1.25) // deeper: uniform scale, aspect preserved
+	m.zoomBy(1.25)
+	m.zoomBy(1.25)
 	if got := m.crop.w() / m.crop.h(); !approx(got, want) {
 		t.Errorf("deeper zoom changed aspect: %v -> %v", want, got)
 	}
@@ -157,12 +160,12 @@ func TestZoomInClampsLongSideAtMax(t *testing.T) {
 	}
 }
 
-func TestZoomOutFromFillSnapsToRest(t *testing.T) {
+func TestZoomOutFromFillReachesFull(t *testing.T) {
 	m := wideModel()
-	m.zoomBy(1.25) // snap to fill (h == 1)
+	m.crop = m.baseFillCrop() // full-height slice; h == 1
 	m.zoomBy(1 / 1.25)
 	if !m.crop.isFull() {
-		t.Errorf("zoom-out from a full-height fill must snap to rest, got %+v", m.crop)
+		t.Errorf("zoom-out from a full-height fill must reach full, got %+v", m.crop)
 	}
 }
 
@@ -198,6 +201,93 @@ func TestEnsureDecodedCropResetOnNewPath(t *testing.T) {
 	m.ensureDecoded() // path changed → crop must reset even though decode fails
 	if !m.crop.isFull() {
 		t.Errorf("new path must reset crop, got %+v", m.crop)
+	}
+}
+
+func TestToggleFillFromFull(t *testing.T) {
+	m := wideModel()
+	m.toggleFill()
+	if !approx(m.crop.w(), 2.0/9.0) || !approx(m.crop.h(), 1) {
+		t.Errorf("fill from full = %+v, want w=2/9 h=1", m.crop)
+	}
+	if !approx(m.crop.cx(), 0.5) {
+		t.Errorf("fill crop must be centered, got %+v", m.crop)
+	}
+}
+
+func TestToggleFillFromFill(t *testing.T) {
+	m := wideModel()
+	m.crop = m.baseFillCrop()
+	m.toggleFill()
+	if !m.crop.isFull() {
+		t.Errorf("fill -> full = %+v", m.crop)
+	}
+}
+
+func TestToggleFillFromZoomed(t *testing.T) {
+	m := wideModel()
+	m.zoomBy(1.25) // image-aspect zoomed crop
+	m.toggleFill()
+	fill := m.baseFillCrop()
+	if !approx(m.crop.w(), fill.w()) || !approx(m.crop.h(), fill.h()) {
+		t.Errorf("toggle from zoomed = %+v, want fill shape %+v", m.crop, fill)
+	}
+	if !approx(m.crop.cx(), fill.cx()) || !approx(m.crop.cy(), fill.cy()) {
+		t.Errorf("toggle from zoomed must center, got %+v want %+v", m.crop, fill)
+	}
+}
+
+func TestToggleFillFromRegionClearsFocus(t *testing.T) {
+	rs := []region{{path: "a", x0: 0.1, y0: 0.45, x1: 0.9, y1: 0.55}}
+	m := wideModel()
+	m.ready = true
+	m.regions = newRegionTree(rs)
+	m.regionIdx = 0
+	m.frameFocused()
+	if m.regionIdx < 0 {
+		t.Fatal("setup: need focused region")
+	}
+	if m.crop.isFull() {
+		t.Fatal("setup: need non-full crop from framed region")
+	}
+	want := wideModel()
+	want.ready = true
+	want.regions = newRegionTree(rs)
+	want.regionIdx = 0
+	want.frameFocused()
+	if want.regionIdx >= 0 {
+		want.exitRegions()
+	}
+	want.toggleFill()
+
+	out, _ := m.Update(tea.KeyPressMsg{Text: "f", Code: 'f'})
+	got := out.(galleryModel)
+	if got.regionIdx != -1 || got.regionPath != nil {
+		t.Errorf("region focus not cleared: idx=%d path=%v", got.regionIdx, got.regionPath)
+	}
+	if !approx(got.crop.w(), want.crop.w()) || !approx(got.crop.h(), want.crop.h()) {
+		t.Errorf("f key from region = %+v, want %+v", got.crop, want.crop)
+	}
+}
+
+func TestToggleFillNoopWhenMatched(t *testing.T) {
+	// preview box pixels = 160*10 × 50*20 = 1600×1000 (1.6:1); image 160×100 matches.
+	m := &galleryModel{
+		curImg: image.NewRGBA(image.Rect(0, 0, 160, 100)),
+		l:      layout{previewW: 160, previewH: 50},
+		crop:   fullCrop(),
+	}
+	m.toggleFill()
+	if !m.crop.isFull() {
+		t.Errorf("matched aspect must stay full, got %+v", m.crop)
+	}
+}
+
+func TestToggleFillNilImage(t *testing.T) {
+	m := &galleryModel{crop: fullCrop()}
+	m.toggleFill() // must not panic
+	if !m.crop.isFull() {
+		t.Errorf("nil image toggle changed crop: %+v", m.crop)
 	}
 }
 

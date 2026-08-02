@@ -26,6 +26,7 @@ const (
 	stripGutter = 1  // blank columns between filmstrip thumbs (borders add separation)
 
 	galleryTitleIcon = "󰋩" // nerd: nf-md-image_multiple
+	galleryTitle     = "aeye"
 )
 
 func clamp(v, lo, hi int) int {
@@ -870,7 +871,7 @@ func (m galleryModel) actionRow() string {
 
 // emptyState is the centered placeholder shown until the first image lands.
 func (m galleryModel) emptyState() string {
-	icon := lipgloss.NewStyle().Foreground(m.selColor).Bold(true).Render(galleryTitleIcon + "  Claude Images")
+	icon := lipgloss.NewStyle().Foreground(m.selColor).Bold(true).Render(galleryTitleIcon + "  " + galleryTitle)
 	status := lipgloss.NewStyle().Foreground(m.textFg).Render("No images yet")
 	hint := lipgloss.NewStyle().Foreground(m.hintFg).Render("Draw a D2 diagram or share a screenshot — it appears here automatically.")
 	block := lipgloss.JoinVertical(lipgloss.Center, icon, "", status, "", hint)
@@ -917,7 +918,7 @@ func (m galleryModel) renderView() string {
 	// Centered title + subtitle (current image).
 	hintFg, textFg := m.hintFg, m.textFg
 	center := func(s string) string { return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, s) }
-	title := center(lipgloss.NewStyle().Foreground(selColor).Bold(true).Render(galleryTitleIcon+"  Claude Images") +
+	title := center(lipgloss.NewStyle().Foreground(selColor).Bold(true).Render(galleryTitleIcon+"  "+galleryTitle) +
 		lipgloss.NewStyle().Foreground(hintFg).Render("  "+version()))
 	capText := m.images[m.cursor].caption()
 	capFg := textFg

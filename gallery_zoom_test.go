@@ -103,11 +103,15 @@ func wideModel() *galleryModel {
 	}
 }
 
-func TestZoomByFirstStepPreservesImageAspect(t *testing.T) {
+func TestZoomByFirstStepFillsBox(t *testing.T) {
 	m := wideModel()
-	m.zoomBy(1.25) // must magnify gradually — no snap to box-aspect fill
-	if !approx(m.crop.w(), 1/1.25) || !approx(m.crop.h(), 1/1.25) {
-		t.Errorf("first zoom-in crop = %+v, want w=h=0.8", m.crop)
+	m.zoomBy(1.25) // from letterboxed rest: adopt fill framing, then one magnify step
+	fill := m.baseFillCrop()
+	if !approx(m.crop.w(), fill.w()/1.25) || !approx(m.crop.h(), fill.h()/1.25) {
+		t.Errorf("first zoom-in crop = %+v, want fill/1.25 (fill=%+v)", m.crop, fill)
+	}
+	if !approx(m.crop.w()/m.crop.h(), fill.w()/fill.h()) {
+		t.Errorf("first zoom must be box-aspect, got %+v", m.crop)
 	}
 	if !approx(m.crop.cx(), 0.5) || !approx(m.crop.cy(), 0.5) {
 		t.Errorf("first zoom must stay centered, got %+v", m.crop)
@@ -226,14 +230,10 @@ func TestToggleFillFromFill(t *testing.T) {
 
 func TestToggleFillFromZoomed(t *testing.T) {
 	m := wideModel()
-	m.zoomBy(1.25) // image-aspect zoomed crop
+	m.zoomBy(1.25) // zoomed views are already box-aspect fill
 	m.toggleFill()
-	fill := m.baseFillCrop()
-	if !approx(m.crop.w(), fill.w()) || !approx(m.crop.h(), fill.h()) {
-		t.Errorf("toggle from zoomed = %+v, want fill shape %+v", m.crop, fill)
-	}
-	if !approx(m.crop.cx(), fill.cx()) || !approx(m.crop.cy(), fill.cy()) {
-		t.Errorf("toggle from zoomed must center, got %+v want %+v", m.crop, fill)
+	if !m.crop.isFull() {
+		t.Errorf("toggle from zoomed-fill must go to full, got %+v", m.crop)
 	}
 }
 

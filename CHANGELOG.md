@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/noamsto/aeye/compare/v0.15.1...v0.16.0) (2026-08-05)
+
+
+### Features
+
+* make a carousel safe to render on a foreign host's kitty store ([#178](https://github.com/noamsto/aeye/issues/178)) ([864ce9b](https://github.com/noamsto/aeye/commit/864ce9b6d6b911942a74d218f1d9b39c05902e30)), closes [#177](https://github.com/noamsto/aeye/issues/177)
+
 ## [0.15.1](https://github.com/noamsto/aeye/compare/v0.15.0...v0.15.1) (2026-08-03)
 
 

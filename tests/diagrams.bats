@@ -144,15 +144,14 @@ run_app() { # $1 = fixture name
 	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
 	[[ $ctx == *flow.d2* ]]
 	[[ $ctx == *"FAILED to compile"* ]]
-	# the actual d2 error is passed through, so the agent can locate the line
 	[[ $ctx == *"missing value after colon"* ]]
 	[ ! -f "$MANIFEST" ]
 	[ ! -s "$TOGGLE_LOG" ]
 }
 
 @test 'a $-substitution failure adds the one-backslash hint' {
-	# \\$ instead of \$ is the dominant repeat offender: the escaped backslash
-	# leaves the $ live, so d2 tries to expand a substitution. See issue #180.
+	# \\$ instead of \$ escapes the backslash and leaves the $ live, so d2 tries
+	# to expand a substitution.
 	# shellcheck disable=SC2030,SC2031
 	export AEYE_RENDER_FAIL=1
 	# shellcheck disable=SC2031

@@ -34,9 +34,9 @@ setup() {
 }
 
 @test 'guidance spells out the $-escape as one backslash, and names \\$ as wrong' {
-	# The heredoc has to emit both \$ and \\\$ literally, which takes 3 and 5
-	# source backslashes — pin the rendered text so a re-edit can't quietly
-	# collapse them into the very mistake this warns about. See issue #180.
+	# Emitting \$ and \\\$ from the heredoc takes 3 and 5 source backslashes; pin
+	# the rendered text so a re-edit can't collapse them into the very mistake
+	# the guidance warns about.
 	# shellcheck disable=SC2030,SC2031
 	export TMUX="/tmp/fake"
 	run bash "$APP"

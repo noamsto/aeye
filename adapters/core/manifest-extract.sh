@@ -82,8 +82,8 @@ d2_png_for() {
 
 # _d2_render_fail DIR PNG MSG -> log a render failure and clean its partials.
 # svg/err are derived from PNG so callers pass only the message. Also publishes
-# MSG as D2_RENDER_ERR: the .err file is swept here, so this is the caller's only
-# chance to read the compile error and tell the agent its diagram never rendered.
+# MSG as D2_RENDER_ERR: the .err file is swept here, so a caller that wants the
+# compile error has no other source for it.
 _d2_render_fail() {
 	local dir="$1" png="$2" msg="$3" base now
 	base="${png%.png}"
@@ -112,8 +112,8 @@ d2_rm_render_set() {
 # agent) from "feature not installed" (stay silent).
 d2_render() {
 	local src="$1" dir="$2" theme id png err
-	# Reset first: callers loop over several sources, and a stale error from a
-	# previous one must never be reported against this render.
+	# Reset first: callers loop over several sources, so a stale error from an
+	# earlier one must never be reported against this render.
 	# shellcheck disable=SC2034 # read by the diagrams.sh hooks that source this
 	D2_RENDER_ERR=
 	mkdir -p "$dir"

@@ -36,11 +36,8 @@ manifest="$MANIFEST"
 was_missing=1
 [[ -f $png ]] && was_missing=0
 if ! d2_render "$candidate" "$DIAGRAMS_DIR" >/dev/null; then
-	# A diagram that won't compile is invisible twice over: no manifest entry, so
-	# no carousel pane either — indistinguishable from never having written one.
-	# Hand the agent the compile error so it can fix the source, the way the
-	# markdown guard below does. D2_RENDER_ERR is empty when aeye isn't installed:
-	# that's the feature being off, not a broken diagram, so stay silent.
+	# Empty means the aeye binary is absent — the feature is off, not a broken
+	# diagram — so there is nothing to report.
 	[[ -n ${D2_RENDER_ERR:-} ]] || exit 0
 	warn="$(basename "$candidate") FAILED to compile — it was NOT rendered and does NOT appear in the carousel. d2 error: $D2_RENDER_ERR"
 	if [[ $D2_RENDER_ERR == *'substitutions must begin on'* ]]; then

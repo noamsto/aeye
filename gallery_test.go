@@ -48,15 +48,35 @@ func TestDeleteImage(t *testing.T) {
 
 // Carousels sharing one terminal (tmux passthrough → one kitty store) collide
 // unless each viewer namespaces its image ids by pane. Disjoint blocks keep one
-// pane's top id below the next pane's base.
+// pane's ids from landing inside another's range, regardless of which hashes higher.
 func TestPaneImageIDsDisjoint(t *testing.T) {
 	a := galleryModel{pane: "%30"}
 	b := galleryModel{pane: "%38"}
 	if a.previewID() == b.previewID() {
 		t.Fatalf("preview ids collide: both %d", a.previewID())
 	}
-	if top := a.stripID(maxCellDim - 1); top >= b.previewID() {
-		t.Fatalf("id blocks overlap: pane %%30 top %d >= pane %%38 base %d", top, b.previewID())
+	aTop, bTop := a.stripID(maxCellDim-1), b.stripID(maxCellDim-1)
+	if a.previewID() < b.previewID() && aTop >= b.previewID() {
+		t.Fatalf("id blocks overlap: pane %%30 top %d >= pane %%38 base %d", aTop, b.previewID())
+	}
+	if b.previewID() < a.previewID() && bTop >= a.previewID() {
+		t.Fatalf("id blocks overlap: pane %%38 top %d >= pane %%30 base %d", bTop, a.previewID())
+	}
+}
+
+// The hostname rides in the hash so a pane id from a foreign tmux server (the
+// lazytmux remote bridge) can't collide with the same-numbered pane on this host.
+func TestPaneImageIDBaseDiffersByHost(t *testing.T) {
+	a := paneImageIDBaseOn("mbp-m4-pro", "%5")
+	b := paneImageIDBaseOn("tp-g6", "%5")
+	if a == b {
+		t.Fatalf("same id block for the same pane id on two hosts: %d", a)
+	}
+	if a != paneImageIDBaseOn("mbp-m4-pro", "%5") {
+		t.Fatal("not deterministic for one host+pane")
+	}
+	if paneImageIDBaseOn("h", "%1")%(maxCellDim+1) != 0 {
+		t.Fatal("block base must be a multiple of the block width")
 	}
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"hash/fnv"
 	"image"
 	imgcolor "image/color"
 	"io"
@@ -11,7 +12,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -73,19 +73,31 @@ func stripStart(cursor, stripCols, n int) int {
 	return clamp(cursor-stripCols/2, 0, n-stripCols)
 }
 
+// idBlocks bounds the hashed block index so the largest id stays inside the
+// 24 bits a unicode placeholder's fg colour can carry.
+var idBlocks = 0xFFFFFF / (maxCellDim + 1)
+
 // paneImageIDBase maps a tmux pane id to the base of a disjoint kitty image-id
-// block. Every carousel forwards its graphics to the one kitty store the tmux
-// server shares (passthrough), so a fixed id would collide and one viewer's image
-// would bleed into another's unicode placeholder. The numeric pane id (unique per
-// pane) seeds a block wide enough for the preview (base) plus every filmstrip
-// thumb (base+1 .. base+maxCellDim, the stripCols cap). A non-numeric pane — a
-// standalone launch outside tmux, hence the only instance — takes block 0.
+// block. Every carousel forwards its graphics to the one kitty store the terminal
+// owns, so a fixed id would collide and one viewer's image would bleed into
+// another's unicode placeholders. The hostname rides in the hash because pane ids
+// are unique per tmux SERVER: a carousel rendered on a foreign host (lazytmux's
+// remote bridge) reaches the same store through a second server, where %5 means
+// something else entirely.
 func paneImageIDBase(pane string) int {
-	n, err := strconv.Atoi(strings.TrimPrefix(pane, "%"))
+	host, err := os.Hostname()
 	if err != nil {
-		n = 0
+		host = ""
 	}
-	return (n + 1) * (maxCellDim + 1)
+	return paneImageIDBaseOn(host, pane)
+}
+
+func paneImageIDBaseOn(host, pane string) int {
+	h := fnv.New32a()
+	h.Write([]byte(host))
+	h.Write([]byte{0})
+	h.Write([]byte(pane))
+	return int(h.Sum32()%uint32(idBlocks)) * (maxCellDim + 1)
 }
 
 func (m *galleryModel) previewID() int    { return paneImageIDBase(m.pane) }

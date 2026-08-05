@@ -255,8 +255,10 @@ func (m *galleryModel) storePreviewCrop() string {
 		return transmitVirtual(m.previewID(), orig, m.l.previewW, m.l.previewH)
 	}
 	b := dst.Bounds()
-	if out := writeRaw(m.zoomRawPath(), dst); out != "" {
-		return transmitVirtualRaw(m.previewID(), out, b.Dx(), b.Dy(), m.l.previewW, m.l.previewH)
+	if !preferEncodedFrame(m.bridged) {
+		if out := writeRaw(m.zoomRawPath(), dst); out != "" {
+			return transmitVirtualRaw(m.previewID(), out, b.Dx(), b.Dy(), m.l.previewW, m.l.previewH)
+		}
 	}
 	return transmitVirtual(m.previewID(),
 		writePNGEnc(m.zoomScratchPath(), dst, orig, fastPNG.Encode), m.l.previewW, m.l.previewH)
@@ -279,19 +281,51 @@ func (m *galleryModel) transmitPreviewOnly() {
 // each frame render the CURRENT position instead of a stale backlogged one.
 const panFrameGap = 8 * time.Millisecond
 
+// bridgedPanFrameGap replaces it when the viewer renders onto a foreign host's
+// terminal (lazytmux's remote bridge, AEYE_BRIDGED): there every frame is a file
+// the bridge must fetch over ssh before the terminal can read it, so the cost per
+// frame is a network round trip rather than a 2.6ms encode.
+//
+// Sized against the reachable worst case rather than a measured RTT: the bridge
+// forwards no mouse events, so a bridged viewer can only pan by key-repeat
+// (~30/s, one every ~33ms). 60ms throttles that to ~16/s, leaving room for a
+// fetch of a few-hundred-KB PNG over a LAN or tailnet hop without the queue
+// growing. It's a starting point, not a measurement — if pan lags on a real
+// link, this is the number to re-measure; a per-link override (the bridge knows
+// the actual host) would belong there, not here.
+const bridgedPanFrameGap = 60 * time.Millisecond
+
+// bridged reports whether this viewer's output is being relayed to another host's
+// terminal. Set by lazytmux's bridge when it launches the carousel remotely.
+func bridged() bool { return os.Getenv("AEYE_BRIDGED") != "" }
+
+func panFrameGapFor(isBridged bool) time.Duration {
+	if isBridged {
+		return bridgedPanFrameGap
+	}
+	return panFrameGap
+}
+
+// preferEncodedFrame reports whether to spend a PNG encode to shrink the frame.
+// Locally the raw RGBA write wins (2.5x faster per frame, and the terminal reads
+// it straight off local disk); across a bridge the same frame is ~10-20x more
+// bytes on the wire, which inverts the trade.
+func preferEncodedFrame(isBridged bool) bool { return isBridged }
+
 // panFlushMsg re-stores the final framing of a throttled drag burst. Generation
 // gated, so only the newest arms a paint (mirroring vectorKickMsg).
 type panFlushMsg struct{ gen uint64 }
 
-// transmitPanFrame re-stores at most once per panFrameGap. When it throttles, it
+// transmitPanFrame re-stores at most once per the pacing gap. When it throttles, it
 // returns a trailing flush so the last position of a burst is never dropped.
 func (m *galleryModel) transmitPanFrame() tea.Cmd {
-	if time.Since(m.lastPanAt) >= panFrameGap {
+	gap := panFrameGapFor(m.bridged)
+	if time.Since(m.lastPanAt) >= gap {
 		m.transmitPreviewOnly()
 		m.lastPanAt = time.Now()
 		return nil
 	}
 	m.panGen++
 	g := m.panGen
-	return tea.Tick(panFrameGap, func(time.Time) tea.Msg { return panFlushMsg{gen: g} })
+	return tea.Tick(gap, func(time.Time) tea.Msg { return panFlushMsg{gen: g} })
 }

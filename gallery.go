@@ -77,13 +77,17 @@ func stripStart(cursor, stripCols, n int) int {
 // 24 bits a unicode placeholder's fg colour can carry.
 var idBlocks = 0xFFFFFF / (maxCellDim + 1)
 
-// paneImageIDBase maps a tmux pane id to the base of a disjoint kitty image-id
-// block. Every carousel forwards its graphics to the one kitty store the terminal
-// owns, so a fixed id would collide and one viewer's image would bleed into
-// another's unicode placeholders. The hostname rides in the hash because pane ids
-// are unique per tmux SERVER: a carousel rendered on a foreign host (lazytmux's
+// paneImageIDBase maps a tmux pane id to the base of a kitty image-id block.
+// Every carousel forwards its graphics to the one kitty store the terminal owns,
+// so a fixed id would collide and one viewer's image would bleed into another's
+// unicode placeholders. The hostname rides in the hash because pane ids are
+// unique per tmux SERVER: a carousel rendered on a foreign host (lazytmux's
 // remote bridge) reaches the same store through a second server, where %5 means
 // something else entirely.
+//
+// Blocks are hashed rather than sequential, so separation is probabilistic:
+// with ~56k buckets (idBlocks), ten concurrent carousels collide with
+// probability well under 0.1%.
 func paneImageIDBase(pane string) int {
 	host, err := os.Hostname()
 	if err != nil {

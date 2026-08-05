@@ -47,8 +47,9 @@ func TestDeleteImage(t *testing.T) {
 }
 
 // Carousels sharing one terminal (tmux passthrough → one kitty store) collide
-// unless each viewer namespaces its image ids by pane. Disjoint blocks keep one
-// pane's ids from landing inside another's range, regardless of which hashes higher.
+// unless each viewer namespaces its image ids by pane. This pair of pane ids
+// happens to hash to non-overlapping blocks; separation is probabilistic in
+// general (see paneImageIDBase), not a guarantee for every possible pair.
 func TestPaneImageIDsDisjoint(t *testing.T) {
 	a := galleryModel{pane: "%30"}
 	b := galleryModel{pane: "%38"}
@@ -67,12 +68,12 @@ func TestPaneImageIDsDisjoint(t *testing.T) {
 // The hostname rides in the hash so a pane id from a foreign tmux server (the
 // lazytmux remote bridge) can't collide with the same-numbered pane on this host.
 func TestPaneImageIDBaseDiffersByHost(t *testing.T) {
-	a := paneImageIDBaseOn("mbp-m4-pro", "%5")
-	b := paneImageIDBaseOn("tp-g6", "%5")
+	a := paneImageIDBaseOn("host-a", "%5")
+	b := paneImageIDBaseOn("host-b", "%5")
 	if a == b {
 		t.Fatalf("same id block for the same pane id on two hosts: %d", a)
 	}
-	if a != paneImageIDBaseOn("mbp-m4-pro", "%5") {
+	if a != paneImageIDBaseOn("host-a", "%5") {
 		t.Fatal("not deterministic for one host+pane")
 	}
 	if paneImageIDBaseOn("h", "%1")%(maxCellDim+1) != 0 {

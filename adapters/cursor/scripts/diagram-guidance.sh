@@ -32,8 +32,9 @@ relationships — Write a D2 diagram as a .d2 file and it renders into the
 carousel automatically. Write it to: $SRC_DIR/<name>.d2 (an absolute path
 outside any repo; never write .d2 files into the working project).
 Do NOT diagram trivial or linear one-step things. One diagram per concept.
-Escape a literal \$ in labels as \\\$ — a bare \$ starts a D2 substitution and
-the diagram silently fails to compile.
+Escape a literal \$ in labels as \\\$ — exactly ONE backslash. A bare \$ starts a
+D2 substitution, and \\\\\$ escapes the backslash instead, leaving the \$ live: both
+fail to compile, and a diagram that fails to compile does not appear at all.
 Use plain quoted labels (\\n for line breaks); do NOT use |md / |markdown block
 bodies anywhere — including title: — the carousel rasterizer can't paint them,
 so they render blank and the whole diagram is suppressed (it won't appear at all)

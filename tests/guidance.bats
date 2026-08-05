@@ -33,6 +33,18 @@ setup() {
 	[[ $ctx == *"|md"* ]]
 }
 
+@test 'guidance spells out the $-escape as one backslash, and names \\$ as wrong' {
+	# The heredoc has to emit both \$ and \\\$ literally, which takes 3 and 5
+	# source backslashes — pin the rendered text so a re-edit can't quietly
+	# collapse them into the very mistake this warns about. See issue #180.
+	# shellcheck disable=SC2030,SC2031
+	export TMUX="/tmp/fake"
+	run bash "$APP"
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
+	[[ $ctx == *'as \$ — exactly ONE backslash'* ]]
+	[[ $ctx == *'\\$ escapes the backslash'* ]]
+}
+
 @test "no host: emits nothing" {
 	run bash "$APP"
 	[ "$status" -eq 0 ]

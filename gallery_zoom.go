@@ -285,14 +285,22 @@ const panFrameGap = 8 * time.Millisecond
 // terminal (lazytmux's remote bridge, AEYE_BRIDGED): there every frame is a file
 // the bridge must fetch over ssh before the terminal can read it, so the cost per
 // frame is a network round trip rather than a 2.6ms encode.
+//
+// Sized against the reachable worst case rather than a measured RTT: the bridge
+// forwards no mouse events, so a bridged viewer can only pan by key-repeat
+// (~30/s, one every ~33ms). 60ms throttles that to ~16/s, leaving room for a
+// fetch of a few-hundred-KB PNG over a LAN or tailnet hop without the queue
+// growing. It's a starting point, not a measurement — if pan lags on a real
+// link, this is the number to re-measure; a per-link override (the bridge knows
+// the actual host) would belong there, not here.
 const bridgedPanFrameGap = 60 * time.Millisecond
 
 // bridged reports whether this viewer's output is being relayed to another host's
 // terminal. Set by lazytmux's bridge when it launches the carousel remotely.
 func bridged() bool { return os.Getenv("AEYE_BRIDGED") != "" }
 
-func panFrameGapFor(bridged bool) time.Duration {
-	if bridged {
+func panFrameGapFor(isBridged bool) time.Duration {
+	if isBridged {
 		return bridgedPanFrameGap
 	}
 	return panFrameGap
@@ -302,7 +310,7 @@ func panFrameGapFor(bridged bool) time.Duration {
 // Locally the raw RGBA write wins (2.5x faster per frame, and the terminal reads
 // it straight off local disk); across a bridge the same frame is ~10-20x more
 // bytes on the wire, which inverts the trade.
-func preferEncodedFrame(bridged bool) bool { return bridged }
+func preferEncodedFrame(isBridged bool) bool { return isBridged }
 
 // panFlushMsg re-stores the final framing of a throttled drag burst. Generation
 // gated, so only the newest arms a paint (mirroring vectorKickMsg).

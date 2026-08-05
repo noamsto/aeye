@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.1](https://github.com/noamsto/aeye/compare/v0.16.0...v0.16.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* **diagrams:** surface d2 compile errors to the writing session ([#181](https://github.com/noamsto/aeye/issues/181)) ([f2eb4ba](https://github.com/noamsto/aeye/commit/f2eb4ba91c521d24b0b3df967e7c2eff186b2e4d))
+
 ## [0.16.0](https://github.com/noamsto/aeye/compare/v0.15.1...v0.16.0) (2026-08-05)
 
 

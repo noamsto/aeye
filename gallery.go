@@ -185,11 +185,14 @@ type galleryModel struct {
 	delGen  uint64
 
 	// Mouse drag state for preview panning. lastPanAt/panGen throttle the re-store
-	// to panFrameGap so a fast drag renders current positions, not a backlog.
+	// to panFrameGapFor(bridged) so a fast drag renders current positions, not a
+	// backlog. bridged also gates storePreviewCrop's raw-vs-PNG choice — see
+	// preferEncodedFrame.
 	dragging             bool
 	lastDragX, lastDragY int
 	lastPanAt            time.Time
 	panGen               uint64
+	bridged              bool
 
 	// Native kitty OSC 72 drag-out: dragNative is probed once at startup and the
 	// terminal is armed as a drag source; dragInFlight stops a second drag from
@@ -1085,6 +1088,7 @@ func runGallery(pane string) error {
 		// OSC 72 can't cross tmux and only kitty implements it; probe only there,
 		// where the query still confirms the running version actually supports it.
 		dragNative: os.Getenv("TMUX") == "" && strings.HasPrefix(termName(), "xterm-kitty") && probeDragProtocol(),
+		bridged:    bridged(),
 	}
 	// Decode the initial selection now so zoom works on the first keystroke
 	// (otherwise curImg is nil until the first refresh tick).

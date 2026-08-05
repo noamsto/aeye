@@ -3,6 +3,7 @@ package main
 import (
 	"image"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -308,5 +309,22 @@ func TestCropGeometryUsesMeasuredCellSize(t *testing.T) {
 	m.crop = m.baseFillCrop()
 	if !m.cropFillsBox() {
 		t.Errorf("crop %+v from baseFillCrop does not fill the box at a 10x22 cell", m.crop)
+	}
+}
+
+// Bridged viewers pay a network round trip per stored frame instead of a local
+// encode, so both the pacing and the frame format flip when AEYE_BRIDGED is set.
+func TestBridgedFramePolicy(t *testing.T) {
+	if panFrameGapFor(false) != 8*time.Millisecond {
+		t.Fatal("local gap changed")
+	}
+	if panFrameGapFor(true) <= 8*time.Millisecond {
+		t.Fatal("bridged gap must be wider than the local one")
+	}
+	if !preferEncodedFrame(true) {
+		t.Fatal("bridged must prefer the encoded (PNG) frame")
+	}
+	if preferEncodedFrame(false) {
+		t.Fatal("local must keep the raw RGBA fast path")
 	}
 }

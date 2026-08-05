@@ -65,8 +65,6 @@ func TestPaneImageIDsDisjoint(t *testing.T) {
 	}
 }
 
-// The hostname rides in the hash so a pane id from a foreign tmux server (the
-// lazytmux remote bridge) can't collide with the same-numbered pane on this host.
 func TestPaneImageIDBaseDiffersByHost(t *testing.T) {
 	a := paneImageIDBaseOn("host-a", "%5")
 	b := paneImageIDBaseOn("host-b", "%5")

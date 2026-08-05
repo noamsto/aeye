@@ -24,7 +24,7 @@ setup() {
 [[ ${1:-} == render-diagram ]] || exit 0
 echo "$*" >>"$RENDER_LOG"
 [[ -n ${AEYE_RENDER_FAIL:-} ]] && {
-	echo "render boom" >&2
+	echo "${AEYE_RENDER_FAIL_MSG:-render boom}" >&2
 	exit 1
 }
 in="$2"
@@ -111,11 +111,39 @@ run_app() {
 }
 
 @test "render-diagram failure -> skip, log to render-errors.log, no manifest line" {
+	# shellcheck disable=SC2030,SC2031
 	export AEYE_RENDER_FAIL=1
 	run run_app
 	[ "$status" -eq 0 ]
 	[ ! -f "$MANIFEST" ]
 	[ -f "$DIAGRAMS/render-errors.log" ]
+}
+
+@test "a compile failure warns the agent with the d2 error, opens no carousel" {
+	# shellcheck disable=SC2030,SC2031
+	export AEYE_RENDER_FAIL=1
+	# shellcheck disable=SC2030,SC2031
+	export AEYE_RENDER_FAIL_MSG="flow.d2:3:9: missing value after colon"
+	run run_app
+	[ "$status" -eq 0 ]
+	# Cursor's hook contract is a bare additional_context, not Claude's wrapper
+	ctx="$(jq -r '.additional_context' <<<"$output")"
+	[[ $ctx == *flow.d2* ]]
+	[[ $ctx == *"FAILED to compile"* ]]
+	[[ $ctx == *"missing value after colon"* ]]
+	[ ! -f "$MANIFEST" ]
+	[ ! -s "$TOGGLE_LOG" ]
+}
+
+@test 'a $-substitution failure adds the one-backslash hint' {
+	# shellcheck disable=SC2030,SC2031
+	export AEYE_RENDER_FAIL=1
+	# shellcheck disable=SC2030,SC2031
+	export AEYE_RENDER_FAIL_MSG="flow.d2:142:61: substitutions must begin on {"
+	run run_app
+	ctx="$(jq -r '.additional_context' <<<"$output")"
+	[[ $ctx == *'ONE backslash'* ]]
+	[[ $ctx == *'\$'* ]]
 }
 
 @test "a markdown node (<foreignObject>) is suppressed: warned, logged, not shown" {

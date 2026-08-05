@@ -48,7 +48,19 @@ for candidate in "${candidates[@]}"; do
 	# applies — a cached PNG was already vetted on its first render.
 	was_missing=1
 	[[ -f $png ]] && was_missing=0
-	d2_render "$candidate" "$DIAGRAMS_DIR" >/dev/null || continue
+	if ! d2_render "$candidate" "$DIAGRAMS_DIR" >/dev/null; then
+		# Empty means the aeye binary is absent — the feature is off, not a broken
+		# diagram — so there is nothing to report.
+		[[ -n ${D2_RENDER_ERR:-} ]] || continue
+		warn="$(basename "$candidate") FAILED to compile — it was NOT rendered and does NOT appear in the carousel. d2 error: $D2_RENDER_ERR"
+		if [[ $D2_RENDER_ERR == *'substitutions must begin on'* ]]; then
+			warn+=' Escape a literal $ in a label as \$ — exactly ONE backslash. \\$ escapes the backslash itself and leaves the $ live as a substitution sigil, which is what failed here.'
+		fi
+		warn+=' Fix the .d2 and write it again.'
+		jq -nc --arg ctx "$warn" \
+			'{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}'
+		continue
+	fi
 
 	# d2 emits |md / |markdown bodies as an HTML <foreignObject>, which resvg
 	# can't paint — those nodes rasterize blank while d2 exits 0, a silent

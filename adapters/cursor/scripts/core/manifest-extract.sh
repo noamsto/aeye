@@ -81,7 +81,9 @@ d2_png_for() {
 }
 
 # _d2_render_fail DIR PNG MSG -> log a render failure and clean its partials.
-# svg/err are derived from PNG so callers pass only the message.
+# svg/err are derived from PNG so callers pass only the message. Also publishes
+# MSG as D2_RENDER_ERR: the .err file is swept here, so a caller that wants the
+# compile error has no other source for it.
 _d2_render_fail() {
 	local dir="$1" png="$2" msg="$3" base now
 	base="${png%.png}"
@@ -89,6 +91,7 @@ _d2_render_fail() {
 	printf '%s\t%s\t%s\n' "$now" "$(basename "$base")" "$msg" \
 		>>"$dir/render-errors.log"
 	rm -f "$base.svg" "$base.err" "$png"
+	D2_RENDER_ERR="$msg"
 }
 
 # d2_rm_render_set DARK_PNG -> remove both theme variants (png/svg/err) of one
@@ -104,8 +107,15 @@ d2_rm_render_set() {
 # absent) and echoes the canonical (dark) png path for the manifest; the carousel
 # swaps the suffix to the live theme at view time. Returns 1 (no output) when the
 # aeye binary is missing or any render fails (failure logged to render-errors.log).
+# On a render failure D2_RENDER_ERR holds the compile error; it stays empty when
+# the binary is absent, which is how callers tell "broken diagram" (warn the
+# agent) from "feature not installed" (stay silent).
 d2_render() {
 	local src="$1" dir="$2" theme id png err
+	# Reset first: callers loop over several sources, so a stale error from an
+	# earlier one must never be reported against this render.
+	# shellcheck disable=SC2034 # read by the diagrams.sh hooks that source this
+	D2_RENDER_ERR=
 	mkdir -p "$dir"
 
 	local aeye_bin="${AEYE_BIN:-aeye}"

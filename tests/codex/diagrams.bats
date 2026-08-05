@@ -12,6 +12,8 @@ setup() {
 	DIAGRAMS="$AEYE_DIR/images/diagrams"
 	DOTD2="$BATS_TEST_TMPDIR/flow.d2"
 	printf 'a -> b\n' >"$DOTD2"
+	DOTD2B="$BATS_TEST_TMPDIR/other.d2"
+	printf 'x -> y\n' >"$DOTD2B"
 
 	# Stub aeye the same way the Claude adapter's diagrams.bats does: the whole
 	# d2-compile/fix-fonts/contrast/resvg pipeline lives inside the real binary
@@ -25,11 +27,17 @@ setup() {
 [[ ${1:-} == render-diagram ]] || exit 0
 echo "$*" >>"$RENDER_LOG"
 [[ -n ${AEYE_RENDER_FAIL:-} ]] && {
-	echo "render boom" >&2
+	echo "${AEYE_RENDER_FAIL_MSG:-render boom}" >&2
 	exit 1
 }
 in="$2"
 out="$3"
+# Per-source failure (AEYE_RENDER_FAIL is blanket): lets a multi-file patch mix
+# one broken .d2 with a good one.
+if grep -q 'BADSYNTAX' "$in" 2>/dev/null; then
+	echo "$(basename "$in"):1:1: substitutions must begin on {" >&2
+	exit 1
+fi
 if grep -q '|md' "$in" 2>/dev/null; then
 	printf '<svg><foreignObject><div>md</div></foreignObject></svg>' >"${out%.png}.svg"
 else
@@ -50,7 +58,7 @@ STUB
 }
 
 run_app() { # $1 = fixture name
-	sed "s#D2PATH#$DOTD2#g" "$FIXTURES/$1" | bash "$APP"
+	sed -e "s#D2PATH2#$DOTD2B#g" -e "s#D2PATH#$DOTD2#g" "$FIXTURES/$1" | bash "$APP"
 }
 
 @test "apply_patch adding a .d2 renders a png and appends one manifest line" {
@@ -102,11 +110,54 @@ run_app() { # $1 = fixture name
 }
 
 @test "render-diagram failure -> skip, log to render-errors.log, no manifest line" {
+	# shellcheck disable=SC2030,SC2031
 	export AEYE_RENDER_FAIL=1
 	run run_app apply-patch-d2.json
 	[ "$status" -eq 0 ]
 	[ ! -f "$MANIFEST" ]
 	[ -f "$DIAGRAMS/render-errors.log" ]
+}
+
+@test "a compile failure warns the agent with the d2 error, opens no carousel" {
+	# shellcheck disable=SC2030,SC2031
+	export AEYE_RENDER_FAIL=1
+	# shellcheck disable=SC2030,SC2031
+	export AEYE_RENDER_FAIL_MSG="flow.d2:3:9: missing value after colon"
+	run run_app apply-patch-d2.json
+	[ "$status" -eq 0 ]
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
+	[[ $ctx == *flow.d2* ]]
+	[[ $ctx == *"FAILED to compile"* ]]
+	[[ $ctx == *"missing value after colon"* ]]
+	[ ! -f "$MANIFEST" ]
+	[ ! -s "$TOGGLE_LOG" ]
+}
+
+@test 'a $-substitution failure adds the one-backslash hint' {
+	# shellcheck disable=SC2030,SC2031
+	export AEYE_RENDER_FAIL=1
+	# shellcheck disable=SC2030,SC2031
+	export AEYE_RENDER_FAIL_MSG="flow.d2:142:61: substitutions must begin on {"
+	run run_app apply-patch-d2.json
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
+	[[ $ctx == *'ONE backslash'* ]]
+	[[ $ctx == *'\$'* ]]
+}
+
+@test "one broken .d2 in a multi-file patch: warned, the good one still renders" {
+	printf 'BADSYNTAX\n' >"$DOTD2"
+	run run_app apply-patch-two-d2.json
+	[ "$status" -eq 0 ]
+	# exactly one warning, naming the broken source — not the sibling that rendered
+	[ "$(wc -l <<<"$output")" -eq 1 ]
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
+	[[ $ctx == *flow.d2* ]]
+	[[ $ctx != *other.d2* ]]
+	# the good sibling is unaffected: one manifest line, carousel opened once
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 1 ]
+	run jq -r '.name' "$MANIFEST"
+	[ "$output" = "other" ]
 }
 
 @test "a markdown node (<foreignObject>) is suppressed: warned, logged, not shown" {

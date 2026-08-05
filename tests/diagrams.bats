@@ -22,7 +22,7 @@ setup() {
 [[ ${1:-} == render-diagram ]] || exit 0
 echo "$*" >>"$RENDER_LOG"
 [[ -n ${AEYE_RENDER_FAIL:-} ]] && {
-	echo "render boom" >&2
+	echo "${AEYE_RENDER_FAIL_MSG:-render boom}" >&2
 	exit 1
 }
 in="$2"
@@ -132,6 +132,44 @@ run_app() { # $1 = fixture name
 	[ "$status" -eq 0 ]
 	[ ! -f "$MANIFEST" ]
 	[ -f "$DIAGRAMS/render-errors.log" ]
+}
+
+@test "a compile failure warns the agent with the d2 error, opens no carousel" {
+	# shellcheck disable=SC2030,SC2031
+	export AEYE_RENDER_FAIL=1
+	# shellcheck disable=SC2030
+	export AEYE_RENDER_FAIL_MSG="flow.d2:3:9: missing value after colon"
+	run run_app hook-write-d2.json
+	[ "$status" -eq 0 ]
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
+	[[ $ctx == *flow.d2* ]]
+	[[ $ctx == *"FAILED to compile"* ]]
+	[[ $ctx == *"missing value after colon"* ]]
+	[ ! -f "$MANIFEST" ]
+	[ ! -s "$TOGGLE_LOG" ]
+}
+
+@test 'a $-substitution failure adds the one-backslash hint' {
+	# \\$ instead of \$ escapes the backslash and leaves the $ live, so d2 tries
+	# to expand a substitution.
+	# shellcheck disable=SC2030,SC2031
+	export AEYE_RENDER_FAIL=1
+	# shellcheck disable=SC2031
+	export AEYE_RENDER_FAIL_MSG="flow.d2:142:61: substitutions must begin on {"
+	run run_app hook-write-d2.json
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
+	[[ $ctx == *'ONE backslash'* ]]
+	[[ $ctx == *'\$'* ]]
+}
+
+@test "a compile failure the agent already fixed renders on the next write" {
+	# shellcheck disable=SC2030,SC2031
+	AEYE_RENDER_FAIL=1 run run_app hook-write-d2.json
+	[ ! -f "$MANIFEST" ]
+	run run_app hook-edit-d2.json
+	[ -f "$MANIFEST" ]
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 1 ]
 }
 
 @test "aeye binary absent -> clean no-op (no manifest, no warning)" {

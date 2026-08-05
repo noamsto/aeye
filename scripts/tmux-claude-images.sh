@@ -118,6 +118,7 @@ launch_tmux() {
 	local env_args=()
 	[[ -n ${CLAUDE_CODE_SESSION_ID:-} ]] && env_args+=(-e AEYE_OWNER="$CLAUDE_CODE_SESSION_ID")
 	[[ -n ${AEYE_DEBUG:-} ]] && env_args+=(-e AEYE_DEBUG="$AEYE_DEBUG")
+	[[ -n ${AEYE_BRIDGED:-} ]] && env_args+=(-e AEYE_BRIDGED="$AEYE_BRIDGED")
 	local cmd
 	printf -v cmd '%q %q' "$VIEWER_BIN" "$KEY"
 	# Split along the host window's longer axis (overridable via AEYE_SPLIT); record

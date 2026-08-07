@@ -123,6 +123,67 @@ func TestChooseGridBackend(t *testing.T) {
 	}
 }
 
+func TestChooseRelayBackend(t *testing.T) {
+	cases := []struct {
+		name string
+		term string
+		want gridBackend
+	}{
+		{"kitty", "xterm-kitty", backendKitty},
+		{"ghostty", "xterm-ghostty", backendKitty},
+		{"foot", "foot", backendSymbols},
+		{"tmux", "tmux-256color", backendSymbols},
+		{"empty", "", backendSymbols},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := chooseRelayBackend(c.term); got != c.want {
+				t.Errorf("chooseRelayBackend(%q) = %v, want %v", c.term, got, c.want)
+			}
+		})
+	}
+}
+
+func TestParseRelayTermName(t *testing.T) {
+	cases := []struct {
+		name     string
+		out      string
+		wantTerm string
+		wantOK   bool
+	}{
+		{"all-control kitty", "1 xterm-kitty\n", "xterm-kitty", true},
+		{"all-control mixed termnames", "1 xterm-kitty\n1 tmux-256color\n", "xterm-kitty", true},
+		{"all-control first empty", "1 \n1 xterm-ghostty\n", "xterm-ghostty", true},
+		{"any non-control", "1 xterm-kitty\n0 xterm-256color\n", "", false},
+		{"empty output", "", "", false},
+		{"whitespace only", "  \n\t\n", "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			gotTerm, gotOK := parseRelayTermName(c.out)
+			if gotTerm != c.wantTerm || gotOK != c.wantOK {
+				t.Errorf("parseRelayTermName(%q) = (%q, %v), want (%q, %v)",
+					c.out, gotTerm, gotOK, c.wantTerm, c.wantOK)
+			}
+		})
+	}
+}
+
+func TestRelayListClientsArgs(t *testing.T) {
+	// Server-wide list-clients (no -t) is a false-negative bug: a real client
+	// on any other session on the same server would defeat the relay gate.
+	got := relayListClientsArgs("%42")
+	want := []string{"list-clients", "-t", "%42", "-F", "#{client_control_mode} #{client_termname}"}
+	if len(got) != len(want) {
+		t.Fatalf("relayListClientsArgs = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("relayListClientsArgs = %v, want %v", got, want)
+		}
+	}
+}
+
 func TestPlaceholderBlock(t *testing.T) {
 	// id=1 -> fg 0;0;1; 2 cols x 1 row. Cell = U+10EEEE + diacritic[row] + diacritic[col].
 	got := placeholderBlock(1, 2, 1)

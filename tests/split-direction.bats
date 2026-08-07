@@ -62,7 +62,7 @@ tmux_stub_setup() {
 	export CLAUDE_STATUS_DIR="$BATS_TEST_TMPDIR/state"
 	mkdir -p "$CLAUDE_STATUS_DIR/images"
 	export TMUX_PANE='%9' TMUX='/tmp/fake-tmux,123,0'
-	echo '{"type":"image","path":"/x.png","source":"d2"}' >"$CLAUDE_STATUS_DIR/images/9.jsonl"
+	echo '{"type":"image","path":"/x.png","source":"d2"}' >"$CLAUDE_STATUS_DIR/images/123-9.jsonl"
 	STUB="$BATS_TEST_TMPDIR/bin"
 	mkdir -p "$STUB"
 	printf '#!/usr/bin/env bash\n:\n' >"$STUB/aeye"
@@ -115,7 +115,7 @@ kitty_stub_setup() {
 	mkdir -p "$CLAUDE_STATUS_DIR/images"
 	export AEYE_HOST=kitty TMUX_PANE='%9' TMUX='/tmp/fake-tmux,123,0'
 	unset KITTY_WINDOW_ID
-	echo '{"type":"image","path":"/x.png","source":"d2"}' >"$CLAUDE_STATUS_DIR/images/9.jsonl"
+	echo '{"type":"image","path":"/x.png","source":"d2"}' >"$CLAUDE_STATUS_DIR/images/123-9.jsonl"
 	STUB="$BATS_TEST_TMPDIR/bin"
 	mkdir -p "$STUB"
 	printf '#!/usr/bin/env bash\n:\n' >"$STUB/aeye"

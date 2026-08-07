@@ -3,8 +3,9 @@
 setup() {
 	export CLAUDE_STATUS_DIR="$BATS_TEST_TMPDIR/state"
 	export TMUX_PANE="%7"
+	export TMUX="fake,4242,0" # pane ids are per server; pin one so the key is stable
 	unset CLAUDE_CODE_SESSION_ID
-	MANIFEST="$CLAUDE_STATUS_DIR/images/7.jsonl"
+	MANIFEST="$CLAUDE_STATUS_DIR/images/4242-7.jsonl"
 	DIAGRAMS="$CLAUDE_STATUS_DIR/images/diagrams"
 	DOTD2="$BATS_TEST_TMPDIR/flow.d2"
 	printf 'a -> b\n' >"$DOTD2"
@@ -108,7 +109,7 @@ run_app() { # $1 = fixture name
 	run_app hook-write-d2.json
 	old="$(jq -r '.path' "$MANIFEST")"
 	# a second pane's manifest references the same render
-	printf '{"type":"image","path":"%s"}\n' "$old" >"$CLAUDE_STATUS_DIR/images/9.jsonl"
+	printf '{"type":"image","path":"%s"}\n' "$old" >"$CLAUDE_STATUS_DIR/images/4242-9.jsonl"
 	printf 'a -> b -> c\n' >"$DOTD2"
 	run_app hook-edit-d2.json
 	# pruned from this pane's manifest, but the file stays — pane 9 still shows it

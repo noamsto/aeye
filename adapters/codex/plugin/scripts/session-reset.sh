@@ -29,13 +29,12 @@ resolve_state_dirs
 
 # Same keying as images.sh/diagrams.sh so we act on the right manifest.
 session="$(codex_session_id "$payload")"
-pane_id="${TMUX_PANE:-$session}"
-pane_file="${pane_id#%}"
+pane_file="$(resolve_pane_key "$session")"
 
 clear_pane() { rm -f "$IMAGES_DIR/$1.jsonl" "$IMAGES_DIR/$1.owner" "$IMAGES_DIR/$1.lock"; }
 
 # --- This pane's manifest ---
-if [[ -n $pane_id ]] && valid_pane_file "$pane_file"; then
+if [[ -n $pane_file ]] && valid_pane_file "$pane_file"; then
 	# Serialize the clear/owner-stamp against a live images.sh append that may
 	# fire the instant the session starts.
 	_manifest_lock "$IMAGES_DIR/$pane_file.lock"
@@ -66,8 +65,11 @@ fi
 # In tmux a manifest for a pane id absent from the server is dead. Outside tmux,
 # session-keyed manifests have no liveness signal, so age them out instead.
 live=""
-[[ -n ${TMUX:-} ]] && command -v tmux >/dev/null 2>&1 &&
-	live="$(tmux list-panes -a -F '%#{pane_id}' 2>/dev/null | tr -d '%')"
+if [[ -n ${TMUX:-} ]] && command -v tmux >/dev/null 2>&1; then
+	# A failed probe (server shutting down, unreachable socket) must leave live
+	# empty, not abort the hook — pipefail would surface it as our exit status.
+	live="$(tmux list-panes -a -F '%#{pane_id}' 2>/dev/null | tr -d '%')" || live=""
+fi
 
 gc_sweep "$pane_file" "$live"
 

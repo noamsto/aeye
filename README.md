@@ -244,7 +244,8 @@ the stable interface. Each agent gets a small **capture adapter** that appends t
 the manifest; the viewer never changes.
 
 - **Viewer** (Go binary) — reads
-  `${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}/images/<pane>.jsonl`
+  `${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}/images/<key>.jsonl`
+  (`<key>` is `<tmux server pid>-<pane>` inside tmux, else the session id)
   and renders via the kitty graphics protocol (or chafa fallback).
 - **Adapters** (`adapters/`) — per-agent capture, at parity: `claude-code/`,
   `codex/`, and `cursor/` (each a PostToolUse/SessionStart hook + skills).

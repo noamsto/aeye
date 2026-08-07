@@ -8,7 +8,8 @@ setup() {
 
 	export AEYE_DIR="$BATS_TEST_TMPDIR/state"
 	export TMUX_PANE="%7"
-	MANIFEST="$AEYE_DIR/images/7.jsonl"
+	export TMUX="fake,4242,0" # pane ids are per server; pin one so the key is stable
+	MANIFEST="$AEYE_DIR/images/4242-7.jsonl"
 
 	# The toggle is only invoked by diagrams.sh, but stub it anyway so a stray
 	# --ensure-open call in either script never touches the real tmux state.
@@ -100,8 +101,8 @@ shell_payload() {
 		'{conversation_id:"conv-1",session_id:"conv-1",tool_name:"Write",tool_input:{file_path:$p},tool_output:"{}",cwd:"",workspace_roots:[$wr],hook_event_name:"postToolUse"}')"
 	echo "$payload" | bash "$APP"
 	[ ! -f "$MANIFEST" ]
-	[ ! -e "$AEYE_DIR/images/7.lock" ]
-	[ ! -e "$AEYE_DIR/images/7.owner" ]
+	[ ! -e "$AEYE_DIR/images/4242-7.lock" ]
+	[ ! -e "$AEYE_DIR/images/4242-7.owner" ]
 }
 
 @test "keyed by TMUX_PANE, not the cursor conversation id" {

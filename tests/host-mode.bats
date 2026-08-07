@@ -7,9 +7,9 @@ setup() {
 	mkdir -p "$CLAUDE_STATUS_DIR/images"
 	APP="$(dirname "$BATS_TEST_DIRNAME")/scripts/tmux-claude-images.sh"
 
-	export TMUX="/tmp/fake-tmux-socket"
+	export TMUX="/tmp/fake-tmux-socket,4242,0" # server pid 4242 -> key 4242-<pane>
 	export TMUX_PANE="%7"
-	echo '{"type":"image","path":"/x.png","source":"d2"}' >"$CLAUDE_STATUS_DIR/images/7.jsonl"
+	echo '{"type":"image","path":"/x.png","source":"d2"}' >"$CLAUDE_STATUS_DIR/images/4242-7.jsonl"
 
 	STUB_BIN="$BATS_TEST_TMPDIR/bin"
 	mkdir -p "$STUB_BIN"
@@ -46,7 +46,7 @@ STUB
 	run bash "$APP" --resolve
 	[ "$status" -eq 0 ]
 	[ "$(printf '%s' "$output" | cut -f1)" = "kitty" ]
-	[ "$(printf '%s' "$output" | cut -f2)" = "%7" ]
+	[ "$(printf '%s' "$output" | cut -f2)" = "4242-7" ]
 }
 
 @test "AEYE_HOST unset in tmux resolves to tmux mode" {

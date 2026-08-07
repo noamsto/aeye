@@ -2,7 +2,7 @@
 # Render each .d2 file a Codex apply_patch call wrote into a PNG and append it
 # to the per-pane image manifest. PostToolUse hook: reads the hook JSON
 # payload on stdin. Mirrors the Claude adapter's diagrams.sh — self-contained,
-# keyed by $TMUX_PANE or the Codex session id.
+# keyed per tmux server+pane, else by the Codex session id.
 set -euo pipefail
 
 PLUGIN_ROOT="${PLUGIN_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
@@ -18,9 +18,8 @@ payload="$(cat)"
 
 session="$(codex_session_id "$payload")"
 
-pane_id="${TMUX_PANE:-$session}"
-[[ -n $pane_id ]] || exit 0
-pane_file="${pane_id#%}"
+pane_file="$(resolve_pane_key "$session")"
+[[ -n $pane_file ]] || exit 0
 valid_pane_file "$pane_file" || exit 0
 
 # codex_extract_touched_paths returns both images and .d2 paths in one call;

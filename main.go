@@ -34,7 +34,7 @@ var cli struct {
 	Version kong.VersionFlag `short:"v" help:"Print the build version."`
 
 	Open struct {
-		Key string `arg:"" optional:"" help:"Manifest key: a tmux pane id (%N) or a Claude Code session id."`
+		Key string `arg:"" optional:"" help:"Manifest key: <tmux server pid>-<pane> inside tmux, else a Claude Code session id."`
 	} `cmd:"" default:"withargs" help:"Open the image carousel (default)."`
 
 	RenderDiagram struct {

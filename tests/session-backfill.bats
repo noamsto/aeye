@@ -3,9 +3,10 @@
 setup() {
 	export CLAUDE_STATUS_DIR="$BATS_TEST_TMPDIR/state"
 	export TMUX_PANE="%7"
+	export TMUX="fake,4242,0" # pane ids are per server; pin one so the key is stable
 	export CLAUDE_CODE_SESSION_ID="sess-resume"
-	MANIFEST="$CLAUDE_STATUS_DIR/images/7.jsonl"
-	OWNER="$CLAUDE_STATUS_DIR/images/7.owner"
+	MANIFEST="$CLAUDE_STATUS_DIR/images/4242-7.jsonl"
+	OWNER="$CLAUDE_STATUS_DIR/images/4242-7.owner"
 	APP="$(dirname "$BATS_TEST_DIRNAME")/adapters/claude-code/plugin/scripts/session-backfill.sh"
 
 	IMG="$BATS_TEST_TMPDIR/pic.png"

@@ -3,7 +3,8 @@
 setup() {
 	export CLAUDE_STATUS_DIR="$BATS_TEST_TMPDIR/state"
 	export TMUX_PANE="%7"
-	MANIFEST="$CLAUDE_STATUS_DIR/images/7.jsonl"
+	export TMUX="fake,4242,0" # pane ids are per server; pin one so the key is stable
+	MANIFEST="$CLAUDE_STATUS_DIR/images/4242-7.jsonl"
 	IMG="$BATS_TEST_TMPDIR/pic.png"
 	printf 'x' >"$IMG"
 	APP="$(dirname "$BATS_TEST_DIRNAME")/adapters/claude-code/plugin/scripts/images.sh"
@@ -73,7 +74,7 @@ run_app() { # $1 = fixture name
 	CLAUDE_CODE_SESSION_ID="sess-B" run_app hook-read-image.json
 	run wc -l <"$MANIFEST"
 	[ "$output" -eq 1 ]
-	run cat "$CLAUDE_STATUS_DIR/images/7.owner"
+	run cat "$CLAUDE_STATUS_DIR/images/4242-7.owner"
 	[ "$output" = "sess-B" ]
 }
 
@@ -107,7 +108,7 @@ run_app() { # $1 = fixture name
 	# CLAUDE_STATUS_DIR is already exported by setup(); set the override too.
 	export AEYE_DIR="$BATS_TEST_TMPDIR/carousel"
 	run_app hook-read-image.json
-	[ -f "$AEYE_DIR/images/7.jsonl" ]
+	[ -f "$AEYE_DIR/images/4242-7.jsonl" ]
 	[ ! -f "$MANIFEST" ]
 }
 

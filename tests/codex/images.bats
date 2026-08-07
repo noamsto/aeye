@@ -8,8 +8,9 @@ setup() {
 
 	export AEYE_DIR="$BATS_TEST_TMPDIR/state"
 	export TMUX_PANE="%7"
+	export TMUX="fake,4242,0" # pane ids are per server; pin one so the key is stable
 	unset CODEX_SESSION_ID 2>/dev/null || true
-	MANIFEST="$AEYE_DIR/images/7.jsonl"
+	MANIFEST="$AEYE_DIR/images/4242-7.jsonl"
 
 	# The toggle is only invoked by diagrams.sh, but stub it anyway so a stray
 	# --ensure-open call in either script never touches the real tmux state.
@@ -70,8 +71,8 @@ run_app() { # $1 = fixture name, remaining args are sed "s#FROM#TO#g" pairs
 @test "no touched paths -> clean no-op, no state dir created" {
 	run_app apply-patch-d2.json D2PATH "$BATS_TEST_TMPDIR/nope.d2"
 	[ ! -f "$MANIFEST" ]
-	[ ! -e "$AEYE_DIR/images/7.lock" ]
-	[ ! -e "$AEYE_DIR/images/7.owner" ]
+	[ ! -e "$AEYE_DIR/images/4242-7.lock" ]
+	[ ! -e "$AEYE_DIR/images/4242-7.owner" ]
 }
 
 @test "keyed by TMUX_PANE, not the codex session id" {

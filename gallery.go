@@ -1060,8 +1060,22 @@ func runGallery(pane string) error {
 	// Init tracing before the first load so its owner decision is captured too.
 	traceInit(pane)
 	images := loadManifest(pane, theme)
-	backend, rasterFmt := chooseGridBackend(termName(), os.Getenv("TMUX") != "", os.Getenv("TERM_PROGRAM"), os.Getenv("LC_TERMINAL"), os.Getenv("WEZTERM_PANE"), os.Getenv("TERM"), probeSixel)
-	tracef("start backend=%v nimg=%d tmux=%v term=%q", backend, len(images), os.Getenv("TMUX") != "", termName())
+	termname := termName()
+	relayTerm, relayed := relayTermName()
+	if relayed {
+		termname = relayTerm
+	}
+	var backend gridBackend
+	var rasterFmt string
+	// The DA1 probe measures tmux's compile-time sixel support, which says
+	// nothing about a relay's terminal; across the bridge only kitty graphics
+	// are localised.
+	if relayed || bridged() {
+		backend = chooseRelayBackend(termname)
+	} else {
+		backend, rasterFmt = chooseGridBackend(termname, os.Getenv("TMUX") != "", os.Getenv("TERM_PROGRAM"), os.Getenv("LC_TERMINAL"), os.Getenv("WEZTERM_PANE"), os.Getenv("TERM"), probeSixel)
+	}
+	tracef("start backend=%v nimg=%d tmux=%v term=%q", backend, len(images), os.Getenv("TMUX") != "", termname)
 	// Only the kitty backend maps cells to pixels; on the others the query would
 	// block for its timeout and a late reply could land on bubbletea's stdin, where
 	// a digit is a navigation key.
@@ -1124,6 +1138,65 @@ func termName() string {
 		return os.Getenv("TERM")
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// relayTermName reports whether every client attached to THIS pane's session
+// is control-mode (a relay-only session) and, if so, the first non-empty
+// client_termname those relays advertise. Outside tmux, without TMUX_PANE, on
+// error, with no clients, or with any interactive client, returns ("", false)
+// so callers keep the normal path.
+func relayTermName() (string, bool) {
+	if os.Getenv("TMUX") == "" {
+		return "", false
+	}
+	// Must scope to this pane's session: bare list-clients is server-wide, so a
+	// real client on any other session would defeat the relay gate.
+	pane := os.Getenv("TMUX_PANE")
+	if pane == "" {
+		return "", false
+	}
+	out, err := exec.Command("tmux", relayListClientsArgs(pane)...).Output()
+	if err != nil {
+		return "", false
+	}
+	return parseRelayTermName(string(out))
+}
+
+// relayListClientsArgs builds the session-scoped list-clients argv. -t <pane>
+// resolves to the pane's session; omitting it lists every client on the
+// server and is a false-negative bug for the sixel gate.
+func relayListClientsArgs(pane string) []string {
+	return []string{"list-clients", "-t", pane, "-F", "#{client_control_mode} #{client_termname}"}
+}
+
+// parseRelayTermName interprets `tmux list-clients -F '#{client_control_mode}
+// #{client_termname}'` output. All-control with ≥1 client → (first non-empty
+// termname, true); anything else → ("", false).
+func parseRelayTermName(out string) (string, bool) {
+	out = strings.TrimSpace(out)
+	if out == "" {
+		return "", false
+	}
+	var term string
+	n := 0
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		n++
+		mode, name, _ := strings.Cut(line, " ")
+		if mode != "1" {
+			return "", false
+		}
+		if term == "" && name != "" {
+			term = name
+		}
+	}
+	if n == 0 {
+		return "", false
+	}
+	return term, true
 }
 
 // tmuxPaneSize returns the viewer's own tmux pane size in cells, or 0,0 when it

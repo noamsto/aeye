@@ -354,6 +354,17 @@ func chooseGridBackend(termname string, inTmux bool, termProgram, lcTerminal, we
 	return backendSymbols, ""
 }
 
+// chooseRelayBackend picks a grid renderer when output cannot reach a real
+// terminal directly (control-mode relay or AEYE_BRIDGED). Only kitty-class
+// termnames get real graphics; everything else falls to block-art symbols —
+// never sixel/raster, which the relay cannot localise.
+func chooseRelayBackend(termname string) gridBackend {
+	if strings.HasPrefix(termname, "xterm-kitty") || strings.HasPrefix(termname, "xterm-ghostty") {
+		return backendKitty
+	}
+	return backendSymbols
+}
+
 // tmuxPassthrough wraps an escape sequence so tmux forwards it to the outer
 // terminal verbatim: \ePtmux;<seq with every ESC doubled>\e\\
 func tmuxPassthrough(seq string) string {

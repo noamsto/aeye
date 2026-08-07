@@ -23,9 +23,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/../../../core/manifest-lifecycle.sh"
 
 resolve_state_dirs
 
-pane_id="${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}"
-[[ -n $pane_id ]] || exit 0
-pane_file="${pane_id#%}"
+pane_file="$(resolve_pane_key "${CLAUDE_CODE_SESSION_ID:-}")"
+[[ -n $pane_file ]] || exit 0
 valid_pane_file "$pane_file" || exit 0
 
 manifest_paths "$pane_file"

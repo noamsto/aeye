@@ -8,8 +8,9 @@ setup() {
 
 	export AEYE_DIR="$BATS_TEST_TMPDIR/state"
 	export TMUX_PANE="%9"
-	MANIFEST="$AEYE_DIR/images/9.jsonl"
-	OWNER="$AEYE_DIR/images/9.owner"
+	export TMUX="fake,4242,0" # pane ids are per server; pin one so the key is stable
+	MANIFEST="$AEYE_DIR/images/4242-9.jsonl"
+	OWNER="$AEYE_DIR/images/4242-9.owner"
 
 	WORKDIR="$BATS_TEST_TMPDIR/work"
 	mkdir -p "$WORKDIR"

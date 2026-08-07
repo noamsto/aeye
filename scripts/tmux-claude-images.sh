@@ -9,8 +9,8 @@
 # AEYE_HOST=<mode> overrides auto-detection. The useful case is AEYE_HOST=kitty
 # from inside tmux: it opens a vsplit in the enclosing kitty window over the RC
 # socket, falling back to a tmux split if that socket is unreachable.
-# The manifest is keyed by $TMUX_PANE (else $CLAUDE_CODE_SESSION_ID) regardless
-# of mode, so capture and viewer always agree. The carousel binary ($AEYE_BIN,
+# The manifest is keyed per tmux server+pane (else by $CLAUDE_CODE_SESSION_ID)
+# regardless of mode, so capture and viewer always agree. The carousel binary ($AEYE_BIN,
 # default `aeye` on PATH) and manifest format are shared.
 set -euo pipefail
 
@@ -43,8 +43,9 @@ resolve_axis() {
 	fi
 }
 
-# resolve_target sets MODE/KEY/MANIFEST from the environment. KEY is always
-# ${TMUX_PANE:-cc session id} (the capture hook's key), independent of MODE.
+# resolve_target sets MODE/PANE/KEY/MANIFEST from the environment. KEY is always
+# the capture hook's key (per tmux server+pane, else the cc session id),
+# independent of MODE; PANE is the bare tmux pane id used as a tmux target.
 #   MODE=tmux       inside tmux
 #   MODE=kitty      kitty remote control up (or AEYE_HOST=kitty from inside tmux)
 #   MODE=wezterm    in wezterm
@@ -60,12 +61,21 @@ resolve_axis() {
 #      (U+10EEEE) — add the $TERM prefix to chooseGridBackend in
 #      gallery_render.go. Without them the host falls back to chafa.
 resolve_target() {
-	# Key the manifest exactly as the capture hook (adapters/.../images.sh) does —
-	# pane id inside tmux, else the Claude session id — INDEPENDENT of launch MODE.
-	# That way capture and viewer always read the same file even when AEYE_HOST
-	# sends a tmux user down the kitty launch path.
-	KEY="${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}"
-	MANIFEST="$IMAGES_DIR/${KEY#%}.jsonl"
+	# Key the manifest exactly as the capture hook does (see resolve_pane_key in
+	# adapters/core/manifest-lifecycle.sh for why the tmux server pid is in there)
+	# — INDEPENDENT of launch MODE, so capture and viewer always read the same file
+	# even when AEYE_HOST sends a tmux user down the kitty launch path. $TMUX is
+	# "<socket>,<server pid>,<session>", so no tmux call is needed.
+	#
+	# PANE stays the bare pane id — it is a tmux *target*, which KEY is not.
+	PANE="${TMUX_PANE:-}"
+	local srv
+	IFS=, read -r _ srv _ <<<"${TMUX:-}"
+	[[ $srv =~ ^[0-9]+$ ]] || srv=""
+	KEY="${PANE#%}"
+	[[ -n $KEY && -n $srv ]] && KEY="$srv-$KEY"
+	[[ -n $KEY ]] || KEY="${CLAUDE_CODE_SESSION_ID:-}"
+	MANIFEST="$IMAGES_DIR/$KEY.jsonl"
 
 	# AEYE_HOST forces the launcher; unset = auto-detect. Only `kitty` is useful
 	# from inside tmux (it can open a split over the RC socket); other values are
@@ -119,16 +129,19 @@ launch_tmux() {
 	[[ -n ${CLAUDE_CODE_SESSION_ID:-} ]] && env_args+=(-e AEYE_OWNER="$CLAUDE_CODE_SESSION_ID")
 	[[ -n ${AEYE_DEBUG:-} ]] && env_args+=(-e AEYE_DEBUG="$AEYE_DEBUG")
 	[[ -n ${AEYE_BRIDGED:-} ]] && env_args+=(-e AEYE_BRIDGED="$AEYE_BRIDGED")
+	# The viewer's argv is the manifest KEY, which is not a tmux target — forward
+	# the host pane separately so the `s` split toggle can move-pane against it.
+	env_args+=(-e AEYE_HOST_PANE="$PANE")
 	local cmd
 	printf -v cmd '%q %q' "$VIEWER_BIN" "$KEY"
 	# Split along the host window's longer axis (overridable via AEYE_SPLIT); record
 	# the choice as a pane option so the viewer's `s` toggle knows the current state.
 	local w h axis flag
-	read -r w h < <(tmux display-message -p -t "$KEY" '#{window_width} #{window_height}' 2>/dev/null) || true
+	read -r w h < <(tmux display-message -p -t "$PANE" '#{window_width} #{window_height}' 2>/dev/null) || true
 	axis="$(resolve_axis "$w" "$h")"
 	[[ $axis == bottom ]] && flag=-v || flag=-h
 	local viewer
-	viewer="$(tmux split-window "$flag" "${detach[@]}" ${env_args[@]+"${env_args[@]}"} -t "$KEY" -P -F '#{pane_id}' "$cmd")"
+	viewer="$(tmux split-window "$flag" "${detach[@]}" ${env_args[@]+"${env_args[@]}"} -t "$PANE" -P -F '#{pane_id}' "$cmd")"
 	tmux set-option -p -t "$viewer" @claude_img_src "$KEY"
 	tmux set-option -p -t "$viewer" @claude_img_axis "$axis"
 }
@@ -179,13 +192,13 @@ kitty_place_args() {
 	fi
 }
 
-# True iff $KEY is a pane in the active window of an attached session — i.e. the
+# True iff $PANE is a pane in the active window of an attached session — i.e. the
 # user is currently looking at it. Unlike reconcile's context-dependent query,
 # this runs in the capturing pane's context, so it must scan all panes (-a) and
 # filter explicitly rather than trust the calling pane as "current".
 _key_on_screen() {
 	tmux list-panes -a -F '#{pane_id} #{window_active} #{session_attached}' 2>/dev/null |
-		awk -v k="$KEY" '$1==k && $2==1 && $3>=1 {f=1} END{exit !f}'
+		awk -v k="$PANE" '$1==k && $2==1 && $3>=1 {f=1} END{exit !f}'
 }
 
 launch_kitty() {

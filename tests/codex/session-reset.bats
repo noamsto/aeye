@@ -9,10 +9,11 @@ setup() {
 
 	export AEYE_DIR="$BATS_TEST_TMPDIR/state"
 	export TMUX_PANE="%7"
-	# Detach from any real tmux server the test runner sits in, so the GC sweep
-	# has no live-pane list unless a test opts in with a tmux stub.
-	unset TMUX
-	MANIFEST="$AEYE_DIR/images/7.jsonl"
+	# Pin a tmux server pid: pane ids are per-server, so the manifest key carries
+	# it. The socket is unreachable, so the GC sweep still gets no live-pane list
+	# unless a test opts in with a tmux stub.
+	export TMUX="fake,4242,0"
+	MANIFEST="$AEYE_DIR/images/4242-7.jsonl"
 	mkdir -p "$AEYE_DIR/images"
 	printf '{"type":"image","path":"/x.png"}\n' >"$MANIFEST"
 }
@@ -27,7 +28,7 @@ run_with_live_panes() { # $1=live nums  $2=stdin json
 		echo 'for p in '"$1"'; do echo "%$p"; done'
 	} >"$stub/tmux"
 	chmod +x "$stub/tmux"
-	PATH="$stub:$PATH" TMUX="fake,1,0" bash "$APP" <<<"$2"
+	PATH="$stub:$PATH" TMUX="fake,4242,0" bash "$APP" <<<"$2"
 }
 
 @test "source=startup removes the manifest" {
@@ -43,7 +44,7 @@ run_with_live_panes() { # $1=live nums  $2=stdin json
 }
 
 @test "source=startup also removes the owner sidecar" {
-	owner="$AEYE_DIR/images/7.owner"
+	owner="$AEYE_DIR/images/4242-7.owner"
 	printf 'sess-A' >"$owner"
 	run bash "$APP" <<<'{"source":"startup"}'
 	[ "$status" -eq 0 ]
@@ -92,60 +93,60 @@ run_with_live_panes() { # $1=live nums  $2=stdin json
 @test "resume leaves the per-pane manifest untouched (backfill is the sole writer)" {
 	# SessionStart hooks run in parallel, so resume is handled entirely by
 	# session-backfill — reset must not race it by clearing or re-stamping here.
-	printf 'sess-old' >"$AEYE_DIR/images/7.owner"
+	printf 'sess-old' >"$AEYE_DIR/images/4242-7.owner"
 	run bash "$APP" <<<'{"source":"resume","session_id":"sess-new"}'
 	[ "$status" -eq 0 ]
 	[ -f "$MANIFEST" ]
 	# owner is left for backfill to re-stamp, not touched here
-	[ "$(cat "$AEYE_DIR/images/7.owner")" = "sess-old" ]
+	[ "$(cat "$AEYE_DIR/images/4242-7.owner")" = "sess-old" ]
 }
 
 @test "resume with no recorded owner leaves the manifest and stamps no owner" {
 	run bash "$APP" <<<'{"source":"resume","session_id":"sess-A"}'
 	[ "$status" -eq 0 ]
 	[ -f "$MANIFEST" ]
-	[ ! -f "$AEYE_DIR/images/7.owner" ]
+	[ ! -f "$AEYE_DIR/images/4242-7.owner" ]
 }
 
 @test "compact keeps the manifest and refreshes ownership (same session)" {
-	printf 'sess-A' >"$AEYE_DIR/images/7.owner"
+	printf 'sess-A' >"$AEYE_DIR/images/4242-7.owner"
 	run bash "$APP" <<<'{"source":"compact","session_id":"sess-A"}'
 	[ "$status" -eq 0 ]
 	[ -f "$MANIFEST" ]
-	[ "$(cat "$AEYE_DIR/images/7.owner")" = "sess-A" ]
+	[ "$(cat "$AEYE_DIR/images/4242-7.owner")" = "sess-A" ]
 }
 
 @test "compact with a foreign owner clears the manifest and restamps ownership" {
-	printf 'sess-old' >"$AEYE_DIR/images/7.owner"
+	printf 'sess-old' >"$AEYE_DIR/images/4242-7.owner"
 	run bash "$APP" <<<'{"source":"compact","session_id":"sess-new"}'
 	[ "$status" -eq 0 ]
 	[ ! -f "$MANIFEST" ]
-	[ "$(cat "$AEYE_DIR/images/7.owner")" = "sess-new" ]
+	[ "$(cat "$AEYE_DIR/images/4242-7.owner")" = "sess-new" ]
 }
 
 @test "startup stamps the owner for this session" {
 	run bash "$APP" <<<'{"source":"startup","session_id":"sess-A"}'
 	[ "$status" -eq 0 ]
-	[ "$(cat "$AEYE_DIR/images/7.owner")" = "sess-A" ]
+	[ "$(cat "$AEYE_DIR/images/4242-7.owner")" = "sess-A" ]
 }
 
 @test "startup with a foreign owner clears the manifest and restamps with the codex session id" {
-	printf 'sess-old' >"$AEYE_DIR/images/7.owner"
+	printf 'sess-old' >"$AEYE_DIR/images/4242-7.owner"
 	run bash "$APP" <<<'{"source":"startup","session_id":"sess-new"}'
 	[ "$status" -eq 0 ]
 	[ ! -f "$MANIFEST" ]
-	[ "$(cat "$AEYE_DIR/images/7.owner")" = "sess-new" ]
+	[ "$(cat "$AEYE_DIR/images/4242-7.owner")" = "sess-new" ]
 }
 
 @test "GC sweeps manifests for tmux panes that no longer exist" {
-	printf 'sess-A' >"$AEYE_DIR/images/7.owner" # keep the current pane
-	printf '{}\n' >"$AEYE_DIR/images/8.jsonl"   # dead pane
-	printf '{}\n' >"$AEYE_DIR/images/9.jsonl"   # live pane
+	printf 'sess-A' >"$AEYE_DIR/images/4242-7.owner" # keep the current pane
+	printf '{}\n' >"$AEYE_DIR/images/4242-8.jsonl"   # dead pane
+	printf '{}\n' >"$AEYE_DIR/images/4242-9.jsonl"   # live pane
 	run run_with_live_panes "7 9" '{"source":"resume","session_id":"sess-A"}'
 	[ "$status" -eq 0 ]
 	[ -f "$MANIFEST" ]                  # current pane, kept
-	[ -f "$AEYE_DIR/images/9.jsonl" ]   # live, kept
-	[ ! -f "$AEYE_DIR/images/8.jsonl" ] # dead, swept
+	[ -f "$AEYE_DIR/images/4242-9.jsonl" ]   # live, kept
+	[ ! -f "$AEYE_DIR/images/4242-8.jsonl" ] # dead, swept
 }
 
 @test "GC ages out a stale session-keyed manifest but keeps a fresh one" {
@@ -161,11 +162,11 @@ run_with_live_panes() { # $1=live nums  $2=stdin json
 }
 
 @test "GC sweeps an orphan owner sidecar for a dead pane (no matching jsonl)" {
-	printf 'sess-A' >"$AEYE_DIR/images/7.owner"    # keep the current pane
-	printf 'sess-dead' >"$AEYE_DIR/images/8.owner" # dead pane, no jsonl
-	printf 'sess-live' >"$AEYE_DIR/images/9.owner" # live pane, no jsonl
+	printf 'sess-A' >"$AEYE_DIR/images/4242-7.owner"    # keep the current pane
+	printf 'sess-dead' >"$AEYE_DIR/images/4242-8.owner" # dead pane, no jsonl
+	printf 'sess-live' >"$AEYE_DIR/images/4242-9.owner" # live pane, no jsonl
 	run run_with_live_panes "7 9" '{"source":"resume","session_id":"sess-A"}'
 	[ "$status" -eq 0 ]
-	[ -f "$AEYE_DIR/images/9.owner" ]   # live, kept
-	[ ! -f "$AEYE_DIR/images/8.owner" ] # dead, swept
+	[ -f "$AEYE_DIR/images/4242-9.owner" ]   # live, kept
+	[ ! -f "$AEYE_DIR/images/4242-8.owner" ] # dead, swept
 }

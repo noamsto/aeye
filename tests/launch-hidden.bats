@@ -8,7 +8,7 @@ setup() {
 	APP="$(dirname "$BATS_TEST_DIRNAME")/scripts/tmux-claude-images.sh"
 	export AEYE_HOST=kitty TMUX_PANE='%9' TMUX='/tmp/fake-tmux,123,0'
 	# Non-empty manifest for %9 so launch gets past the "no images" guard.
-	echo '{"type":"image","path":"/x.png","source":"d2"}' >"$CLAUDE_STATUS_DIR/images/9.jsonl"
+	echo '{"type":"image","path":"/x.png","source":"d2"}' >"$CLAUDE_STATUS_DIR/images/123-9.jsonl"
 
 	STUB="$BATS_TEST_TMPDIR/bin"
 	mkdir -p "$STUB"
@@ -44,24 +44,27 @@ T
 	printf '%%9 0 1\n' >"$VISIBLE_ROWS" # %9 present but window_active=0
 	run bash "$APP" --ensure-open
 	[ "$status" -eq 0 ]
-	grep -q 'launch --type=window --match var:aeye_stash=1 .*--keep-focus.*claude_img_src=%9' "$KITTY_LOG"
+	grep -q 'launch --type=window --match var:aeye_stash=1 .*--keep-focus.*claude_img_src=123-9' "$KITTY_LOG"
 }
 
 @test "ensure-open launches a visible vsplit (keep-focus) when on-screen" {
 	printf '%%9 1 1\n' >"$VISIBLE_ROWS" # %9 is the active window of an attached session
 	run bash "$APP" --ensure-open
 	[ "$status" -eq 0 ]
-	grep -q 'launch --type=window .*--location=vsplit.*--keep-focus.*claude_img_src=%9' "$KITTY_LOG"
-	run ! grep -q 'launch --type=window --match var:aeye_stash=1 .*claude_img_src=%9' "$KITTY_LOG"
+	grep -q 'launch --type=window .*--location=vsplit.*--keep-focus.*claude_img_src=123-9' "$KITTY_LOG"
+	run ! grep -q 'launch --type=window --match var:aeye_stash=1 .*claude_img_src=123-9' "$KITTY_LOG"
 }
 
 @test "ensure-open launches visible (not stashed) outside tmux even when pane is off-screen" {
-	# TMUX unset: outside tmux, reconcile can never reveal a stashed carousel.
-	# The guard should fall through to the visible vsplit regardless of on-screen state.
-	unset TMUX
+	# Outside tmux, reconcile can never reveal a stashed carousel. The guard should
+	# fall through to the visible vsplit regardless of on-screen state. With no tmux
+	# there is no pane either, so the manifest is keyed by the session id.
+	unset TMUX TMUX_PANE
+	export CLAUDE_CODE_SESSION_ID=sess-lh
+	echo '{"type":"image","path":"/x.png","source":"d2"}' >"$CLAUDE_STATUS_DIR/images/sess-lh.jsonl"
 	printf '%%9 0 1\n' >"$VISIBLE_ROWS" # off-screen row — would trigger stash if TMUX were set
 	run bash "$APP" --ensure-open
 	[ "$status" -eq 0 ]
-	grep -q 'launch --type=window .*--location=vsplit.*--keep-focus.*claude_img_src=%9' "$KITTY_LOG"
+	grep -q 'launch --type=window .*--location=vsplit.*--keep-focus.*claude_img_src=sess-lh' "$KITTY_LOG"
 	run ! grep -q 'launch --type=window --match var:aeye_stash=1' "$KITTY_LOG"
 }

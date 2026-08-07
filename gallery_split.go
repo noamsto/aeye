@@ -29,13 +29,32 @@ func tmuxPaneAxis() string {
 	return "side"
 }
 
+// hostPane is the tmux pane the carousel was split off — a tmux *target*, which
+// the manifest key is not: inside tmux the key carries the server pid
+// ("<server pid>-<pane>") so two tmux servers can't share a manifest. The
+// launcher forwards the pane as AEYE_HOST_PANE; key is the fallback for a manual
+// `aeye %N` launch, where the key is itself a pane id. Empty when neither is.
+func hostPane(key string) string {
+	if p := os.Getenv("AEYE_HOST_PANE"); p != "" {
+		return p
+	}
+	if strings.HasPrefix(key, "%") {
+		return key
+	}
+	return ""
+}
+
 // toggleSplitAxis flips the carousel between a side (left|right) and bottom
 // (top/bottom) split of its tmux host. tmux-only: move-pane re-splits the host
 // in place, so the viewer process survives and repaints on the resize it
-// receives. A no-op off-tmux — there m.pane is a session id, and the other
+// receives. A no-op off-tmux — there is no host pane there, and the other
 // backends have no in-place axis flip in v1.
 func (m *galleryModel) toggleSplitAxis() {
 	if os.Getenv("TMUX") == "" {
+		return
+	}
+	host := hostPane(m.pane)
+	if host == "" {
 		return
 	}
 	next, flag := flipAxis(m.splitAxis)
@@ -44,7 +63,7 @@ func (m *galleryModel) toggleSplitAxis() {
 		return
 	}
 	self := strings.TrimSpace(string(out))
-	if err := exec.Command("tmux", "move-pane", flag, "-s", self, "-t", m.pane).Run(); err != nil {
+	if err := exec.Command("tmux", "move-pane", flag, "-s", self, "-t", host).Run(); err != nil {
 		return
 	}
 	m.splitAxis = next

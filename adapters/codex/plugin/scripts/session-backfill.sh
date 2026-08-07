@@ -28,9 +28,8 @@ source "$PLUGIN_ROOT/scripts/core/manifest-lifecycle.sh"
 resolve_state_dirs
 
 session="$(codex_session_id "$payload")"
-pane_id="${TMUX_PANE:-$session}"
-[[ -n $pane_id ]] || exit 0
-pane_file="${pane_id#%}"
+pane_file="$(resolve_pane_key "$session")"
+[[ -n $pane_file ]] || exit 0
 valid_pane_file "$pane_file" || exit 0
 
 manifest_paths "$pane_file"

@@ -8,7 +8,8 @@ setup() {
 
 	export AEYE_DIR="$BATS_TEST_TMPDIR/state"
 	export TMUX_PANE="%7"
-	MANIFEST="$AEYE_DIR/images/7.jsonl"
+	export TMUX="fake,4242,0" # pane ids are per server; pin one so the key is stable
+	MANIFEST="$AEYE_DIR/images/4242-7.jsonl"
 	DIAGRAMS="$AEYE_DIR/images/diagrams"
 	DOTD2="$BATS_TEST_TMPDIR/flow.d2"
 	printf 'a -> b\n' >"$DOTD2"

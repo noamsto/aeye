@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Render a .d2 file the agent wrote into a PNG and append it to the per-pane
 # image manifest. PostToolUse hook: reads the hook JSON payload on stdin.
-# Mirrors images.sh — self-contained, keyed by $TMUX_PANE or $CLAUDE_CODE_SESSION_ID.
+# Mirrors images.sh — self-contained, keyed per tmux server+pane, else by $CLAUDE_CODE_SESSION_ID.
 set -euo pipefail
 
 # shellcheck source=lib/manifest-extract.sh disable=SC1091
@@ -11,9 +11,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/../../../core/manifest-lifecycle.sh"
 
 resolve_state_dirs
 
-pane_id="${TMUX_PANE:-${CLAUDE_CODE_SESSION_ID:-}}"
-[[ -n $pane_id ]] || exit 0
-pane_file="${pane_id#%}"
+pane_file="$(resolve_pane_key "${CLAUDE_CODE_SESSION_ID:-}")"
+[[ -n $pane_file ]] || exit 0
 valid_pane_file "$pane_file" || exit 0
 
 payload="$(cat)"

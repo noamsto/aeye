@@ -2,12 +2,15 @@
 
 setup() {
 	export CLAUDE_STATUS_DIR="$BATS_TEST_TMPDIR/state"
-	export TMUX="/tmp/fake-tmux-socket"
+	export TMUX="/tmp/fake-tmux-socket,4242,0" # server pid 4242 -> key 4242-<pane>
 	export TMUX_PANE="%7"
 	mkdir -p "$CLAUDE_STATUS_DIR/images"
 	# Non-empty manifest so the script proceeds past its "no images yet" guard.
-	echo '{"type":"image","path":"/x.png","source":"d2"}' >"$CLAUDE_STATUS_DIR/images/7.jsonl"
+	echo '{"type":"image","path":"/x.png","source":"d2"}' >"$CLAUDE_STATUS_DIR/images/4242-7.jsonl"
 	APP="$(dirname "$BATS_TEST_DIRNAME")/scripts/tmux-claude-images.sh"
+	# What launch_tmux stamps on the viewer pane as @claude_img_src: the manifest
+	# key, not the pane id.
+	export STUB_IMG_SRC="4242-7"
 
 	# tmux stub: logs every call; list-panes output is controlled by $STUB_EXISTING.
 	STUB_BIN="$BATS_TEST_TMPDIR/bin"
@@ -16,7 +19,7 @@ setup() {
 #!/usr/bin/env bash
 echo "$*" >>"$TMUX_LOG"
 case "$1" in
-list-panes) [[ -n ${STUB_EXISTING:-} ]] && printf '%%9 %s\n' "$TMUX_PANE" || true ;;
+list-panes) [[ -n ${STUB_EXISTING:-} ]] && printf '%%9 %s\n' "$STUB_IMG_SRC" || true ;;
 split-window) echo '%99' ;;
 *) : ;;
 esac

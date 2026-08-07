@@ -2,7 +2,7 @@
 # Render each .d2 file a Cursor Write/Shell call wrote into a PNG and append it
 # to the per-pane image manifest. PostToolUse hook: reads the hook JSON
 # payload on stdin. Mirrors the Codex adapter's diagrams.sh — self-contained,
-# keyed by $TMUX_PANE or the Cursor session id.
+# keyed per tmux server+pane, else by the Cursor session id.
 set -euo pipefail
 
 PLUGIN_ROOT="${PLUGIN_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"
@@ -18,9 +18,8 @@ payload="$(cat)"
 
 session="$(cursor_session_id "$payload")"
 
-pane_id="${TMUX_PANE:-$session}"
-[[ -n $pane_id ]] || exit 0
-pane_file="${pane_id#%}"
+pane_file="$(resolve_pane_key "$session")"
+[[ -n $pane_file ]] || exit 0
 valid_pane_file "$pane_file" || exit 0
 
 # cursor_extract_touched_paths returns both images and .d2 paths in one call;

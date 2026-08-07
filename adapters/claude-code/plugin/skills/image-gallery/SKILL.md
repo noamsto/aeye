@@ -22,7 +22,8 @@ tmux-claude-images
 The command auto-detects its host and toggles the viewer (run it again to
 close):
 
-- **Inside tmux** — a split pane, keyed by `$TMUX_PANE`. The user can also open
+- **Inside tmux** — a split pane, keyed by tmux server pid +
+  `$TMUX_PANE` (pane ids repeat across servers). The user can also open
   it with `prefix + I` if their tmux config binds it (lazytmux does).
 - **Outside tmux, in kitty with remote control** (`$KITTY_LISTEN_ON` set) — a
   `kitty @ launch` window, keyed by `$CLAUDE_CODE_SESSION_ID`.

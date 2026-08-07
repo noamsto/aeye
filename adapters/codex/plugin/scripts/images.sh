@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Append images Codex touches (apply_patch/view_image/Bash) to a per-pane
 # manifest. PostToolUse hook: reads the hook JSON payload on stdin.
-# Mirrors the Claude adapter's images.sh — self-contained, keyed by $TMUX_PANE
+# Mirrors the Claude adapter's images.sh — self-contained, keyed per tmux server+pane
 # or the Codex session id.
 set -euo pipefail
 
@@ -20,9 +20,8 @@ session="$(codex_session_id "$payload")"
 
 # Key by tmux pane when inside tmux, else the Codex session id so the carousel
 # works in a bare terminal. No pane and no session id → no-op.
-pane_id="${TMUX_PANE:-$session}"
-[[ -n $pane_id ]] || exit 0
-pane_file="${pane_id#%}"
+pane_file="$(resolve_pane_key "$session")"
+[[ -n $pane_file ]] || exit 0
 # Guard against path traversal: the key becomes a filename; reject anything
 # with path separators or outside a safe set (panes are %<int>, sessions are ids).
 valid_pane_file "$pane_file" || exit 0

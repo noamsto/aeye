@@ -155,7 +155,8 @@ and limitations.
 
 1. Cause an image to be captured — e.g. have the session `Read` any
    `.png`/`.jpg`, or take a screenshot. The hook appends it to the manifest at
-   `${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}/images/<pane>.jsonl`.
+   `${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}/images/<key>.jsonl`, where
+   `<key>` is `<tmux server pid>-<pane>` inside tmux and the session id outside.
 2. Confirm the manifest exists and is non-empty:
 
    ```bash

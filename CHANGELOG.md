@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.2](https://github.com/noamsto/aeye/compare/v0.16.1...v0.16.2) (2026-08-10)
+
+
+### Bug Fixes
+
+* **manifest:** key the image manifest per tmux server, not by bare pane id ([#187](https://github.com/noamsto/aeye/issues/187)) ([1207d0d](https://github.com/noamsto/aeye/commit/1207d0d83d4c9851ee99b169b9e498b87460f664)), closes [#185](https://github.com/noamsto/aeye/issues/185)
+* never choose sixel when output is relayed ([#186](https://github.com/noamsto/aeye/issues/186)) ([262ebb3](https://github.com/noamsto/aeye/commit/262ebb3086f776c3f6aba98a0166831a277b631e))
+
 ## [0.16.1](https://github.com/noamsto/aeye/compare/v0.16.0...v0.16.1) (2026-08-05)
 
 

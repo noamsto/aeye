@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/ultraviolet v0.0.0-20260703014108-f5a850f9c2b7
 	github.com/charmbracelet/x/term v0.2.2
 	golang.org/x/image v0.44.0
-	oss.terrastruct.com/d2 v0.7.1
+	oss.terrastruct.com/d2 v0.7.2
 	oss.terrastruct.com/util-go v0.0.0-20250213174338-243d8661088a
 )
 

@@ -10,7 +10,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	golang.org/x/image v0.44.0
 	oss.terrastruct.com/d2 v0.7.1
-	oss.terrastruct.com/util-go v0.0.0-20250213174338-243d8661088a
+	oss.terrastruct.com/util-go v0.1.0
 )
 
 require (

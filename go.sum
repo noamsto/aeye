@@ -128,5 +128,5 @@ gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 oss.terrastruct.com/d2 v0.7.1 h1:LafTW1UoXJGODvKDZ8obyBfGcc2k2vHZ3EzrabMqEVE=
 oss.terrastruct.com/d2 v0.7.1/go.mod h1:aT0PwLaxBZGgsWrIT8oSFYm5xoYX08BaOHewi5qLE2E=
-oss.terrastruct.com/util-go v0.0.0-20250213174338-243d8661088a h1:UXF/Z9i9tOx/wqGUOn/T12wZeez1Gg0sAVKKl7YUDwM=
-oss.terrastruct.com/util-go v0.0.0-20250213174338-243d8661088a/go.mod h1:eMWv0sOtD9T2RUl90DLWfuShZCYp4NrsqNpI8eqO6U4=
+oss.terrastruct.com/util-go v0.1.0 h1:ftCXhVAWfFirTiFaX87fcGrJl/dFc8zTF12BgZJRUds=
+oss.terrastruct.com/util-go v0.1.0/go.mod h1:ikW/S92XF/xqgaQTgeid+T0gGqFNLeohCbfDa2VwG8Q=

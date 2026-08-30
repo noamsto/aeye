@@ -1,0 +1,45 @@
+name: vendor-hash
+on:
+  push:
+    branches:
+      - "dependabot/go_modules/**"
+
+permissions:
+  contents: write
+
+# Dependabot bumps go.mod/go.sum but cannot touch the vendorHash pinned in
+# flake.nix, so `nix build` fails on every Go bump. This recomputes it and
+# pushes the fix. The checkout token must be a PAT stored as a *Dependabot*
+# secret: runs triggered by dependabot get the Dependabot secret scope and a
+# read-only GITHUB_TOKEN, and a GITHUB_TOKEN push would not retrigger CI.
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.VENDOR_HASH_PAT }}
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - name: Recompute vendorHash
+        run: |
+          fake="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+          old=$(sed -n 's/.*vendorHash = "\(.*\)";.*/\1/p' flake.nix | head -1)
+          if [ -z "$old" ]; then
+            echo "no vendorHash found in flake.nix" >&2
+            exit 1
+          fi
+          sed -i "s|vendorHash = \"$old\";|vendorHash = \"$fake\";|" flake.nix
+          new=$(nix build .#default 2>&1 | sed -n 's/.*got: *\(sha256-[A-Za-z0-9+/=]*\).*/\1/p' | head -1)
+          if [ -z "$new" ]; then
+            echo "could not determine the correct vendorHash" >&2
+            exit 1
+          fi
+          sed -i "s|vendorHash = \"$fake\";|vendorHash = \"$new\";|" flake.nix
+          if [ "$new" = "$old" ]; then
+            echo "vendorHash already correct"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "build(deps): refresh vendorHash"
+          git push

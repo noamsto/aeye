@@ -1,0 +1,67 @@
+name: dependabot-vendor-hash
+
+# Dependabot updates go.mod/go.sum but cannot know the vendorHash in flake.nix,
+# so every Go bump it opens fails the `nix` job until the hash is corrected.
+# This pushes the corrected hash onto the PR branch.
+#
+# pull_request_target runs in the base-repo context, which is what grants the
+# write token that Dependabot-triggered events are otherwise denied. It builds
+# only the goModules derivation: that fetches modules and runs no dependency
+# code, so no third-party code sees the write token.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - go.mod
+      - go.sum
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vendor-hash-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  fix-hash:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          # A PAT makes the resulting push re-trigger CI so the stale `nix`
+          # failure clears itself; GITHUB_TOKEN pushes deliberately do not
+          # trigger workflows, leaving the check red until a manual re-run.
+          token: ${{ secrets.VENDOR_HASH_PAT || secrets.GITHUB_TOKEN }}
+
+      - uses: DeterminateSystems/nix-installer-action@v22
+
+      - name: Fix vendorHash
+        run: |
+          set -euo pipefail
+          fake="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+          current=$(grep -oP 'vendorHash = "\K[^"]+' flake.nix)
+
+          sed -i "s|vendorHash = \"$current\"|vendorHash = \"$fake\"|" flake.nix
+
+          # Expected to fail; the mismatch message carries the real hash.
+          got=$(nix build .#default.goModules --no-link 2>&1 \
+            | grep -oP '^\s+got:\s+\K\S+' || true)
+
+          if [ -z "$got" ]; then
+            echo "::error::Could not determine vendorHash from the build output."
+            exit 1
+          fi
+
+          if [ "$got" = "$current" ]; then
+            echo "vendorHash is already correct ($current) — nothing to do."
+            exit 0
+          fi
+
+          sed -i "s|vendorHash = \"$fake\"|vendorHash = \"$got\"|" flake.nix
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "build(deps): update vendorHash to $got" flake.nix
+          git push
+          echo "::notice::vendorHash updated $current -> $got"

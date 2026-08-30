@@ -117,6 +117,53 @@ setup() {
 	[ -z "$output" ]
 }
 
+@test "extract_d2_path: heredoc write via the Bash tool" {
+	d2="$BATS_TEST_TMPDIR/flow.d2"
+	printf 'a -> b\n' >"$d2"
+	cmd="cat > $d2 <<'EOF'
+a -> b
+EOF"
+	payload="$(jq -nc --arg c "$cmd" '{cwd:"/work",tool_name:"Bash",tool_input:{command:$c}}')"
+	run extract_d2_path "$payload"
+	[ "$output" = "$d2" ]
+}
+
+@test "extract_d2_path: shell command path resolved against cwd" {
+	mkdir -p "$BATS_TEST_TMPDIR/proj"
+	printf 'a -> b\n' >"$BATS_TEST_TMPDIR/proj/flow.d2"
+	payload="$(jq -nc --arg c "$BATS_TEST_TMPDIR/proj" '{cwd:$c,tool_name:"Bash",tool_input:{command:"sed -i s/a/b/ flow.d2"}}')"
+	run extract_d2_path "$payload"
+	[ "$output" = "$BATS_TEST_TMPDIR/proj/flow.d2" ]
+}
+
+@test "extract_d2_path: quoted heredoc target" {
+	d2="$BATS_TEST_TMPDIR/flow.d2"
+	printf 'a -> b\n' >"$d2"
+	payload="$(jq -nc --arg p "$d2" '{cwd:"/work",tool_name:"Bash",tool_input:{command:("cat > \"" + $p + "\" <<EOF")}}')"
+	run extract_d2_path "$payload"
+	[ "$output" = "$d2" ]
+}
+
+@test "extract_d2_path: shell command naming a .d2 that does not exist -> empty" {
+	payload="$(jq -nc '{cwd:"/work",tool_name:"Bash",tool_input:{command:"cat > /nope/flow.d2 <<EOF"}}')"
+	run extract_d2_path "$payload"
+	[ -z "$output" ]
+}
+
+@test "extract_d2_path: shell command with no .d2 mention -> empty" {
+	payload="$(jq -nc '{cwd:"/work",tool_name:"Bash",tool_input:{command:"go test ./..."}}')"
+	run extract_d2_path "$payload"
+	[ -z "$output" ]
+}
+
+@test "extract_d2_path: first existing .d2 wins over an absent earlier one" {
+	d2="$BATS_TEST_TMPDIR/real.d2"
+	printf 'a -> b\n' >"$d2"
+	payload="$(jq -nc --arg p "$d2" '{cwd:"/work",tool_name:"Bash",tool_input:{command:("rm -f /gone/old.d2; cat > " + $p + " <<EOF")}}')"
+	run extract_d2_path "$payload"
+	[ "$output" = "$d2" ]
+}
+
 @test "d2_png_for: hash-stable themed png path under the diagrams dir" {
 	d2="$BATS_TEST_TMPDIR/flow.d2"
 	printf 'a -> b\n' >"$d2"

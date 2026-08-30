@@ -1,0 +1,1 @@
+{"tool_name":"Bash","cwd":"/work","tool_input":{"command":"cat > DOTD2 <<'EOF'\na -> b\nEOF"},"tool_response":{}}

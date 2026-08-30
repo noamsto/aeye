@@ -49,14 +49,52 @@ extract_image_path() {
 }
 
 # extract_d2_path PAYLOAD -> echoes a resolved, existing .d2 path or nothing.
+# Two phases mirror extract_image_path above: an explicit tool_input.file_path,
+# then a scan of tool_input.command — a .d2 written by a heredoc, `sed -i`, or a
+# generator script has a path only there (#200).
+# No cwd-containment guard, unlike scan_response_image_path (#139): .d2 sources
+# live in the state dir, outside the project, so containment would reject every
+# diagram. Consequence: `cat flow.d2` re-renders it too, which d2_render makes
+# cheap by skipping a render whose png already exists. A path containing a space
+# or an unexpanded shell variable is not matched.
 extract_d2_path() {
-	local payload="$1" cwd candidate
+	local payload="$1" cwd candidate cmd tok
+
+	# Fast-bail before jq unless the raw payload mentions a .d2 at all.
+	shopt -s nocasematch
+	if [[ ! $payload =~ \.d2 ]]; then
+		shopt -u nocasematch
+		return 0
+	fi
+	shopt -u nocasematch
+
 	cwd="$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null)"
+
+	resolve() { # $1 path -> resolved against cwd if relative
+		local q="$1"
+		[[ $q != /* && -n $cwd ]] && q="$cwd/$q"
+		printf '%s' "$q"
+	}
+
+	# Phase 1: an explicit Write/Edit file_path.
 	candidate="$(jq -r '.tool_input.file_path // empty' <<<"$payload" 2>/dev/null)"
-	[[ -n $candidate ]] || return 0
-	[[ $candidate != /* && -n $cwd ]] && candidate="$cwd/$candidate"
-	[[ ${candidate,,} == *.d2 ]] || return 0
-	[[ -f $candidate ]] || return 0
-	printf '%s' "$candidate"
+	if [[ -n $candidate ]]; then
+		candidate="$(resolve "$candidate")"
+		if [[ ${candidate,,} == *.d2 && -f $candidate ]]; then
+			printf '%s' "$candidate"
+			return 0
+		fi
+	fi
+
+	# Phase 2: a .d2 token inside a shell command. Quotes and shell operators
+	# delimit the token, so `cat > "$dir/flow.d2" <<EOF` yields the bare path.
+	cmd="$(jq -r '.tool_input.command // empty' <<<"$payload" 2>/dev/null)"
+	[[ -n $cmd ]] || return 0
+	while IFS= read -r tok; do
+		tok="$(resolve "$tok")"
+		[[ -f $tok ]] || continue
+		printf '%s' "$tok"
+		return 0
+	done < <(grep -oiE $'[^[:space:]\'"<>|;&()]+\\.d2' <<<"$cmd")
 	return 0
 }

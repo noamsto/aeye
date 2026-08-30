@@ -64,6 +64,21 @@ run_app() { # $1 = fixture name
 	[[ $png == "$DIAGRAMS"/*.png ]]
 }
 
+@test "a .d2 written by the Bash tool renders too (#200)" {
+	run_app hook-bash-heredoc-d2.json
+	[ -f "$MANIFEST" ]
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 1 ]
+	png="$(jq -r '.path' "$MANIFEST")"
+	[ -f "$png" ]
+	[[ $png == "$DIAGRAMS"/*.png ]]
+}
+
+@test "a Bash call that never touches a .d2 is ignored" {
+	printf '{"tool_name":"Bash","cwd":"/work","tool_input":{"command":"go test ./..."},"tool_response":{}}' | bash "$APP"
+	[ ! -f "$MANIFEST" ]
+}
+
 @test "the hook invokes aeye render-diagram for both theme variants" {
 	run_app hook-write-d2.json
 	png="$(jq -r '.path' "$MANIFEST")"

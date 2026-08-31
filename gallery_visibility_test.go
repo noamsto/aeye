@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/noamsto/themestate"
 )
 
 // TestParsePaneVisible pins the gate tmux actually applies to DCS passthrough:
@@ -143,7 +144,7 @@ func newVisibilityModel(t *testing.T) (galleryModel, func() []byte) {
 	got := make(chan []byte, 1)
 	go func() { b, _ := io.ReadAll(r); got <- b }()
 
-	theme := detectTheme()
+	theme := themestate.Detect()
 	m := galleryModel{
 		pane:    pane,
 		backend: backendKitty,

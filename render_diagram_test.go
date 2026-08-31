@@ -58,7 +58,7 @@ func TestResvgFontArgs(t *testing.T) {
 }
 
 func TestD2ThemeID(t *testing.T) {
-	// Point detectTheme at a scratch state dir so the test controls the mode.
+	// Point themestate.Detect at a scratch state dir so the test controls the mode.
 	state := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", state)
 	writeTheme := func(theme string) {

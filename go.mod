@@ -1,6 +1,6 @@
 module github.com/noamsto/aeye
 
-go 1.26.0
+go 1.26.3
 
 require (
 	charm.land/bubbletea/v2 v2.0.9
@@ -8,6 +8,7 @@ require (
 	github.com/alecthomas/kong v1.16.1
 	github.com/charmbracelet/ultraviolet v0.0.0-20260812204455-68fa937c71be
 	github.com/charmbracelet/x/term v0.2.2
+	github.com/noamsto/themestate v0.1.0
 	golang.org/x/image v0.45.0
 	oss.terrastruct.com/d2 v0.7.2
 	oss.terrastruct.com/util-go v0.1.0

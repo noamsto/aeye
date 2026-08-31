@@ -17,6 +17,8 @@ import (
 	"oss.terrastruct.com/d2/lib/log"
 	"oss.terrastruct.com/d2/lib/textmeasure"
 	"oss.terrastruct.com/util-go/go2"
+
+	"github.com/noamsto/themestate"
 )
 
 // renderD2SVG compiles a .d2 file to SVG bytes via the embedded d2 library,
@@ -35,7 +37,7 @@ func d2ThemeID() (int64, error) {
 		}
 		return n, nil
 	}
-	if detectTheme() == "light" {
+	if themestate.Detect() == "light" {
 		return 105, nil
 	}
 	return 200, nil

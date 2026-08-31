@@ -19,6 +19,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	uv "github.com/charmbracelet/ultraviolet"
+	"github.com/noamsto/themestate"
 )
 
 const (
@@ -686,7 +687,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// A live light/dark switch repaints from the already-rendered variant —
 		// reload() re-resolves every d2 path to the new theme. Force the reload by
 		// clearing mtime so the diff below always fires.
-		if th := detectTheme(); th != m.theme {
+		if th := themestate.Detect(); th != m.theme {
 			tracef("theme switch %s -> %s", m.theme, th)
 			m.theme = th
 			m.mtime = 0
@@ -1056,7 +1057,7 @@ func (m galleryModel) thmColor(opt, dark, light string) imgcolor.Color {
 // runGallery is the entry point called by main with the key/pane positional arg.
 func runGallery(pane string) error {
 	tty, _ := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
-	theme := detectTheme()
+	theme := themestate.Detect()
 	// Init tracing before the first load so its owner decision is captured too.
 	traceInit(pane)
 	images := loadManifest(pane, theme)

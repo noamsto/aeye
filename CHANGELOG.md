@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.3](https://github.com/noamsto/aeye/compare/v0.16.2...v0.16.3) (2026-08-31)
+
+
+### Bug Fixes
+
+* **diagrams:** render .d2 files written with the Bash tool ([#203](https://github.com/noamsto/aeye/issues/203)) ([7ea566c](https://github.com/noamsto/aeye/commit/7ea566c7a854830887eca0e7d804aba11966f7df)), closes [#200](https://github.com/noamsto/aeye/issues/200)
+
 ## [0.16.2](https://github.com/noamsto/aeye/compare/v0.16.1...v0.16.2) (2026-08-10)
 
 

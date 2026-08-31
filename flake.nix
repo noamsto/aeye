@@ -87,7 +87,7 @@
             pname = "aeye";
             version = releaseVersion;
             src = ./.;
-            vendorHash = "sha256-l76GZ47rOBSnaP5cPyWVfqW5CzjgGPyN45oPJyVOgzQ=";
+            vendorHash = "sha256-Sobqk//dd6YAJbcUqPkEJ2eJbv9De6s/wogFUPaaOdQ=";
             doCheck = true;
             ldflags = ["-X main.buildSuffix=${rev}"];
             nativeBuildInputs = [pkgs.makeWrapper];

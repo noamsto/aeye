@@ -100,11 +100,10 @@ extract_d2_path() {
 	done < <(grep -oiE $'[^[:space:]\'"<>|;&()]+\\.d2' <<<"$cmd")
 
 	# Phase 3: the token held an unexpanded $var — `cat > "$SRC_DIR/flow.d2"` —
-	# which no amount of resolving turns into a path, since the variable lived in
-	# the agent's shell, not this hook's. The write just happened, so take the
-	# newest .d2 in SRC_DIR, and only one written in the seconds around this call:
-	# a command that merely mentions a $var and a .d2 must not adopt a diagram
-	# another session wrote (#139's lesson, applied to the source dir).
+	# which cannot be resolved here, the variable having lived in the agent's shell
+	# and not this hook's. The write just happened, so take the newest .d2 in
+	# SRC_DIR, and only one written in the seconds around this call, so a command
+	# that merely mentions a $var and a .d2 cannot adopt another session's diagram.
 	((saw_var)) && [[ -n $src_dir ]] || return 0
 	local now newest='' newest_mt=0 f mt
 	printf -v now '%(%s)T' -1

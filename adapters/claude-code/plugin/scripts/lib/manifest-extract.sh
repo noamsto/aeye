@@ -48,17 +48,18 @@ extract_image_path() {
 	return 0
 }
 
-# extract_d2_path PAYLOAD -> echoes a resolved, existing .d2 path or nothing.
-# Two phases mirror extract_image_path above: an explicit tool_input.file_path,
-# then a scan of tool_input.command — a .d2 written by a heredoc, `sed -i`, or a
-# generator script has a path only there (#200).
+# extract_d2_path PAYLOAD [SRC_DIR] -> echoes a resolved, existing .d2 path or
+# nothing. Three phases: an explicit tool_input.file_path, a scan of
+# tool_input.command — a .d2 written by a heredoc, `sed -i`, or a generator
+# script has a path only there (#200) — and, given SRC_DIR, the newest .d2 just
+# written there when the command's path was built from a shell variable.
 # No cwd-containment guard, unlike scan_response_image_path (#139): .d2 sources
 # live in the state dir, outside the project, so containment would reject every
 # diagram. Consequence: `cat flow.d2` re-renders it too, which d2_render makes
 # cheap by skipping a render whose png already exists. A path containing a space
-# or an unexpanded shell variable is not matched.
+# is not matched.
 extract_d2_path() {
-	local payload="$1" cwd candidate cmd tok
+	local payload="$1" src_dir="${2:-}" cwd candidate cmd tok saw_var=0
 
 	# Fast-bail before jq unless the raw payload mentions a .d2 at all.
 	shopt -s nocasematch
@@ -91,10 +92,28 @@ extract_d2_path() {
 	cmd="$(jq -r '.tool_input.command // empty' <<<"$payload" 2>/dev/null)"
 	[[ -n $cmd ]] || return 0
 	while IFS= read -r tok; do
+		[[ $tok == *'$'* ]] && saw_var=1
 		tok="$(resolve "$tok")"
 		[[ -f $tok ]] || continue
 		printf '%s' "$tok"
 		return 0
 	done < <(grep -oiE $'[^[:space:]\'"<>|;&()]+\\.d2' <<<"$cmd")
+
+	# Phase 3: the token held an unexpanded $var — `cat > "$SRC_DIR/flow.d2"` —
+	# which no amount of resolving turns into a path, since the variable lived in
+	# the agent's shell, not this hook's. The write just happened, so take the
+	# newest .d2 in SRC_DIR, and only one written in the seconds around this call:
+	# a command that merely mentions a $var and a .d2 must not adopt a diagram
+	# another session wrote (#139's lesson, applied to the source dir).
+	((saw_var)) && [[ -n $src_dir ]] || return 0
+	local now newest='' newest_mt=0 f mt
+	printf -v now '%(%s)T' -1
+	for f in "$src_dir"/*.d2; do
+		[[ -f $f ]] || continue
+		mt="$(_mtime "$f")"
+		((mt >= now - 15 && mt > newest_mt)) || continue
+		newest="$f" newest_mt="$mt"
+	done
+	[[ -n $newest ]] && printf '%s' "$newest"
 	return 0
 }

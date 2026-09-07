@@ -18,7 +18,7 @@ valid_pane_file "$pane_file" || exit 0
 payload="$(cat)"
 [[ -n $payload ]] || exit 0
 
-candidate="$(extract_d2_path "$payload")"
+candidate="$(extract_d2_path "$payload" "$DIAGRAMS_DIR/src")"
 [[ -n $candidate ]] || exit 0
 
 mkdir -p "$DIAGRAMS_DIR"

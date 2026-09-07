@@ -210,6 +210,42 @@ EOF"
 	[ "$output" = "$d2" ]
 }
 
+@test "extract_d2_path: variable-built heredoc target -> newest .d2 in the src dir" {
+	src="$BATS_TEST_TMPDIR/src"
+	mkdir -p "$src"
+	printf 'a -> b\n' >"$src/old.d2"
+	touch -d "@$(($(date +%s) - 600))" "$src/old.d2"
+	printf 'a -> b\n' >"$src/fresh.d2"
+	payload="$(jq -nc '{cwd:"/work",tool_name:"Bash",tool_input:{command:"cat > \"$SRC_DIR/fresh.d2\" <<EOF"}}')"
+	run extract_d2_path "$payload" "$src"
+	[ "$output" = "$src/fresh.d2" ]
+}
+
+@test "extract_d2_path: variable-built target with no src dir -> empty" {
+	payload="$(jq -nc '{cwd:"/work",tool_name:"Bash",tool_input:{command:"cat > \"$SRC_DIR/fresh.d2\" <<EOF"}}')"
+	run extract_d2_path "$payload"
+	[ -z "$output" ]
+}
+
+@test "extract_d2_path: a stale .d2 in the src dir is not adopted" {
+	src="$BATS_TEST_TMPDIR/src"
+	mkdir -p "$src"
+	printf 'a -> b\n' >"$src/old.d2"
+	touch -d "@$(($(date +%s) - 600))" "$src/old.d2"
+	payload="$(jq -nc '{cwd:"/work",tool_name:"Bash",tool_input:{command:"grep -c . \"$SRC_DIR/old.d2\""}}')"
+	run extract_d2_path "$payload" "$src"
+	[ -z "$output" ]
+}
+
+@test "extract_d2_path: a literal .d2 mention never falls back to the src dir" {
+	src="$BATS_TEST_TMPDIR/src"
+	mkdir -p "$src"
+	printf 'a -> b\n' >"$src/fresh.d2"
+	payload="$(jq -nc '{cwd:"/work",tool_name:"Bash",tool_input:{command:"ls *.d2"}}')"
+	run extract_d2_path "$payload" "$src"
+	[ -z "$output" ]
+}
+
 @test "d2_png_for: hash-stable themed png path under the diagrams dir" {
 	d2="$BATS_TEST_TMPDIR/flow.d2"
 	printf 'a -> b\n' >"$d2"

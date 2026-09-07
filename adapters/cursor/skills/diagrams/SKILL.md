@@ -34,7 +34,8 @@ the working project.
 `<name>` is the caption the carousel shows under the diagram, so name the file
 for the concept it draws, in kebab-case — `auth-token-flow`, `render-pipeline`,
 `origins-erd` — not `diagram` or `untitled`. It's also the name you'd reuse to
-redraw, so make it specific.
+redraw, so make it specific — to revise a diagram, overwrite the same file
+rather than adding a second one.
 
 ## House style
 
@@ -110,9 +111,12 @@ with arrows, nest them with `{ }`:
   (`shape: cylinder; style.stroke: red`, not `shape: cylinder, ...`).
 - Pick a shape with `shape:` — `cylinder`, `person`, `queue`, `cloud`,
   `sql_table`, `sequence_diagram`, and more.
-- Escape `$` in label text as `\$` — a bare `$` starts a variable substitution
-  (`${var}`), so a literal `"$5,000,000"` fails to compile with
-  *"substitutions must begin on {"* and the diagram silently never renders.
+- Escape `$` in label text as `\$` — **one** backslash. A bare `$` starts a
+  variable substitution (`${var}`), and `\\$` escapes the backslash instead,
+  leaving the `$` live; either way a literal `"$5,000,000"` fails to compile with
+  *"substitutions must begin on {"* and nothing renders. Scan labels for `$`
+  before writing the file. The hook reports the compile error back to you, so a
+  failure is visible — but only after the round trip.
 - Write labels as **plain quoted strings** (use `\n` for line breaks); do **not**
   use `|md` / `|markdown` block bodies — **`title:` included**, the most common
   slip. D2 emits markdown as an HTML `<foreignObject>`, which the carousel's

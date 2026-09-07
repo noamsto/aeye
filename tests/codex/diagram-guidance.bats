@@ -25,13 +25,15 @@ setup() {
 	[[ $ctx == *".d2"* ]]
 }
 
-@test "guidance warns against |md blocks" {
+@test "guidance points at the skill for the syntax rules" {
+	# The syntax traps ($-escaping, |md) live in the diagrams skill, not here.
 	# shellcheck disable=SC2030,SC2031
 	export TMUX="/tmp/fake"
 	run bash "$APP"
 	[ "$status" -eq 0 ]
 	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
-	[[ $ctx == *"|md"* ]]
+	[[ $ctx == *"diagrams skill"* ]]
+	[[ $ctx != *"|md"* ]]
 }
 
 @test "no host: emits nothing" {

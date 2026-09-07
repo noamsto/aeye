@@ -27,20 +27,13 @@ SRC_DIR="$STATE_DIR/images/diagrams/src"
 mkdir -p "$SRC_DIR"
 
 read -r -d '' guidance <<EOF || true
-This session has an image carousel. When a diagram would clarify your
-explanation — architecture, data flow, state machines, pipelines, entity
-relationships — Write a D2 diagram as a .d2 file and it renders into the
-carousel automatically. Write it to: $SRC_DIR/<name>.d2 (an absolute path
-outside any repo; never write .d2 files into the working project).
-Do NOT diagram trivial or linear one-step things. One diagram per concept.
-Escape a literal \$ in labels as \\\$ — exactly ONE backslash. A bare \$ starts a
-D2 substitution, and \\\\\$ escapes the backslash instead, leaving the \$ live: both
-fail to compile, and a diagram that fails to compile does not appear at all.
-Use plain quoted labels (\\n for line breaks); do NOT use |md / |markdown block
-bodies anywhere — including title: — the carousel rasterizer can't paint them,
-so they render blank and the whole diagram is suppressed (it won't appear at all)
-until you rewrite them as plain quoted labels.
-Prose stays primary — a diagram supplements, never replaces, the explanation.
+This session has an image carousel next to the terminal. Any D2 diagram you
+write to $SRC_DIR/<name>.d2 renders there automatically — draw one whenever a
+picture would carry part of your explanation: architecture, data flow, state
+machines, pipelines, entity relationships. Not for linear or trivial things,
+and the prose still does the explaining. Never write .d2 files inside the
+working project. The aeye diagrams skill has the few syntax rules that keep a
+render clean; load it when you draw.
 EOF
 
 jq -nc --arg ctx "$guidance" \

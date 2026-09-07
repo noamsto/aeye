@@ -24,25 +24,26 @@ setup() {
 	[[ $ctx == *".d2"* ]]
 }
 
-@test "guidance warns against |md blocks" {
+@test "guidance points at the skill for the syntax rules" {
+	# The syntax traps ($-escaping, |md) live in the diagrams skill, not here:
+	# spelling them out at SessionStart made the nudge read as a failure warning.
 	# shellcheck disable=SC2030,SC2031
 	export TMUX="/tmp/fake"
 	run bash "$APP"
 	[ "$status" -eq 0 ]
 	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
-	[[ $ctx == *"|md"* ]]
+	[[ $ctx == *"diagrams skill"* ]]
+	[[ $ctx != *"|md"* ]]
+	[[ $ctx != *"fail to compile"* ]]
 }
 
-@test 'guidance spells out the $-escape as one backslash, and names \\$ as wrong' {
-	# Emitting \$ and \\\$ from the heredoc takes 3 and 5 source backslashes; pin
-	# the rendered text so a re-edit can't collapse them into the very mistake
-	# the guidance warns about.
+@test "guidance keeps the never-in-the-project invariant" {
 	# shellcheck disable=SC2030,SC2031
 	export TMUX="/tmp/fake"
 	run bash "$APP"
 	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
-	[[ $ctx == *'as \$ — exactly ONE backslash'* ]]
-	[[ $ctx == *'\\$ escapes the backslash'* ]]
+	# the guidance is hard-wrapped, so match against a single-line rendering
+	[[ ${ctx//$'\n'/ } == *"Never write .d2 files inside the working project"* ]]
 }
 
 @test "no host: emits nothing" {

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.17.0](https://github.com/noamsto/aeye/compare/v0.16.3...v0.17.0) (2026-09-07)
+
+
+### Features
+
+* **cursor:** resume backfill from Cursor agent transcripts ([#216](https://github.com/noamsto/aeye/issues/216)) ([0689f65](https://github.com/noamsto/aeye/commit/0689f657af28932ab448fdefe83a628a99ce3efb))
+
+
+### Bug Fixes
+
+* **core:** anchor capture() regex so relative image paths aren't truncated ([#215](https://github.com/noamsto/aeye/issues/215)) ([768efe0](https://github.com/noamsto/aeye/commit/768efe0d635c1d6e55b32d0e86b3392e7c0f48f7)), closes [#213](https://github.com/noamsto/aeye/issues/213)
+* pin truecolor profile for kitty placeholder backend ([#212](https://github.com/noamsto/aeye/issues/212)) ([8c94993](https://github.com/noamsto/aeye/commit/8c94993185ae725ab89e9b1d8d0b0a08f606bbb9)), closes [#211](https://github.com/noamsto/aeye/issues/211)
+
 ## [0.16.3](https://github.com/noamsto/aeye/compare/v0.16.2...v0.16.3) (2026-08-31)
 
 

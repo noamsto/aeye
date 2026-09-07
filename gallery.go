@@ -18,6 +18,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/noamsto/themestate"
 )
@@ -1124,12 +1125,33 @@ func runGallery(pane string) error {
 			os.Exit(0)
 		}()
 	}
-	_, err := tea.NewProgram(m).Run()
+	opts := programOptions(backend)
+	_, err := tea.NewProgram(m, opts...).Run()
 	if tty != nil {
 		clearPaneImages(tty, pane)
 		_ = tty.Close()
 	}
 	return err
+}
+
+// colorProfileFor returns the color profile to pin for the given backend, or
+// colorprofile.Unknown if bubbletea's own env/terminfo detection should
+// decide. The kitty backend encodes the kitty image id as the placeholder
+// cell's 24-bit foreground color, which is protocol data, not a color to
+// approximate — so it must always get TrueColor.
+func colorProfileFor(backend gridBackend) colorprofile.Profile {
+	if backend == backendKitty {
+		return colorprofile.TrueColor
+	}
+	return colorprofile.Unknown
+}
+
+// programOptions returns the tea.ProgramOptions for the given backend.
+func programOptions(backend gridBackend) []tea.ProgramOption {
+	if p := colorProfileFor(backend); p != colorprofile.Unknown {
+		return []tea.ProgramOption{tea.WithColorProfile(p)}
+	}
+	return nil
 }
 
 // termName returns the outer client terminal name (for backend selection).

@@ -58,39 +58,23 @@ mkdir -p "$IMAGES_DIR"
 
 transcript="$(cursor_resume_transcript "$session")"
 
-# Unlike Codex — which reaches its analogous "no transcript" branch only past
-# a .source == resume gate, meaning session-reset.sh has already deferred by
-# the time Codex's backfill runs — this script runs on *every* sessionStart,
-# so an empty transcript here is the ordinary new-conversation path, running
+# This script runs on every sessionStart (Cursor has no .source field), so an
+# empty transcript here is the ordinary new-conversation path, running
 # concurrently with session-reset.sh's clear+stamp and possibly a live
-# images.sh append. Naively dropping a foreign manifest here (Codex's
-# pattern) would race those writers — unless it happens under the same lock
-# they also take, since manifest_paths sets LOCK_FILE to the identical path
-# session-reset.sh and images.sh lock, which makes a locked
-# read-owner-then-drop atomic against both — whichever writer runs first, the
-# other observes a consistent, already-resolved state. So still take the
-# lock and still drop a manifest this session can't prove it owns, on both
-# the empty-transcript and unreadable-transcript paths.
+# images.sh append. manifest_paths sets LOCK_FILE to the same path those two
+# lock, so the drop below serializes against both regardless of which hook's
+# SessionStart fires first.
 _manifest_lock "$LOCK_FILE"
 
-# No transcript (fresh session) or an unreadable one (permission bits, or
-# removed since the glob) both need the same treatment: drop a manifest this
-# session can't prove it owns, keep one it does. Locked against
-# session-reset.sh/images.sh's same-path lock, so whichever of us or
-# session-reset.sh runs first, the other converges onto a consistent result —
-# see the "probe consistency" note in the plan (this closes the found/empty
-# race cell: without the lock+drop here, a resume the reset hook saw but this
-# probe didn't would leave a foreign manifest behind until the first live
-# tool call's owner_selfheal cleans it up).
+# No transcript, or one that's unreadable (permission bits, or removed since
+# the glob): drop a manifest this session can't prove it owns, keep one it
+# does.
 if [[ -z $transcript || ! -r $transcript ]]; then
 	owner=""
 	[[ -f $owner_file ]] && owner="$(<"$owner_file")"
 	[[ -f $manifest && (-z $owner || $owner != "$session") ]] && rm -f "$manifest" "$owner_file"
 	exit 0
 fi
-
-# Only past that exit do we know a resume was detected and this script is the
-# pane's sole writer for the rest of the run.
 
 # Authoritative rebuild: the transcript is the record of what this session
 # touched, so start from empty rather than merge into whatever the pane held —

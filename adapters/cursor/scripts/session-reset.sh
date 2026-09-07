@@ -35,10 +35,8 @@ clear_pane() { rm -f "$IMAGES_DIR/$1.jsonl" "$IMAGES_DIR/$1.owner" "$IMAGES_DIR/
 
 # --- This pane's manifest ---
 if [[ -n $pane_file ]] && valid_pane_file "$pane_file"; then
-	# A detected resume defers entirely to session-backfill.sh — nothing to
-	# serialize against here, since this branch does nothing at all. The lock
-	# only guards the clear+stamp below, so it lives inside the non-resume
-	# branch rather than unconditionally like Codex's session-reset.sh.
+	# A detected resume defers entirely to session-backfill.sh; the lock below
+	# only guards the clear+stamp, so it lives inside this branch.
 	if [[ -z $(cursor_resume_transcript "$session") ]]; then
 		# Serialize the clear/owner-stamp against a live images.sh append that may
 		# fire the instant the session starts.

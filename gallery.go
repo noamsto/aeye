@@ -156,13 +156,18 @@ type galleryModel struct {
 	height       int
 	tty          *os.File // raw graphics sink (bypasses bubbletea's stdout)
 	storedIDs    []int    // kitty image ids stored last transmit, cleared before the next
-	mtime        int64    // manifest mtime at last load (for auto-refresh)
-	ready        bool
-	visible      bool        // pane reachable by the image store at the last tick (see paneVisible)
-	pinned       bool        // follow the newest image until the user first navigates
-	crop         cropFrac    // visible sub-rectangle of the source (fullCrop = fit)
-	curImg       image.Image // decoded source of the current selection
-	curImgPath   string      // path curImg was decoded from
+	// lastTransmitSig signs the store set of the last successful transmitView;
+	// a call with a matching signature is a no-op. nil forces the next
+	// transmit — the restore paths clear it because tmux can drop the store
+	// (alt-screen switch, hidden window) without any model state changing.
+	lastTransmitSig *transmitSig
+	mtime           int64 // manifest mtime at last load (for auto-refresh)
+	ready           bool
+	visible         bool        // pane reachable by the image store at the last tick (see paneVisible)
+	pinned          bool        // follow the newest image until the user first navigates
+	crop            cropFrac    // visible sub-rectangle of the source (fullCrop = fit)
+	curImg          image.Image // decoded source of the current selection
+	curImgPath      string      // path curImg was decoded from
 	// Terminal cell size in pixels, measured once at startup (CSI 16 t), with the
 	// cellPxW/cellPxH estimates as fallback. Load-bearing for crop geometry: the
 	// estimates assume a 1:2 cell, so a real 10x22 cell skews every crop shaped
@@ -270,11 +275,65 @@ func (m *galleryModel) scheduleDeleteTicks() tea.Cmd {
 	)
 }
 
+// transmitSig captures everything that determines the set of stores
+// transmitView emits: which images (preview + visible strip paths, with capture
+// mtimes so a re-captured file re-stores), the cell geometry each is sized to,
+// and the preview's crop. A call whose signature matches the last transmit
+// would rewrite byte-identical APCs — pointless locally, and over the lazytmux
+// bridge each t=f store costs the daemon an ssh round-trip while it holds the
+// pane's output stream, so a no-op resize (e.g. a client re-attaching at the
+// same size, which tmux surfaces as a resize) used to storm ~9 delete+re-stores
+// (#218).
+type transmitSig struct {
+	cursor             int
+	n                  int
+	previewW, previewH int
+	stripW, stripH     int
+	stripCols          int
+	stripFrom          int
+	crop               cropFrac
+	paths              uint64 // fnv over the preview + visible strip paths and mtimes
+}
+
+// computeTransmitSig signs the current store set. Callers guarantee a non-empty
+// image list (transmitView's early return covers the rest).
+func (m *galleryModel) computeTransmitSig() transmitSig {
+	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
+	h := fnv.New64a()
+	hashEntry := func(e imageEntry) {
+		fmt.Fprintf(h, "%s|%x|", e.Path, e.Mtime)
+	}
+	hashEntry(m.images[m.cursor])
+	for s := 0; s < m.l.stripCols; s++ {
+		idx := start + s
+		if idx >= len(m.images) {
+			break
+		}
+		hashEntry(m.images[idx])
+	}
+	return transmitSig{
+		cursor:    m.cursor,
+		n:         len(m.images),
+		previewW:  m.l.previewW,
+		previewH:  m.l.previewH,
+		stripW:    m.l.stripW,
+		stripH:    m.l.stripH,
+		stripCols: m.l.stripCols,
+		stripFrom: start,
+		crop:      m.crop,
+		paths:     h.Sum64(),
+	}
+}
+
 // transmitView stores the preview + visible filmstrip images store-only (kitty
 // backend). Writes to /dev/tty so the APC bytes never interleave with
 // bubbletea's frame output.
 func (m *galleryModel) transmitView() {
 	if m.backend != backendKitty || m.tty == nil || len(m.images) == 0 {
+		return
+	}
+	sig := m.computeTransmitSig()
+	if m.lastTransmitSig != nil && *m.lastTransmitSig == sig {
 		return
 	}
 	m.clearStored()
@@ -311,6 +370,11 @@ func (m *galleryModel) transmitView() {
 			stripErr = serr
 		}
 	}
+	// Record the signature only when every write landed — a failed transmit
+	// leaves the store incomplete, so the next call must retry, not skip.
+	if err == nil && stripErr == nil {
+		m.lastTransmitSig = &sig
+	}
 	if traceEnabled {
 		tracef("store strip cells=%d bytes=%d written=%d firstErr=%v", stripCells, stripBytes, stripWritten, stripErr)
 	}
@@ -332,6 +396,9 @@ func (m *galleryModel) repaintCmd() tea.Cmd {
 // where the store couldn't land — the first frame before the alt-screen, a
 // window tmux wasn't displaying — needs both halves.
 func (m *galleryModel) restoreView() tea.Cmd {
+	// The store was dropped behind the viewer's back, so the model state (and
+	// its transmit signature) is unchanged: force past the no-op guard.
+	m.lastTransmitSig = nil
 	m.transmitView()
 	return m.repaintCmd()
 }
@@ -679,6 +746,9 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.visible = v
 			tracef("visibility %v", v)
 			if v {
+				// Stores written while hidden were dropped by tmux; force the
+				// re-store even when the manifest (and signature) is unchanged.
+				m.lastTransmitSig = nil
 				m.reload() // re-stores as a side effect
 				return m, tea.Batch(galleryTickCmd(), m.kickVector(), m.repaintCmd())
 			}

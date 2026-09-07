@@ -64,6 +64,27 @@ func TestTickRestoresStoreWhenWindowBecomesVisible(t *testing.T) {
 	}
 }
 
+// TestTickRestoresStoreAfterPriorTransmit guards the #218 interaction: the
+// no-op transmit guard must not swallow the hidden→visible re-store. tmux
+// dropped those stores while the window was off screen, so the edge forces a
+// re-transmit even though the model state (and signature) is unchanged.
+func TestTickRestoresStoreAfterPriorTransmit(t *testing.T) {
+	m, collect := newVisibilityModel(t)
+	m.transmitView() // arm the signature guard with a successful store
+	m.visible = false
+	stubPaneVisible(t, true)
+
+	m.Update(galleryTickMsg{})
+	out := collect()
+
+	// The arming transmit wrote the preview store once; the edge must write it
+	// again despite the unchanged signature.
+	want := []byte(fmt.Sprintf("\x1b_Gi=%d,a=T", m.previewID()))
+	if n := bytes.Count(out, want); n != 2 {
+		t.Fatalf("preview store written %d times (arming transmit + edge re-store), want 2; got %q", n, out)
+	}
+}
+
 // TestTickDoesNotRestoreWhileVisible guards the polling cost: the edge fires
 // once, not on every 1.5s tick.
 func TestTickDoesNotRestoreWhileVisible(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
 
@@ -488,6 +489,163 @@ func writeTestPNG(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// transmitRecorder is a pipe-backed tty fake that accumulates everything the
+// model writes, so a test can assert how many bytes a given transmit added
+// (the one-shot collect in the visibility tests can't snapshot mid-test).
+type transmitRecorder struct {
+	w   *os.File
+	r   *os.File
+	buf bytes.Buffer
+}
+
+func newTransmitRecorder(t *testing.T) *transmitRecorder {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { r.Close(); w.Close() })
+	return &transmitRecorder{w: w, r: r}
+}
+
+// Len drains the pipe and returns the total bytes written so far. The model's
+// tty writes are synchronous, so once a transmit returns its bytes are already
+// in the pipe buffer — the deadline only bounds the final empty read. (A
+// drain-goroutine + Len() pair races: Len() can sample before the goroutine
+// has copied.)
+func (rec *transmitRecorder) Len() int {
+	_ = rec.r.SetReadDeadline(time.Now().Add(time.Millisecond))
+	var tmp [1 << 16]byte
+	for {
+		n, err := rec.r.Read(tmp[:])
+		rec.buf.Write(tmp[:n])
+		if err != nil {
+			break
+		}
+	}
+	_ = rec.r.SetReadDeadline(time.Time{})
+	return rec.buf.Len()
+}
+
+// newTransmitModel builds a ready, kitty-backed model with n real images,
+// draining graphics writes into rec.
+func newTransmitModel(t *testing.T, rec *transmitRecorder, n int) *galleryModel {
+	t.Helper()
+	m := &galleryModel{
+		pane:    "%41",
+		backend: backendKitty,
+		tty:     rec.w,
+		ready:   true,
+		width:   100,
+		height:  40,
+	}
+	for i := 0; i < n; i++ {
+		m.images = append(m.images, imageEntry{Path: writeTestPNG(t), Mtime: int64(i + 1)})
+	}
+	m.l = computeLayout(m.width, m.height)
+	return m
+}
+
+// TestTransmitViewSkipsUnchanged is the #218 core: a transmit that would
+// rewrite the store set byte-for-byte (e.g. a client re-attaching at the same
+// size, surfaced by tmux as a resize) must write nothing.
+func TestTransmitViewSkipsUnchanged(t *testing.T) {
+	rec := newTransmitRecorder(t)
+	m := newTransmitModel(t, rec, 3)
+
+	m.transmitView()
+	first := rec.Len()
+	if first == 0 {
+		t.Fatal("first transmitView wrote nothing")
+	}
+
+	m.transmitView()
+	if got := rec.Len(); got != first {
+		t.Fatalf("second transmitView with unchanged state wrote %d bytes, want 0", got-first)
+	}
+}
+
+func TestTransmitViewRestoresOnChange(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(t *testing.T, m *galleryModel)
+	}{
+		{"cursor move", func(t *testing.T, m *galleryModel) { m.cursor = 1 }},
+		{"resize", func(t *testing.T, m *galleryModel) { m.width = 120; m.l = computeLayout(m.width, m.height) }},
+		{"image appended", func(t *testing.T, m *galleryModel) {
+			m.images = append(m.images, imageEntry{Path: writeTestPNG(t), Mtime: 99})
+		}},
+		{"crop zoomed", func(t *testing.T, m *galleryModel) { m.crop = cropFrac{0.1, 0.1, 0.9, 0.9} }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := newTransmitRecorder(t)
+			m := newTransmitModel(t, rec, 5)
+			m.transmitView()
+			base := rec.Len()
+
+			tc.mutate(t, m)
+			m.transmitView()
+			if got := rec.Len(); got == base {
+				t.Fatalf("transmitView after %s wrote nothing", tc.name)
+			}
+		})
+	}
+}
+
+// TestTransmitViewRestoresWhenContentChangesAtSameLength guards the
+// deleteCommitMsg → reload shape: the selected entry drops out and a fresh
+// capture lands in the same pass, so length, cursor and geometry are all
+// unchanged while the strip's contents shift. A signature over length alone
+// would wrongly skip.
+func TestTransmitViewRestoresWhenContentChangesAtSameLength(t *testing.T) {
+	rec := newTransmitRecorder(t)
+	m := newTransmitModel(t, rec, 5)
+	m.cursor = 2
+	m.transmitView()
+	base := rec.Len()
+
+	m.images = append(m.images[:2], m.images[3:]...) // delete at cursor
+	m.images = append(m.images, imageEntry{Path: writeTestPNG(t), Mtime: 99})
+	m.transmitView()
+
+	if got := rec.Len(); got == base {
+		t.Fatal("transmitView skipped after the image list changed contents at the same length")
+	}
+}
+
+// TestRestoreViewForcesReTransmit guards the restore paths (settle, focus):
+// tmux drops the store without any model state changing, so restoreView must
+// force past the signature guard.
+func TestRestoreViewForcesReTransmit(t *testing.T) {
+	rec := newTransmitRecorder(t)
+	m := newTransmitModel(t, rec, 3)
+	m.transmitView()
+	armed := rec.Len()
+
+	m.restoreView()
+	if got := rec.Len(); got == armed {
+		t.Fatal("restoreView did not force a re-store past the signature guard")
+	}
+}
+
+// TestWindowSizeMsgSameSizeSkipsReTransmit drives the actual bug path: a
+// same-size WindowSizeMsg (client re-attach) must not re-store.
+func TestWindowSizeMsgSameSizeSkipsReTransmit(t *testing.T) {
+	rec := newTransmitRecorder(t)
+	m := newTransmitModel(t, rec, 3)
+
+	first, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	stored := rec.Len()
+	if stored == 0 {
+		t.Fatal("initial WindowSizeMsg stored nothing")
+	}
+
+	if _, _ = first.(galleryModel).Update(tea.WindowSizeMsg{Width: 100, Height: 40}); rec.Len() != stored {
+		t.Fatalf("same-size WindowSizeMsg re-transmitted %d bytes", rec.Len()-stored)
+	}
 }
 
 func TestCaption(t *testing.T) {

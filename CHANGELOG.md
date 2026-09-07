@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.1](https://github.com/noamsto/aeye/compare/v0.17.0...v0.17.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* **diagrams:** draw more diagrams — invite in the hook, detect var-built paths ([#220](https://github.com/noamsto/aeye/issues/220)) ([8529dac](https://github.com/noamsto/aeye/commit/8529dac2bd63be782c2c5def43f0e28223096a4e))
+
+
+### Performance Improvements
+
+* skip transmitView when the store set is unchanged ([#218](https://github.com/noamsto/aeye/issues/218)) ([#219](https://github.com/noamsto/aeye/issues/219)) ([5560113](https://github.com/noamsto/aeye/commit/55601137daef9e358b6be09c98ba69569aa0c4e3))
+
 ## [0.17.0](https://github.com/noamsto/aeye/compare/v0.16.3...v0.17.0) (2026-09-07)
 
 

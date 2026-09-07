@@ -29,7 +29,7 @@ works while holding Shift.
   non-square cell pixels `cellPxW/cellPxH`) to turn a screen cell into an
   image-space fraction. That inversion, with its own tests, is a focused
   follow-up. Nothing in this PR should pretend the preview image fills the inner
-  box.
+  box. **Landed in #51.**
 - Middle/right-click, hover effects, click-to-open. Out of scope.
 
 ## Architecture
@@ -103,11 +103,13 @@ Wheel over the preview rect zooms using the same factors as the `z`/`Z` keys:
 One mechanism, click-vs-drag disambiguation:
 - `MouseClickMsg` (left) inside the preview rect → record `lastDragX/Y`, set
   `dragging = true`, `dragMoved = false`.
-- `MouseMotionMsg` (left button held) while `dragging` → if the crop is not full
-  (pan is actually possible), set `dragMoved = true` and
+- `MouseMotionMsg` (left button held) while `dragging` → on any motion that
+  changes the cell, set `dragMoved = true` and
   `panBy(−Δx / inner.w, −Δy / inner.h)` (drag direction follows the cursor),
-  then update `lastDragX/Y`. At full crop, ignore motion (no dead-drag
-  classification — see edge cases).
+  then update `lastDragX/Y`. This is set regardless of whether the crop is
+  full: this rule predates a click action on release, when a dead drag was
+  unobservable; region click-to-drill (#51) makes it observable, so
+  classification must not depend on zoom state.
 - `MouseReleaseMsg` → `dragging = false`. (No click action on plain-image
   release in this PR; region-drill — the future click action — is deferred.)
 
@@ -128,8 +130,9 @@ lastDragX, lastDragY int
 
 - **Tiny panes:** band math is derived from `computeLayout`, which clamps; clicks
   outside any rect are no-ops.
-- **Full crop drag:** drag does nothing because `panBy` no-ops at full crop, and
-  motion is ignored so it is never misclassified as a drag.
+- **Full crop drag:** `panBy` no-ops at full crop, so the drag still does not
+  pan — but it is classified as a drag, and that suppresses the click action
+  on release.
 - **Filmstrip centering:** offset is `(width − totalCellsWidth) / 2`, mirroring
   `lipgloss.PlaceHorizontal(Center)`; a partial last window uses
   `min(stripCols, n − start)` cells.

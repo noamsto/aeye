@@ -90,6 +90,91 @@ func (m *galleryModel) zoomAt(sx, sy int, factor float64) {
 	m.panBy(((bx-fx*w)-m.crop.x0)/w, ((by-fy*h)-m.crop.y0)/h)
 }
 
+// letterboxSpans returns the fraction of the preview box the displayed image
+// covers on each axis. ratio is the image's aspect relative to the box's: >1
+// means wider than the box, so it fills the width and letterboxes top/bottom.
+// Kitty fits a virtual placement to the c×r box preserving aspect (see
+// grman_put_cell_image), so one axis is always 1 and the other is the shortfall.
+func letterboxSpans(ratio float64) (spanX, spanY float64) {
+	if ratio > 1 {
+		return 1, 1 / ratio
+	}
+	return ratio, 1
+}
+
+// unletterbox maps a point in preview-box fractions to a point in crop
+// fractions. Kitty centers the image on the letterboxed axis, so the covered
+// span sits at (1-span)/2. ok is false when the point lands on a margin instead
+// of on the image.
+func unletterbox(bx, by, ratio float64) (u, v float64, ok bool) {
+	spanX, spanY := letterboxSpans(ratio)
+	u = (bx - (1-spanX)/2) / spanX
+	v = (by - (1-spanY)/2) / spanY
+	return u, v, u >= 0 && u <= 1 && v >= 0 && v <= 1
+}
+
+// imageFracAt maps a screen cell in the preview to a point in source-image
+// fractions, inverting the fit-to-box placement the renderer and kitty perform
+// together. ok is false when the cell falls on the letterbox margin rather than
+// on the image, or when there is nothing decoded to map against.
+func (m *galleryModel) imageFracAt(sx, sy int) (fx, fy float64, ok bool) {
+	pr := m.previewRect()
+	if m.curImg == nil || pr.w == 0 || pr.h == 0 || !pr.contains(sx, sy) {
+		return 0, 0, false
+	}
+	u, v, ok := unletterbox(
+		(float64(sx-pr.x)+0.5)/float64(pr.w),
+		(float64(sy-pr.y)+0.5)/float64(pr.h),
+		m.displayRatio(),
+	)
+	if !ok {
+		return 0, 0, false
+	}
+	return m.crop.x0 + u*m.crop.w(), m.crop.y0 + v*m.crop.h(), true
+}
+
+// displayRatio is the displayed image's aspect relative to the preview box's:
+// >1 means wider than the box. boxAspectFrac gives the crop-fraction aspect that
+// would fill the box exactly, so dividing the crop's own aspect by it yields the
+// shortfall on whichever axis letterboxes. Caller must have m.curImg.
+func (m *galleryModel) displayRatio() float64 {
+	b := m.curImg.Bounds()
+	fill := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
+	return (m.crop.w() / m.crop.h()) / fill
+}
+
+// regionClick handles a completed click (press and release in the preview, no
+// drag) on a diagram: it focuses and drills into the region under the pointer,
+// or — when the click misses every child, letterbox margin included, and we are
+// in region mode — steps back one level. A miss outside region mode is inert, so it never disturbs a
+// wheel-zoom. Reports whether anything changed.
+func (m *galleryModel) regionClick(sx, sy int) bool {
+	if m.curVector() == "" || m.curImg == nil {
+		return false
+	}
+	m.ensureRegions()
+	if m.regions == nil {
+		return false
+	}
+	if fx, fy, ok := m.imageFracAt(sx, sy); ok {
+		if i, hit := m.regions.regionAt(m.regionPath, fx, fy); hit {
+			m.regionIdx = i
+			m.frameFocused()
+			m.drillIn()
+			return true
+		}
+	}
+	if m.regionIdx < 0 {
+		return false
+	}
+	if len(m.regionPath) == 0 {
+		m.exitRegions()
+	} else {
+		m.drillOut()
+	}
+	return true
+}
+
 // handleMouse turns mouse events into the same actions as the keyboard paths,
 // then schedules a sharp d2 re-render like every other input.
 func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
@@ -125,6 +210,7 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 		}
 	case tea.MouseClickMsg:
 		m.dragging = false // clear any stuck state from a dropped release
+		m.dragMoved = false
 		if e.Button == tea.MouseLeft {
 			if idx, ok := m.filmstripHit(e.X, e.Y); ok {
 				m.selectIndex(idx)
@@ -135,6 +221,10 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 			}
 		}
 	case tea.MouseMotionMsg:
+		// Outside the isFull guard below: click-vs-drag must not depend on zoom state.
+		if m.dragging && e.Button == tea.MouseLeft && (e.X != m.lastDragX || e.Y != m.lastDragY) {
+			m.dragMoved = true
+		}
 		// panBy no-ops at full crop, so dragging an unzoomed image does nothing.
 		if m.dragging && e.Button == tea.MouseLeft && !m.crop.isFull() {
 			pr := m.previewRect()
@@ -152,6 +242,13 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 			}
 		}
 	case tea.MouseReleaseMsg:
+		// A click is press+release with no intervening drag; button doesn't matter here.
+		if m.dragging && !m.dragMoved && m.previewRect().contains(e.X, e.Y) {
+			if m.regionClick(e.X, e.Y) {
+				m.transmitPreviewOnly()
+				changed = true
+			}
+		}
 		m.dragging = false
 	}
 	if !changed {

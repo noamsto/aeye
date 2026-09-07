@@ -84,6 +84,52 @@ setup() {
 	[ -z "$output" ]
 }
 
+@test "scan_response_image_path: relative path with internal slash is not truncated (#213)" {
+	mkdir -p "$BATS_TEST_TMPDIR/proj/work/pw-output"
+	shot="$BATS_TEST_TMPDIR/proj/work/pw-output/page-2026-09-07T05-53-54-492Z.png"
+	printf 'x' >"$shot"
+	payload="$(jq -nc --arg c "$BATS_TEST_TMPDIR/proj" '{cwd:$c,tool_output:"work/pw-output/page-2026-09-07T05-53-54-492Z.png"}')"
+	run scan_response_image_path "$payload"
+	[ "$status" -eq 0 ]
+	[ "$output" = "$shot" ]
+}
+
+@test "scan_response_image_path: leading dot-dir relative path is not truncated (#213)" {
+	mkdir -p "$BATS_TEST_TMPDIR/proj/.playwright-mcp"
+	shot="$BATS_TEST_TMPDIR/proj/.playwright-mcp/page-2026-09-07T05-55-22-156Z.png"
+	printf 'x' >"$shot"
+	payload="$(jq -nc --arg c "$BATS_TEST_TMPDIR/proj" '{cwd:$c,tool_output:".playwright-mcp/page-2026-09-07T05-55-22-156Z.png"}')"
+	run scan_response_image_path "$payload"
+	[ "$status" -eq 0 ]
+	[ "$output" = "$shot" ]
+}
+
+@test "scan_response_image_path: explicit ./ relative path still captured whole" {
+	mkdir -p "$BATS_TEST_TMPDIR/proj"
+	printf 'x' >"$BATS_TEST_TMPDIR/proj/explicit-shot.png"
+	payload="$(jq -nc --arg c "$BATS_TEST_TMPDIR/proj" '{cwd:$c,tool_output:"./explicit-shot.png"}')"
+	run scan_response_image_path "$payload"
+	[ "$status" -eq 0 ]
+	[ "$output" = "$BATS_TEST_TMPDIR/proj/./explicit-shot.png" ]
+}
+
+@test "scan_response_image_path: absolute path still captured whole" {
+	mkdir -p "$BATS_TEST_TMPDIR/proj/tmp/foo"
+	shot="$BATS_TEST_TMPDIR/proj/tmp/foo/bar.png"
+	printf 'x' >"$shot"
+	payload="$(jq -nc --arg c "$BATS_TEST_TMPDIR/proj" --arg p "$shot" '{cwd:$c,tool_output:$p}')"
+	run scan_response_image_path "$payload"
+	[ "$status" -eq 0 ]
+	[ "$output" = "$shot" ]
+}
+
+@test "scan_response_image_path: non-image extension does not match" {
+	payload="$(jq -nc --arg c "$BATS_TEST_TMPDIR/proj" '{cwd:$c,tool_output:"see docs/readme.md for details"}')"
+	run scan_response_image_path "$payload"
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
 @test "is_d2_render_artifact: matches only direct themed render outputs" {
 	dir="$BATS_TEST_TMPDIR/images/diagrams"
 

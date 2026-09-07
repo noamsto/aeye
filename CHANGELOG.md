@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.2](https://github.com/noamsto/aeye/compare/v0.17.1...v0.17.2) (2026-09-07)
+
+
+### Bug Fixes
+
+* **ci:** read the release Go version from go.mod ([#222](https://github.com/noamsto/aeye/issues/222)) ([05ac03f](https://github.com/noamsto/aeye/commit/05ac03fb8f4826c59e0e5d2eada2b649b76da95a))
+
 ## [0.17.1](https://github.com/noamsto/aeye/compare/v0.17.0...v0.17.1) (2026-09-07)
 
 

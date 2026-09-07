@@ -57,7 +57,7 @@ scan_response_image_path() {
 	response_path="$(jq -r '
     [ (.tool_response // ((.tool_output | fromjson?) // .tool_output)) | .. | strings
       | select(length < 4096)
-      | capture("(?<p>(?:/|\\./)[^\\s]*\\.(?:png|jpe?g|gif|webp|bmp))"; "i")
+      | capture("(?<p>(?:^|(?<=\\s))[^\\s]*\\.(?:png|jpe?g|gif|webp|bmp))"; "i")
       | .p
     ] | first // empty
   ' <<<"$payload" 2>/dev/null)"

@@ -1,0 +1,6 @@
+{"timestamp":"2026-09-07T10:00:01.000Z","tool_name":"Write","tool_input":{"file_path":"WORKDIR/diagram.d2"},"tool_output":"{\"success\":true}","cwd":"","workspace_roots":["WORKDIR"],"hook_event_name":"postToolUse"}
+{"timestamp":"2026-09-07T10:00:02.000Z","tool_name":"Read","tool_input":{"file_path":"PNGPATH"},"tool_output":"{\"success\":true}","cwd":"","workspace_roots":["WORKDIR"],"hook_event_name":"postToolUse"}
+{"timestamp":"2026-09-07T10:00:03.000Z","tool_name":"Shell","tool_input":{"command":"ls"},"tool_output":"{\"output\":\"saved to SHOTPATH\\n\",\"exitCode\":0}","cwd":"","workspace_roots":["WORKDIR"],"hook_event_name":"postToolUse"}
+{"timestamp":"2026-09-07T10:00:04.000Z","tool_name":"Read","tool_input":{"file_path":"D2ARTPATH"},"tool_output":"{\"success\":true}","cwd":"","workspace_roots":["WORKDIR"],"hook_event_name":"postToolUse"}
+{"timestamp":"2026-09-07T10:00:05.000Z","tool_name":"Terminal","tool_input":{"command":"echo scanning decoy-marker.png here"},"tool_output":"{\"success\":true}","cwd":"","workspace_roots":["WORKDIR"],"hook_event_name":"postToolUse"}
+{"timestamp":"2026-09-07T10:00:06.000Z","tool_name":"Read","tool_input":{"file_path":"truncated-tail-marker.png

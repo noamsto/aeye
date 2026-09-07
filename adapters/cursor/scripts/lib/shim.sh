@@ -39,7 +39,7 @@ cursor_extract_touched_paths() {
 	}
 
 	case "$name" in
-	Read|Write)
+	Read | Write)
 		emit "$(jq -r '.tool_input.file_path // .tool_input.path // empty' <<<"$payload" 2>/dev/null)"
 		;;
 	esac
@@ -53,5 +53,21 @@ cursor_extract_touched_paths() {
 	[[ -n $rewritten ]] || rewritten="$payload"
 	resp="$(scan_response_image_path "$rewritten")"
 	[[ -n $resp ]] && printf '%s\n' "$resp"
+	return 0
+}
+
+# cursor_resume_transcript SESSION_ID -> echoes the path to this conversation's
+# agent-transcript file iff exactly one exists and is non-empty, else nothing.
+# The existence of a non-empty transcript IS the resume signal (Cursor's
+# sessionStart payload carries no `source` field to switch on) — a brand-new
+# conversation has no transcript file yet. Glob on the id instead of deriving
+# <slug> from workspace_roots: the one observed slug rule (`/`->`-`) is not
+# guaranteed stable, the id is.
+cursor_resume_transcript() {
+	local sid="$1" root matches
+	[[ $sid =~ ^[A-Za-z0-9_-]+$ ]] || return 0
+	root="${AEYE_CURSOR_HOME:-$HOME/.cursor}"
+	matches=("$root"/projects/*/agent-transcripts/"$sid"/"$sid".jsonl)
+	[[ ${#matches[@]} -eq 1 && -s ${matches[0]} ]] && printf '%s' "${matches[0]}"
 	return 0
 }

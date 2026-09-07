@@ -19,6 +19,7 @@ setup() {
 	APP="$PLUGIN_ROOT/scripts/session-reset.sh"
 
 	export AEYE_DIR="$BATS_TEST_TMPDIR/state"
+	export AEYE_CURSOR_HOME="$BATS_TEST_TMPDIR/cursorhome"
 	export TMUX_PANE="%7"
 	# Pin a tmux server pid: pane ids are per-server, so the manifest key carries
 	# it. The socket is unreachable, so the GC sweep still gets no live-pane list
@@ -103,13 +104,22 @@ run_with_live_panes() { # $1=live nums  $2=stdin json
 	[ "$(cat "$AEYE_DIR/images/4242-7.owner")" = "conv-1" ]
 }
 
+@test "resume detected defers to session-backfill.sh, does not clear the manifest" {
+	transcript_dir="$AEYE_CURSOR_HOME/projects/some-slug/agent-transcripts/conv-resume"
+	mkdir -p "$transcript_dir"
+	printf '{"tool_name":"Read"}\n' >"$transcript_dir/conv-resume.jsonl"
+	run bash "$APP" <<<"$(payload conv-resume)"
+	[ "$status" -eq 0 ]
+	[ -f "$MANIFEST" ]
+}
+
 @test "GC sweeps manifests for tmux panes that no longer exist" {
 	printf 'sess-A' >"$AEYE_DIR/images/4242-7.owner"
 	printf '{}\n' >"$AEYE_DIR/images/4242-8.jsonl" # dead pane
 	printf '{}\n' >"$AEYE_DIR/images/4242-9.jsonl" # live pane
 	run run_with_live_panes "7 9" "$(payload sess-A)"
 	[ "$status" -eq 0 ]
-	# Current pane always cleared (startup semantics; no resume branch).
+	# No resume detected for this conversation id (current pane cleared normally).
 	[ ! -f "$MANIFEST" ]
 	[ "$(cat "$AEYE_DIR/images/4242-7.owner")" = "sess-A" ]
 	[ -f "$AEYE_DIR/images/4242-9.jsonl" ]   # live, kept

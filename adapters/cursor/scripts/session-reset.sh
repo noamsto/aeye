@@ -2,11 +2,14 @@
 # sessionStart hook. Keeps the carousel from showing a different session's images
 # when a tmux pane id is reused (tmux renumbers panes from low values on every
 # server restart, and the manifest dir is shared machine-wide). Two jobs:
-#   1. This pane's manifest — Cursor has no `source` field and sessionStart only
-#      fires for new conversations, so always apply startup semantics: clear the
-#      pane manifest and stamp the owner with cursor_session_id, before the
-#      viewer reads, so a reader launched right after start sees a manifest that
-#      belongs to this session.
+#   1. This pane's manifest — Cursor has no `source` field, so a detected resume
+#      (a non-empty agent-transcript already exists for this conversation id)
+#      defers entirely to session-backfill.sh, which is the sole writer of a
+#      resumed pane's manifest (SessionStart hooks run in parallel, no ordered
+#      turn). Otherwise, apply startup semantics: clear the pane manifest and
+#      stamp the owner with cursor_session_id, before the viewer reads, so a
+#      reader launched right after start sees a manifest that belongs to this
+#      session.
 #   2. GC — sweep manifests (and their orphaned owner sidecars) for tmux panes no
 #      longer in the server, and session-keyed files past a TTL, so the shared dir
 #      never grows without bound. Reads the hook JSON on stdin.
@@ -32,14 +35,19 @@ clear_pane() { rm -f "$IMAGES_DIR/$1.jsonl" "$IMAGES_DIR/$1.owner" "$IMAGES_DIR/
 
 # --- This pane's manifest ---
 if [[ -n $pane_file ]] && valid_pane_file "$pane_file"; then
-	# Serialize the clear/owner-stamp against a live images.sh append that may
-	# fire the instant the session starts.
-	_manifest_lock "$IMAGES_DIR/$pane_file.lock"
-	owner_file="$IMAGES_DIR/$pane_file.owner"
-	# Always startup: clear + stamp. No resume/compact branch (Cursor has no
-	# source field; sessionStart is new-conversation-only).
-	clear_pane "$pane_file"
-	[[ -n $session ]] && printf '%s' "$session" >"$owner_file"
+	# A detected resume defers entirely to session-backfill.sh — nothing to
+	# serialize against here, since this branch does nothing at all. The lock
+	# only guards the clear+stamp below, so it lives inside the non-resume
+	# branch rather than unconditionally like Codex's session-reset.sh.
+	if [[ -z $(cursor_resume_transcript "$session") ]]; then
+		# Serialize the clear/owner-stamp against a live images.sh append that may
+		# fire the instant the session starts.
+		_manifest_lock "$IMAGES_DIR/$pane_file.lock"
+		owner_file="$IMAGES_DIR/$pane_file.owner"
+		clear_pane "$pane_file"
+		[[ -n $session ]] && printf '%s' "$session" >"$owner_file"
+	fi
+	# else: resume detected — session-backfill.sh owns this manifest.
 fi
 
 # --- GC the shared dir ---

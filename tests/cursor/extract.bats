@@ -4,6 +4,7 @@ setup() {
 	ROOT="$(dirname "$(dirname "$BATS_TEST_DIRNAME")")"
 	LIB="$ROOT/adapters/cursor/scripts/lib/shim.sh"
 	FIXTURES="$ROOT/tests/fixtures/cursor"
+	export AEYE_CURSOR_HOME="$BATS_TEST_TMPDIR/cursorhome"
 	# shellcheck source=/dev/null
 	source "$LIB"
 }
@@ -85,4 +86,75 @@ setup() {
 	run cursor_effective_cwd "$payload"
 	[ "$status" -eq 0 ]
 	[ "$output" = "/from-roots" ]
+}
+
+@test "cursor_resume_transcript: exactly one match, non-empty -> echoes that path" {
+	SID="conv-1"
+	DIR="$AEYE_CURSOR_HOME/projects/some-slug/agent-transcripts/$SID"
+	mkdir -p "$DIR"
+	printf '{"tool_name":"Read"}\n' >"$DIR/$SID.jsonl"
+
+	run cursor_resume_transcript "$SID"
+	[ "$status" -eq 0 ]
+	[ "$output" = "$DIR/$SID.jsonl" ]
+}
+
+@test "cursor_resume_transcript: zero matches -> empty" {
+	run cursor_resume_transcript "no-such-conv"
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
+@test "cursor_resume_transcript: file exists but is empty -> empty" {
+	SID="conv-empty"
+	DIR="$AEYE_CURSOR_HOME/projects/some-slug/agent-transcripts/$SID"
+	mkdir -p "$DIR"
+	: >"$DIR/$SID.jsonl"
+
+	run cursor_resume_transcript "$SID"
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
+@test "cursor_resume_transcript: two matches -> empty, not either path" {
+	SID="conv-dup"
+	for slug in slug-a slug-b; do
+		DIR="$AEYE_CURSOR_HOME/projects/$slug/agent-transcripts/$SID"
+		mkdir -p "$DIR"
+		printf '{"tool_name":"Read"}\n' >"$DIR/$SID.jsonl"
+	done
+
+	run cursor_resume_transcript "$SID"
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
+@test "cursor_resume_transcript: glob metacharacter or path traversal in id -> empty, never escapes AEYE_CURSOR_HOME" {
+	mkdir -p "$AEYE_CURSOR_HOME/projects/some-slug/agent-transcripts/x"
+	printf '{"tool_name":"Read"}\n' >"$AEYE_CURSOR_HOME/projects/some-slug/agent-transcripts/x/x.jsonl"
+
+	OUTSIDE="$BATS_TEST_TMPDIR/outside"
+	mkdir -p "$OUTSIDE"
+	printf '{"tool_name":"Read"}\n' >"$OUTSIDE/escaped.jsonl"
+
+	run cursor_resume_transcript '*'
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+
+	run cursor_resume_transcript '../outside/escaped'
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
+@test 'cursor_resume_transcript: AEYE_CURSOR_HOME unset falls back to $HOME' {
+	unset AEYE_CURSOR_HOME
+	export HOME="$BATS_TEST_TMPDIR/fakehome"
+	SID="conv-fakehome"
+	DIR="$HOME/.cursor/projects/some-slug/agent-transcripts/$SID"
+	mkdir -p "$DIR"
+	printf '{"tool_name":"Read"}\n' >"$DIR/$SID.jsonl"
+
+	run cursor_resume_transcript "$SID"
+	[ "$status" -eq 0 ]
+	[ "$output" = "$DIR/$SID.jsonl" ]
 }

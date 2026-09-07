@@ -32,7 +32,10 @@ What it does:
   `~/.cursor/skills/aeye-image-gallery`
 
 Override the Cursor config home with `AEYE_CURSOR_HOME` (default
-`$HOME/.cursor`).
+`$HOME/.cursor`). Beyond install time, `session-backfill.sh` and
+`session-reset.sh` also read this variable live, at hook time — export it in
+the environment `cursor-agent` runs in, not just at install, or resume
+backfill silently falls back to `$HOME/.cursor` and finds nothing.
 
 Requires `jq` on PATH.
 
@@ -52,8 +55,12 @@ From the [hook-contract spike](../../docs/superpowers/spikes/2026-07-28-cursor-h
 - **tmux-primary** — designed for `cursor-agent` in tmux.
 - **No browser/MCP screenshot capture** — only Read/Write/Shell path
   extraction.
-- **Resume backfill deferred** — `sessionStart` is new-conversation-only;
-  `transcript_path` is null there.
+- **Resume backfill** — Cursor's `sessionStart` payload carries no `source`
+  field, so a resume is detected by probing for a non-empty
+  `agent-transcripts/<id>/<id>.jsonl` under `AEYE_CURSOR_HOME`. When found,
+  `session-backfill.sh` rebuilds the pane's manifest from that transcript and
+  `session-reset.sh` defers to it; when not found (a genuinely new
+  conversation), startup semantics apply as before.
 - **Failed tool calls not captured** — `postToolUseFailure` is not hooked
   (v1 matches Claude/Codex: `postToolUse` only).
 - **Cursor IDE plugin hooks unproven** — CLI `hooks.json` is the supported

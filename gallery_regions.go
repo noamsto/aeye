@@ -256,6 +256,22 @@ func (t *regionTree) childrenOf(path []string) []region {
 	return t.byParent[strings.Join(path, ".")]
 }
 
+// regionAt returns the index, among the children at the given drill path, of the
+// region containing (x, y) in source fractions. When siblings overlap, the
+// smallest-area one wins, so the hit does not depend on their spatial order.
+func (t *regionTree) regionAt(path []string, x, y float64) (int, bool) {
+	best, area := -1, math.Inf(1)
+	for i, r := range t.childrenOf(path) {
+		if x < r.x0 || x > r.x1 || y < r.y0 || y > r.y1 {
+			continue
+		}
+		if a := (r.x1 - r.x0) * (r.y1 - r.y0); a < area {
+			best, area = i, a
+		}
+	}
+	return best, best >= 0
+}
+
 const framePadding = 1.1 // ~10% margin around the framed region
 
 // boxAspectFrac returns the crop fraction aspect (cropW_frac / cropH_frac) whose

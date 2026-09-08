@@ -987,7 +987,9 @@ func (m galleryModel) renderView() string {
 	case backendRaster:
 		preview = blankBlock(m.l.previewW, m.l.previewH)
 	default:
-		preview = cachedSymbols(m.images[m.cursor].Path, m.l.previewW, m.l.previewH, m.crop)
+		preview = cachedSymbols(m.images[m.cursor].Path, m.l.previewW, m.l.previewH, m.crop, func() string {
+			return m.renderZoom(m.l.previewW, m.l.previewH)
+		})
 	}
 	context := ""
 	if m.curVector() != "" {
@@ -1039,7 +1041,8 @@ func (m galleryModel) renderView() string {
 		case backendRaster:
 			thumb = blankBlock(m.l.stripW, m.l.stripH)
 		default:
-			thumb = cachedSymbols(m.images[idx].Path, m.l.stripW, m.l.stripH, m.crop)
+			path := m.images[idx].Path
+			thumb = cachedSymbols(path, m.l.stripW, m.l.stripH, m.crop, func() string { return path })
 		}
 		border := dimColor
 		if idx == m.cursor {

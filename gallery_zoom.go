@@ -72,16 +72,27 @@ func (m *galleryModel) baseFillCrop() cropFrac {
 }
 
 // scaleCropAbout scales the crop's size by s about its center, preserving aspect.
-// s < 1 zooms in, s > 1 zooms out. The longer side is floored at 1/zoomMax: it's
-// the box-binding axis, so it sets on-screen magnification (true zoomMax×), and
-// flooring on it lets a thin letterboxed strip still magnify instead of stalling.
-// Both axes scale by the same factor, so a non-square crop never distorts.
-func scaleCropAbout(c cropFrac, s float64) cropFrac {
-	const minSide = 1.0 / zoomMax
+// s < 1 zooms in, s > 1 zooms out. The longer side is floored at minSide: it's
+// the box-binding axis, so it sets on-screen magnification, and flooring on it
+// lets a thin letterboxed strip still magnify instead of stalling. Both axes
+// scale by the same factor, so a non-square crop never distorts.
+func scaleCropAbout(c cropFrac, s, minSide float64) cropFrac {
 	if hi := max(c.w(), c.h()); hi*s < minSide {
 		s = minSide / hi
 	}
 	return recenterScaled(c.cx(), c.cy(), c.w()*s, c.h()*s)
+}
+
+// zoomFloor is the smallest longer-side the crop may shrink to — zoomMax× deeper
+// than the framing this zoom sequence started from. It can't be an absolute
+// fraction of the image: a Tab-framed d2 block is routinely tighter than
+// 1/zoomMax of the canvas, so a fixed floor is already breached on entry.
+func (m *galleryModel) zoomFloor() float64 {
+	floor := 1.0 / zoomMax
+	if base, ok := m.focusedFrame(); ok {
+		floor = min(floor, max(base.w(), base.h())/zoomMax)
+	}
+	return floor
 }
 
 // cropFillsBox reports whether the crop already fills the preview box — its pixel
@@ -107,7 +118,7 @@ func (m *galleryModel) zoomBy(factor float64) {
 		if m.crop.isFull() {
 			base = m.baseFillCrop()
 		}
-		m.crop = scaleCropAbout(base, 1/factor)
+		m.crop = scaleCropAbout(base, 1/factor, m.zoomFloor())
 		return
 	}
 	if m.crop.isFull() {

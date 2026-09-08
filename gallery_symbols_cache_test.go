@@ -36,8 +36,8 @@ func TestCachedSymbolsHit(t *testing.T) {
 	writeTestImage(t, src, 40, 30)
 	crop := fullCrop()
 
-	cachedSymbols(src, 20, 10, crop)
-	cachedSymbols(src, 20, 10, crop)
+	cachedSymbols(src, 20, 10, crop, func() string { return src })
+	cachedSymbols(src, 20, 10, crop, func() string { return src })
 
 	if *calls != 1 {
 		t.Fatalf("same path/size/crop twice: %d chafa calls, want 1", *calls)
@@ -49,8 +49,8 @@ func TestCachedSymbolsCropMiss(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "a.png")
 	writeTestImage(t, src, 40, 30)
 
-	cachedSymbols(src, 20, 10, fullCrop())
-	cachedSymbols(src, 20, 10, cropFrac{0.1, 0.1, 0.9, 0.9})
+	cachedSymbols(src, 20, 10, fullCrop(), func() string { return src })
+	cachedSymbols(src, 20, 10, cropFrac{0.1, 0.1, 0.9, 0.9}, func() string { return src })
 
 	if *calls != 2 {
 		t.Fatalf("crop change: %d chafa calls, want 2", *calls)
@@ -63,8 +63,8 @@ func TestCachedSymbolsCellBoxMiss(t *testing.T) {
 	writeTestImage(t, src, 40, 30)
 	crop := fullCrop()
 
-	cachedSymbols(src, 20, 10, crop)
-	cachedSymbols(src, 8, 4, crop)
+	cachedSymbols(src, 20, 10, crop, func() string { return src })
+	cachedSymbols(src, 8, 4, crop, func() string { return src })
 
 	if *calls != 2 {
 		t.Fatalf("cell box change: %d chafa calls, want 2", *calls)
@@ -80,8 +80,8 @@ func TestCachedSymbolsDistinctPathMiss(t *testing.T) {
 	writeTestImage(t, b, 40, 30)
 	crop := fullCrop()
 
-	cachedSymbols(a, 20, 10, crop)
-	cachedSymbols(b, 20, 10, crop)
+	cachedSymbols(a, 20, 10, crop, func() string { return a })
+	cachedSymbols(b, 20, 10, crop, func() string { return b })
 
 	if *calls != 2 {
 		t.Fatalf("distinct paths: %d chafa calls, want 2", *calls)
@@ -103,13 +103,13 @@ func TestCachedSymbolsFailThenSucceed(t *testing.T) {
 	writeTestImage(t, src, 40, 30)
 	crop := fullCrop()
 
-	if got := cachedSymbols(src, 20, 10, crop); got != "[img]" {
+	if got := cachedSymbols(src, 20, 10, crop, func() string { return src }); got != "[img]" {
 		t.Fatalf("first call: got %q, want [img]", got)
 	}
-	if got := cachedSymbols(src, 20, 10, crop); got != "ART" {
+	if got := cachedSymbols(src, 20, 10, crop, func() string { return src }); got != "ART" {
 		t.Fatalf("second call: got %q, want ART", got)
 	}
-	cachedSymbols(src, 20, 10, crop)
+	cachedSymbols(src, 20, 10, crop, func() string { return src })
 
 	if calls != 2 {
 		t.Fatalf("fail then succeed then hit: %d chafa calls, want 2", calls)
@@ -122,7 +122,7 @@ func TestCachedSymbolsMtimeMiss(t *testing.T) {
 	writeTestImage(t, src, 40, 30)
 	crop := fullCrop()
 
-	cachedSymbols(src, 20, 10, crop)
+	cachedSymbols(src, 20, 10, crop, func() string { return src })
 
 	f, err := os.OpenFile(src, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
@@ -133,7 +133,7 @@ func TestCachedSymbolsMtimeMiss(t *testing.T) {
 	}
 	f.Close()
 
-	cachedSymbols(src, 20, 10, crop)
+	cachedSymbols(src, 20, 10, crop, func() string { return src })
 
 	if *calls != 2 {
 		t.Fatalf("mtime/size change: %d chafa calls, want 2", *calls)
@@ -177,5 +177,56 @@ func TestRenderViewSymbolsCache(t *testing.T) {
 	_ = m.renderView()
 	if *calls-before != 0 {
 		t.Fatalf("second renderView: %d additional chafa calls, want 0", *calls-before)
+	}
+}
+
+// TestRenderViewSymbolsZoomCacheHit asserts a cache hit on a zoomed crop skips
+// both the chafa fork and the crop/PNG re-encode: the zoom scratch file's
+// mtime must not advance on a repeat renderView().
+func TestRenderViewSymbolsZoomCacheHit(t *testing.T) {
+	calls := stubRunChafa(t)
+	src := filepath.Join(t.TempDir(), "half.png")
+	img := writeHalfToneImage(t, src, 120, 80)
+
+	m := galleryModel{
+		pane:       "%zoomcache",
+		backend:    backendSymbols,
+		images:     []imageEntry{{Path: src}},
+		cursor:     0,
+		curImg:     img,
+		curImgPath: src,
+		crop:       cropFrac{0, 0, 0.5, 1},
+		width:      80,
+		height:     40,
+		cellW:      10,
+		cellH:      20,
+		l:          layout{previewW: 40, previewH: 16, stripW: 12, stripH: 6, stripCols: 1},
+	}
+
+	*calls = 0
+	_ = m.renderView()
+	if *calls == 0 {
+		t.Fatal("first renderView with a zoomed crop should fork chafa at least once")
+	}
+
+	scratch := m.zoomScratchPath()
+	fi, err := os.Stat(scratch)
+	if err != nil {
+		t.Fatalf("expected zoom scratch PNG to exist after first render: %v", err)
+	}
+	encodedAt := fi.ModTime()
+
+	before := *calls
+	_ = m.renderView()
+	if *calls != before {
+		t.Fatalf("second identical renderView: %d additional chafa forks, want 0", *calls-before)
+	}
+
+	fi, err = os.Stat(scratch)
+	if err != nil {
+		t.Fatalf("zoom scratch PNG vanished between renders: %v", err)
+	}
+	if !fi.ModTime().Equal(encodedAt) {
+		t.Fatal("second identical renderView re-encoded the zoom scratch PNG; the crop source must stay lazy on a cache hit")
 	}
 }

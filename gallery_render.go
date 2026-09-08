@@ -486,10 +486,14 @@ var (
 	symbolsCache   = map[string]string{}
 )
 
-func cachedSymbols(path string, w, h int, crop cropFrac) string {
+// cachedSymbols keys on path (the original image), so a cropped render shares
+// its cache identity with the unzoomed one. src resolves the path to actually
+// hand chafa (original or cropped scratch) and must stay unevaluated on a
+// cache hit — resolving a crop means an uncached renderZoom encode.
+func cachedSymbols(path string, w, h int, crop cropFrac, src func() string) string {
 	fi, err := os.Stat(path)
 	if err != nil {
-		return symbolsBlock(path, w, h)
+		return symbolsBlock(src(), w, h)
 	}
 	key := fmt.Sprintf("%s|%d|%d|%dx%d|%.6f,%.6f,%.6f,%.6f",
 		path, fi.ModTime().UnixNano(), fi.Size(), w, h, crop.x0, crop.y0, crop.x1, crop.y1)
@@ -500,7 +504,7 @@ func cachedSymbols(path string, w, h int, crop cropFrac) string {
 	}
 	symbolsCacheMu.Unlock()
 
-	s := symbolsBlock(path, w, h)
+	s := symbolsBlock(src(), w, h)
 	if s != "[img]" {
 		symbolsCacheMu.Lock()
 		symbolsCache[key] = s

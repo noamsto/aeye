@@ -2,6 +2,12 @@ package main
 
 import (
 	"image"
+	"image/color"
+	"image/png"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -314,6 +320,130 @@ func TestCropGeometryUsesMeasuredCellSize(t *testing.T) {
 
 // Bridged viewers pay a network round trip per stored frame instead of a local
 // encode, so both the pacing and the frame format flip when AEYE_BRIDGED is set.
+func TestRenderZoomFullCropReturnsOriginal(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "img.png")
+	writeTestImage(t, src, 100, 80)
+	m := &galleryModel{
+		pane:       "%0",
+		images:     []imageEntry{{Path: src}},
+		cursor:     0,
+		curImg:     image.NewRGBA(image.Rect(0, 0, 100, 80)),
+		curImgPath: src,
+		crop:       fullCrop(),
+		l:          layout{previewW: 40, previewH: 20},
+		cellW:      10,
+		cellH:      20,
+	}
+	if got := m.renderZoom(40, 20); got != src {
+		t.Errorf("full crop should return original path, got %q want %q", got, src)
+	}
+}
+
+func TestRenderZoomCropReturnsScratch(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "img.png")
+	writeTestImage(t, src, 100, 80)
+	m := &galleryModel{
+		pane:       "%0",
+		images:     []imageEntry{{Path: src}},
+		cursor:     0,
+		curImg:     image.NewRGBA(image.Rect(0, 0, 100, 80)),
+		curImgPath: src,
+		crop:       cropFrac{0.25, 0.25, 0.75, 0.75},
+		l:          layout{previewW: 40, previewH: 20},
+		cellW:      10,
+		cellH:      20,
+	}
+	got := m.renderZoom(40, 20)
+	if got == src {
+		t.Fatal("cropped zoom must not return the original file path")
+	}
+	if got != m.zoomScratchPath() {
+		t.Errorf("cropped zoom should write scratch PNG, got %q want %q", got, m.zoomScratchPath())
+	}
+}
+
+func writeHalfToneImage(t *testing.T, path string, w, h int) image.Image {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			if x < w/2 {
+				img.Set(x, y, color.RGBA{R: 255, A: 255})
+			} else {
+				img.Set(x, y, color.RGBA{B: 255, A: 255})
+			}
+		}
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		t.Fatal(err)
+	}
+	return img
+}
+
+// backendSymbols must crop the preview through renderZoom; filmstrip thumbs stay
+// on the original paths (same as kitty/raster). Skipped when chafa is missing.
+func TestRenderViewSymbolsZoomPreview(t *testing.T) {
+	if _, err := exec.LookPath("chafa"); err != nil {
+		t.Skip("chafa not on PATH")
+	}
+	src := filepath.Join(t.TempDir(), "half.png")
+	img := writeHalfToneImage(t, src, 120, 80)
+	m := galleryModel{
+		pane:       "%0",
+		backend:    backendSymbols,
+		images:     []imageEntry{{Path: src}},
+		cursor:     0,
+		curImg:     img,
+		curImgPath: src,
+		crop:       fullCrop(),
+		width:      80,
+		height:     40,
+		cellW:      10,
+		cellH:      20,
+		l:          layout{previewW: 40, previewH: 16, stripW: 12, stripH: 6, stripCols: 1},
+	}
+	unzoomed := m.renderView()
+
+	m.crop = cropFrac{0, 0, 0.5, 1}
+	zoomed := m.renderView()
+	if zoomed == unzoomed {
+		t.Fatal("zoomed symbols preview must differ from the unzoomed view")
+	}
+
+	wantPreview := symbolsBlock(m.renderZoom(m.l.previewW, m.l.previewH), m.l.previewW, m.l.previewH)
+	previewLine := strings.Split(wantPreview, "\n")[0]
+	if !viewContainsLine(zoomed, previewLine) {
+		t.Error("zoomed view must render the cropped preview block-art")
+	}
+
+	wantStrip := symbolsBlock(src, m.l.stripW, m.l.stripH)
+	stripLine := strings.Split(wantStrip, "\n")[0]
+	if !viewContainsLine(zoomed, stripLine) {
+		t.Error("filmstrip must still render the uncropped source image")
+	}
+	if !viewContainsLine(unzoomed, stripLine) {
+		t.Fatal("sanity: unzoomed view must contain the filmstrip")
+	}
+}
+
+func viewContainsLine(view, line string) bool {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return false
+	}
+	for _, l := range strings.Split(view, "\n") {
+		if strings.Contains(l, trimmed) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestBridgedFramePolicy(t *testing.T) {
 	if panFrameGapFor(false) != 8*time.Millisecond {
 		t.Fatal("local gap changed")

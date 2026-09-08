@@ -1,6 +1,7 @@
 package main
 
 import (
+	"image"
 	"math"
 	"os"
 	"os/exec"
@@ -299,5 +300,55 @@ func TestDrillInLeafNoOp(t *testing.T) {
 	m.drillIn()
 	if r, _ := m.focusedRegion(); r.path != "store" {
 		t.Fatalf("leaf drillIn moved focus to %v", r.path)
+	}
+}
+
+// blockModel focuses a single small block — 8%x7% of a 1600x900 canvas, the
+// scale of a real d2 node — so its framed crop lands tighter than 1/zoomMax.
+func blockModel() *galleryModel {
+	rs := []region{{path: "a", x0: 0.40, y0: 0.45, x1: 0.48, y1: 0.52}}
+	m := &galleryModel{
+		regions:   newRegionTree(rs),
+		regionIdx: -1,
+		curImg:    image.NewRGBA(image.Rect(0, 0, 1600, 900)),
+		l:         layout{previewW: 100, previewH: 40},
+		cellW:     10,
+		cellH:     22,
+		crop:      fullCrop(),
+	}
+	m.cycleRegion(+1)
+	return m
+}
+
+// A block framed tighter than 1/zoomMax entered region mode already past the old
+// absolute floor, so every zoom-in clamped back to the block's own size.
+func TestZoomInFromFocusedBlockKeepsMagnifying(t *testing.T) {
+	m := blockModel()
+	framed := m.crop
+	for i := 1; i <= 3; i++ {
+		before := m.crop.w()
+		m.zoomBy(1.25)
+		if m.crop.w() >= before {
+			t.Fatalf("step %d did not magnify: w %v -> %v", i, before, m.crop.w())
+		}
+	}
+	if got, want := framed.w()/m.crop.w(), math.Pow(1.25, 3); !approx(got, want) {
+		t.Errorf("three steps from the framed block = %vx, want %vx", got, want)
+	}
+}
+
+// The cap still holds inside a region — it's just measured from the block's frame
+// instead of the whole canvas.
+func TestZoomInFromFocusedBlockClampsAtMax(t *testing.T) {
+	m := blockModel()
+	framed := m.crop
+	for range 50 {
+		m.zoomBy(1.25)
+	}
+	if got, want := max(m.crop.w(), m.crop.h()), max(framed.w(), framed.h())/zoomMax; !approx(got, want) {
+		t.Errorf("longer side = %v, want the framed baseline / %v = %v", got, zoomMax, want)
+	}
+	if got, want := m.crop.w()/m.crop.h(), framed.w()/framed.h(); !approx(got, want) {
+		t.Errorf("clamp must preserve the framed aspect: %v -> %v", want, got)
 	}
 }

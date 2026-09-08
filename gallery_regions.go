@@ -394,15 +394,24 @@ func (m *galleryModel) exitRegions() {
 	m.resetZoom()
 }
 
-// frameFocused sets the crop to frame the focused region, using the decoded
-// image's pixel dims as the source size. No-op when nothing is decoded.
-func (m *galleryModel) frameFocused() {
+// focusedFrame is the crop that frames the focused region, using the decoded
+// image's pixel dims as the source size. Not ok when nothing is focused or
+// decoded.
+func (m *galleryModel) focusedFrame() (cropFrac, bool) {
 	r, ok := m.focusedRegion()
 	if !ok || m.curImg == nil {
-		return
+		return cropFrac{}, false
 	}
 	b := m.curImg.Bounds()
-	m.crop = frameRegion(r, b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
+	return frameRegion(r, b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx()), true
+}
+
+// frameFocused sets the crop to frame the focused region. No-op when nothing is
+// focused or decoded.
+func (m *galleryModel) frameFocused() {
+	if c, ok := m.focusedFrame(); ok {
+		m.crop = c
+	}
 }
 
 // ensureRegions parses the current d2 entry's SVG into m.regions on first use.

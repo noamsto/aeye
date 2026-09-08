@@ -355,14 +355,22 @@ func chooseGridBackend(termname string, inTmux bool, termProgram, lcTerminal, we
 }
 
 // chooseRelayBackend picks a grid renderer when output cannot reach a real
-// terminal directly (control-mode relay or AEYE_BRIDGED). Only kitty-class
-// termnames get real graphics; everything else falls to block-art symbols —
-// never sixel/raster, which the relay cannot localise.
-func chooseRelayBackend(termname string) gridBackend {
+// terminal directly (control-mode relay or AEYE_BRIDGED). Kitty-class
+// termnames get real graphics. Otherwise, relayGraphics is the bridge's own
+// verdict on what it can relay — sourced from LZTMUX_RELAY_GRAPHICS, computed
+// once local-side and shared by the relay gate and the remote publish — so
+// this trusts it rather than re-deriving it: DA1/probeSixel would only
+// reflect tmux's own compile-time sixel support, not the displaying
+// terminal's. "sixel" means a bare sixel will be relayed and painted;
+// anything else falls to block-art symbols.
+func chooseRelayBackend(termname, relayGraphics string) (gridBackend, string) {
 	if strings.HasPrefix(termname, "xterm-kitty") || strings.HasPrefix(termname, "xterm-ghostty") {
-		return backendKitty
+		return backendKitty, ""
 	}
-	return backendSymbols
+	if relayGraphics == "sixel" {
+		return backendRaster, formatSixel
+	}
+	return backendSymbols, ""
 }
 
 // tmuxPassthrough wraps an escape sequence so tmux forwards it to the outer

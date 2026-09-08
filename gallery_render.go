@@ -469,11 +469,43 @@ func symbolsArgs(path string, w, h int) []string {
 	return []string{"-f", "symbols", "--size", fmt.Sprintf("%dx%d", w, h), path}
 }
 
+var runChafa = func(args []string) ([]byte, error) {
+	return exec.Command("chafa", args...).Output()
+}
+
+var (
+	symbolsCacheMu sync.Mutex
+	symbolsCache   = map[string]string{}
+)
+
+func cachedSymbols(path string, w, h int, crop cropFrac) string {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return symbolsBlock(path, w, h)
+	}
+	key := fmt.Sprintf("%s|%d|%d|%dx%d|%.6f,%.6f,%.6f,%.6f",
+		path, fi.ModTime().UnixNano(), fi.Size(), w, h, crop.x0, crop.y0, crop.x1, crop.y1)
+	symbolsCacheMu.Lock()
+	if s, ok := symbolsCache[key]; ok {
+		symbolsCacheMu.Unlock()
+		return s
+	}
+	symbolsCacheMu.Unlock()
+
+	s := symbolsBlock(path, w, h)
+	if s != "[img]" {
+		symbolsCacheMu.Lock()
+		symbolsCache[key] = s
+		symbolsCacheMu.Unlock()
+	}
+	return s
+}
+
 // symbolsBlock renders a path to chafa symbols text sized to w x h cells, or a
 // textual placeholder on failure. chafa wraps output in cursor hide/show
 // (\e[?25l … \e[?25h); strip them so they don't leak into the TUI's frame.
 func symbolsBlock(path string, w, h int) string {
-	out, err := exec.Command("chafa", symbolsArgs(path, w, h)...).Output()
+	out, err := runChafa(symbolsArgs(path, w, h))
 	if err != nil {
 		return "[img]"
 	}

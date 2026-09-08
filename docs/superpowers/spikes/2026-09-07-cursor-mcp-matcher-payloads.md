@@ -334,7 +334,12 @@ trusting the run at all.
 
 **Positive control** (`cursor-agent -p -f "Read the file /etc/hostname"`) —
 `control.jsonl` got two entries attributable to this exact run by
-`conversation_id`:
+`conversation_id` (elided from the quote below along with `session_id`,
+`user_email`, `cursor_version`, and `workspace_roots` for brevity — the full
+raw events also carry `conversation_id: "fcd8da4d-cace-4552-99a8-f96f86cbee2d"`
+on the `Read` entry and `"053710b6-de16-42a9-9365-131bc73d7a3c"` on the
+`Shell` entry, both distinct from the unrelated session's `conversation_id`
+noted below):
 
 ```json
 {"tool_name":"Read","hook_event_name":"postToolUse","tool_input":{"file_path":"/etc/hostname"}}
@@ -368,9 +373,12 @@ between the two files:
 
 ```json
 {"tool_name":"MCP:browser_navigate","hook_event_name":"postToolUse","tool_input":{"url":"about:blank"},"cursor_version":"2026.09.02-c22c1a3","workspace_roots":["/tmp/aeye-mcp-probe/work"],"transcript_path":"/home/noams/.cursor/projects/tmp-aeye-mcp-probe-work/agent-transcripts/053710b6-de16-42a9-9365-131bc73d7a3c/053710b6-de16-42a9-9365-131bc73d7a3c.jsonl"}
-{"tool_name":"MCP:browser_navigate","hook_event_name":"postToolUse","tool_input":{"url":"about:blank"}, "...": "(retried once)"}
+{"tool_name":"MCP:browser_navigate","hook_event_name":"postToolUse","tool_input":{"url":"about:blank"},"cursor_version":"2026.09.02-c22c1a3","workspace_roots":["/tmp/aeye-mcp-probe/work"],"transcript_path":"/home/noams/.cursor/projects/tmp-aeye-mcp-probe-work/agent-transcripts/053710b6-de16-42a9-9365-131bc73d7a3c/053710b6-de16-42a9-9365-131bc73d7a3c.jsonl"}
 {"tool_name":"MCP:browser_take_screenshot","hook_event_name":"postToolUse","tool_input":{"scale":"css"},"cursor_version":"2026.09.02-c22c1a3","workspace_roots":["/tmp/aeye-mcp-probe/work"],"transcript_path":"/home/noams/.cursor/projects/tmp-aeye-mcp-probe-work/agent-transcripts/053710b6-de16-42a9-9365-131bc73d7a3c/053710b6-de16-42a9-9365-131bc73d7a3c.jsonl"}
 ```
+
+(`browser_navigate` appears twice — the agent retried it once, both attempts
+identical; that repetition is real, not a copy-paste artifact.)
 
 `tool_output` (elided here — full text is the Playwright "Missing X server"
 error page, real and observed, several KB of Chromium launch-arg dump) starts

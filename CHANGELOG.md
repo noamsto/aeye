@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.3](https://github.com/noamsto/aeye/compare/v0.17.2...v0.17.3) (2026-09-08)
+
+
+### Bug Fixes
+
+* **zoom:** keep zooming after Tab-focusing a block ([#225](https://github.com/noamsto/aeye/issues/225)) ([209fc48](https://github.com/noamsto/aeye/commit/209fc4850637153760b3426e68666e84285a73b7))
+
 ## [0.17.2](https://github.com/noamsto/aeye/compare/v0.17.1...v0.17.2) (2026-09-07)
 
 

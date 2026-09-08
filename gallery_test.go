@@ -126,20 +126,26 @@ func TestChooseGridBackend(t *testing.T) {
 
 func TestChooseRelayBackend(t *testing.T) {
 	cases := []struct {
-		name string
-		term string
-		want gridBackend
+		name          string
+		term          string
+		relayGraphics string
+		want          gridBackend
+		wantFmt       string
 	}{
-		{"kitty", "xterm-kitty", backendKitty},
-		{"ghostty", "xterm-ghostty", backendKitty},
-		{"foot", "foot", backendSymbols},
-		{"tmux", "tmux-256color", backendSymbols},
-		{"empty", "", backendSymbols},
+		{"kitty, no graphics relay", "xterm-kitty", "", backendKitty, ""},
+		{"ghostty, no graphics relay", "xterm-ghostty", "", backendKitty, ""},
+		{"kitty wins over sixel relay", "xterm-kitty", "sixel", backendKitty, ""},
+		{"foot, no graphics relay", "foot", "", backendSymbols, ""},
+		{"tmux, no graphics relay", "tmux-256color", "", backendSymbols, ""},
+		{"empty termname, no graphics relay", "", "", backendSymbols, ""},
+		{"sixel relay advertised", "tmux-256color", "sixel", backendRaster, formatSixel},
+		{"unrecognized graphics value falls to symbols", "tmux-256color", "kitty", backendSymbols, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := chooseRelayBackend(c.term); got != c.want {
-				t.Errorf("chooseRelayBackend(%q) = %v, want %v", c.term, got, c.want)
+			got, fmt := chooseRelayBackend(c.term, c.relayGraphics)
+			if got != c.want || fmt != c.wantFmt {
+				t.Errorf("chooseRelayBackend(%q, %q) = (%v, %q), want (%v, %q)", c.term, c.relayGraphics, got, fmt, c.want, c.wantFmt)
 			}
 		})
 	}

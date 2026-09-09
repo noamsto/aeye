@@ -1,0 +1,52 @@
+name: Dependabot auto-merge
+
+# A dependency bump with green CI has nothing left for a human to decide.
+# Auto-merge queues the PR and GitHub merges it the moment the required checks
+# pass, so a red build simply leaves it sitting instead of needing a sweep.
+on:
+  pull_request:
+    # `closed` is not a default type; the release job below needs it.
+    types: [opened, synchronize, reopened, closed]
+
+# Dependabot-triggered runs get a read-only token unless it is raised here.
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: >-
+      github.event.action != 'closed'
+      && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dependabot/fetch-metadata@v3
+        id: metadata
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge
+        # Nix flake inputs are commit pins, so update-type comes back empty for
+        # them — excluding majors rather than allow-listing patch/minor keeps
+        # those bumps eligible while still holding back Go/Action majors.
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The merge lands as a GITHUB_TOKEN push, which does not trigger release.yml,
+  # so release-please would never see the bump and release-automerge.yml's cron
+  # would find no pending release PR to merge.
+  release:
+    if: >-
+      github.event.action == 'closed'
+      && github.event.pull_request.merged
+      && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run release.yml --repo "$GITHUB_REPOSITORY"

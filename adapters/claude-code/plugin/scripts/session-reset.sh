@@ -30,7 +30,7 @@ resolve_state_dirs
 pane_file="$(resolve_pane_key "${CLAUDE_CODE_SESSION_ID:-}")"
 session="${CLAUDE_CODE_SESSION_ID:-}"
 
-clear_pane() { rm -f "$IMAGES_DIR/$1.jsonl" "$IMAGES_DIR/$1.owner" "$IMAGES_DIR/$1.lock"; }
+clear_pane() { rm -f "$IMAGES_DIR/$1.jsonl" "$IMAGES_DIR/$1.owner" "$IMAGES_DIR/$1.ownerpid" "$IMAGES_DIR/$1.lock"; }
 
 # --- This pane's manifest ---
 if [[ -n $pane_file ]] && valid_pane_file "$pane_file"; then
@@ -40,24 +40,34 @@ if [[ -n $pane_file ]] && valid_pane_file "$pane_file"; then
 	owner_file="$IMAGES_DIR/$pane_file.owner"
 	owner=""
 	[[ -f $owner_file ]] && owner="$(<"$owner_file")"
-	case "$source" in
-	startup | clear)
-		clear_pane "$pane_file"
-		[[ -n $session ]] && printf '%s' "$session" >"$owner_file"
-		;;
-	resume)
-		# SessionStart hooks run in parallel; session-backfill is the sole writer
-		# of a resumed pane's manifest (it rebuilds it authoritatively from the
-		# transcript). Touching the manifest or owner here would just race it.
+	# A nested agent — `claude -p` from a hook, script or tool call — inherits
+	# $TMUX_PANE and so resolves this same manifest key, then reports its own
+	# fresh `startup`. Clearing there wipes the carousel of the session that
+	# spawned it (#234). Skip every branch while the recorded owner is a
+	# different, still-live session; a dead or unrecorded owner is the exited
+	# agent these clears are actually for.
+	if owner_live "$pane_file" "$session"; then
 		:
-		;;
-	*)
-		# compact/unknown: a same-session continuation. Clear only a manifest
-		# proven foreign (reused-pane-id bleed), then refresh ownership.
-		[[ -n $session && -n $owner && $owner != "$session" ]] && clear_pane "$pane_file"
-		[[ -n $session ]] && printf '%s' "$session" >"$owner_file"
-		;;
-	esac
+	else
+		case "$source" in
+		startup | clear)
+			clear_pane "$pane_file"
+			owner_claim "$pane_file" "$session"
+			;;
+		resume)
+			# SessionStart hooks run in parallel; session-backfill is the sole writer
+			# of a resumed pane's manifest (it rebuilds it authoritatively from the
+			# transcript). Touching the manifest or owner here would just race it.
+			:
+			;;
+		*)
+			# compact/unknown: a same-session continuation. Clear only a manifest
+			# proven foreign (reused-pane-id bleed), then refresh ownership.
+			[[ -n $session && -n $owner && $owner != "$session" ]] && clear_pane "$pane_file"
+			owner_claim "$pane_file" "$session"
+			;;
+		esac
+	fi
 fi
 
 # --- GC the shared dir ---

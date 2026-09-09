@@ -1,0 +1,47 @@
+name: dependabot-automerge
+
+# Turns on GitHub's auto-merge for Dependabot PRs so they land once the main
+# ruleset's required checks pass. Major bumps are left for a human.
+#
+# pull_request_target runs in the base-repo context: Dependabot-triggered
+# events otherwise get a read-only token, which cannot enable auto-merge. No
+# dependency code is checked out or executed here.
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  enable:
+    if: >-
+      github.event.action != 'closed'
+      && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: dependabot/fetch-metadata@v2
+        id: meta
+
+      # Nix flake-input bumps carry no semver, so update-type is empty there —
+      # the check only has to exclude an explicit major.
+      - if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto --squash "$PR_URL"
+
+  # The auto-merge above lands as a GITHUB_TOKEN push, which does not trigger
+  # release.yml, so release-please would never see the merged bump.
+  release:
+    if: >-
+      github.event.action == 'closed'
+      && github.event.pull_request.merged
+      && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run release.yml --repo "$GITHUB_REPOSITORY"

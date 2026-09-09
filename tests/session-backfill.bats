@@ -148,3 +148,27 @@ STUB
 	run_app resume
 	[ ! -f "$BATS_TEST_TMPDIR/toggle.log" ]
 }
+
+# --- Nested-agent guard (#234) ---
+
+@test "resume by a nested session leaves a LIVE owner's manifest untouched" {
+	# The outer session owns the pane and has a carousel entry the transcript
+	# below does not mention; the authoritative rebuild would drop it.
+	mkdir -p "$CLAUDE_STATUS_DIR/images"
+	printf '{"type":"image","path":"/outer.png","source":"Read","ts":"t","mtime":1}\n' >"$MANIFEST"
+	printf 'sess-outer' >"$OWNER"
+	printf '%s' "$$" >"$CLAUDE_STATUS_DIR/images/4242-7.ownerpid"
+	CLAUDE_CODE_SESSION_ID=sess-nested run_app resume
+	[ "$(cat "$MANIFEST")" = '{"type":"image","path":"/outer.png","source":"Read","ts":"t","mtime":1}' ]
+	[ "$(cat "$OWNER")" = "sess-outer" ]
+}
+
+@test "resume still rebuilds when the recorded owner pid is dead" {
+	mkdir -p "$CLAUDE_STATUS_DIR/images"
+	printf '{"type":"image","path":"/outer.png","source":"Read","ts":"t","mtime":1}\n' >"$MANIFEST"
+	printf 'sess-gone' >"$OWNER"
+	printf '999999999' >"$CLAUDE_STATUS_DIR/images/4242-7.ownerpid"
+	run_app resume
+	run grep -q '/outer.png' "$MANIFEST"
+	[ "$status" -ne 0 ]
+}

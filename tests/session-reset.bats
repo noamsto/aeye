@@ -132,7 +132,7 @@ run_with_live_panes() { # $1=live nums  $2=stdin json
 	printf '{}\n' >"$CLAUDE_STATUS_DIR/images/4242-9.jsonl"   # live pane
 	run run_with_live_panes "7 9" '{"source":"resume"}'
 	[ "$status" -eq 0 ]
-	[ -f "$MANIFEST" ]                           # current pane, kept
+	[ -f "$MANIFEST" ]                                # current pane, kept
 	[ -f "$CLAUDE_STATUS_DIR/images/4242-9.jsonl" ]   # live, kept
 	[ ! -f "$CLAUDE_STATUS_DIR/images/4242-8.jsonl" ] # dead, swept
 }
@@ -158,4 +158,82 @@ run_with_live_panes() { # $1=live nums  $2=stdin json
 	[ "$status" -eq 0 ]
 	[ -f "$CLAUDE_STATUS_DIR/images/4242-9.owner" ]   # live, kept
 	[ ! -f "$CLAUDE_STATUS_DIR/images/4242-8.owner" ] # dead, swept
+}
+
+# --- Nested-agent guard (#234) ---
+# A nested `claude` in the same pane resolves the SAME manifest key (it inherits
+# $TMUX_PANE) and fires SessionStart(startup). Without a liveness signal the
+# clear below wipes the outer session's carousel. `.ownerpid` supplies it.
+
+@test "startup leaves a LIVE owner's manifest and ownership alone (nested session)" {
+	export CLAUDE_CODE_SESSION_ID="sess-nested"
+	printf 'sess-outer' >"$CLAUDE_STATUS_DIR/images/4242-7.owner"
+	printf '%s' "$$" >"$CLAUDE_STATUS_DIR/images/4242-7.ownerpid" # bats pid: alive
+	run bash "$APP" <<<'{"source":"startup"}'
+	[ "$status" -eq 0 ]
+	[ -f "$MANIFEST" ]
+	[ "$(cat "$CLAUDE_STATUS_DIR/images/4242-7.owner")" = "sess-outer" ]
+}
+
+@test "startup clears when the recorded owner pid is dead (pane genuinely reused)" {
+	export CLAUDE_CODE_SESSION_ID="sess-new"
+	printf 'sess-gone' >"$CLAUDE_STATUS_DIR/images/4242-7.owner"
+	printf '999999999' >"$CLAUDE_STATUS_DIR/images/4242-7.ownerpid"
+	run bash "$APP" <<<'{"source":"startup"}'
+	[ "$status" -eq 0 ]
+	[ ! -f "$MANIFEST" ]
+	[ "$(cat "$CLAUDE_STATUS_DIR/images/4242-7.owner")" = "sess-new" ]
+}
+
+@test "startup clears when no owner pid was ever recorded (pre-upgrade state)" {
+	export CLAUDE_CODE_SESSION_ID="sess-new"
+	printf 'sess-old' >"$CLAUDE_STATUS_DIR/images/4242-7.owner"
+	run bash "$APP" <<<'{"source":"startup"}'
+	[ "$status" -eq 0 ]
+	[ ! -f "$MANIFEST" ]
+}
+
+# Stub `tmux display-message -p ... '#{pane_pid}'` with a pid that really is an
+# ancestor of the hook, so owner_pid_self's walk has something to find. The
+# stand-in pane shell is this test process's own parent, which makes the walk
+# return the test process — a real ancestor that outlives the hook, so the
+# recorded pid is still checkable with kill -0 after the run.
+stub_tmux_pane_shell() { # $1 = pid to report as the pane shell
+	local stub="$BATS_TEST_TMPDIR/bin"
+	mkdir -p "$stub"
+	{
+		echo '#!/usr/bin/env bash'
+		echo '[[ $1 == display-message ]] || exit 1'
+		echo "printf '%s' '$1'"
+	} >"$stub/tmux"
+	chmod +x "$stub/tmux"
+	printf '%s' "$stub"
+}
+
+@test "startup records a LIVE owner pid when it claims the pane" {
+	export CLAUDE_CODE_SESSION_ID="sess-A"
+	stub="$(stub_tmux_pane_shell "$PPID")"
+	PATH="$stub:$PATH" run bash "$APP" <<<'{"source":"startup"}'
+	[ "$status" -eq 0 ]
+	pid="$(cat "$CLAUDE_STATUS_DIR/images/4242-7.ownerpid")"
+	kill -0 "$pid"
+}
+
+@test "startup records no owner pid when the pane shell cannot be resolved" {
+	# Unreachable tmux socket (the setup default): the guard must degrade to the
+	# unguarded clear rather than record a pid it could not verify.
+	export CLAUDE_CODE_SESSION_ID="sess-A"
+	run bash "$APP" <<<'{"source":"startup"}'
+	[ "$status" -eq 0 ]
+	[ ! -f "$CLAUDE_STATUS_DIR/images/4242-7.ownerpid" ]
+}
+
+@test "clear_pane drops the owner pid too, so the next claim is unguarded" {
+	export CLAUDE_CODE_SESSION_ID="sess-new"
+	printf 'sess-gone' >"$CLAUDE_STATUS_DIR/images/4242-7.owner"
+	printf '999999999' >"$CLAUDE_STATUS_DIR/images/4242-7.ownerpid"
+	run bash "$APP" <<<'{"source":"clear"}'
+	[ "$status" -eq 0 ]
+	[ ! -f "$MANIFEST" ]
+	[ "$(cat "$CLAUDE_STATUS_DIR/images/4242-7.ownerpid")" != "999999999" ]
 }

@@ -33,6 +33,14 @@ manifest="$MANIFEST"
 # shellcheck disable=SC2153
 owner_file="$OWNER_FILE"
 session="${CLAUDE_CODE_SESSION_ID:-}"
+
+# A nested agent resolves this same manifest key (it inherits $TMUX_PANE) and
+# reports its own resume, whose rebuild below starts by wiping the manifest —
+# which would be the spawning session's carousel, rebuilt from the wrong
+# transcript (#234). Leave a live owner's pane untouched.
+if owner_live "$pane_file" "$session"; then
+	exit 0
+fi
 mkdir -p "$IMAGES_DIR"
 
 # Hold the pane's manifest lock across the whole clear/rebuild — a live images.sh

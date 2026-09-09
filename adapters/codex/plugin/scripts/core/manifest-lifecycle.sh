@@ -50,13 +50,75 @@ resolve_pane_key() {
 	printf '%s' "$1"
 }
 
-# manifest_paths PANE_FILE -> sets MANIFEST/OWNER_FILE/LOCK_FILE, the three
-# per-pane sidecar paths under IMAGES_DIR (resolve_state_dirs must run first).
-# shellcheck disable=SC2034 # LOCK_FILE: consumed by callers, not this file
+# manifest_paths PANE_FILE -> sets MANIFEST/OWNER_FILE/OWNERPID_FILE/LOCK_FILE,
+# the per-pane sidecar paths under IMAGES_DIR (resolve_state_dirs must run first).
+# shellcheck disable=SC2034 # LOCK_FILE/OWNERPID_FILE: consumed by callers, not this file
 manifest_paths() {
 	MANIFEST="$IMAGES_DIR/$1.jsonl"
 	OWNER_FILE="$IMAGES_DIR/$1.owner"
+	OWNERPID_FILE="$IMAGES_DIR/$1.ownerpid"
 	LOCK_FILE="$IMAGES_DIR/$1.lock"
+}
+
+# owner_pid_self -> pid of the agent process holding this pane: the ancestor of
+# this hook that is a direct child of the pane's shell. Identified by position,
+# not by name, so it resolves claude, codex and cursor-agent alike — and a Nix
+# wrapper, whose comm is `.claude-wrapped`, not `claude`. Empty outside tmux,
+# where the manifest key falls back to the (per-session unique) session id, so
+# two sessions never share a key and the guard below is unnecessary.
+owner_pid_self() {
+	local pane_pid p pp i
+	[[ -n ${TMUX_PANE:-} ]] || return 0
+	command -v tmux >/dev/null 2>&1 || return 0
+	pane_pid="$(tmux display-message -p -t "$TMUX_PANE" '#{pane_pid}' 2>/dev/null)" || return 0
+	[[ $pane_pid =~ ^[0-9]+$ ]] || return 0
+	p=$$
+	# Bounded: a cycle is impossible, but a walk that never meets pane_pid (the
+	# hook was reparented) must end rather than spin.
+	for ((i = 0; i < 16; i++)); do
+		pp="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d '[:space:]')"
+		[[ $pp =~ ^[0-9]+$ ]] || return 0
+		((pp <= 1)) && return 0
+		if [[ $pp == "$pane_pid" ]]; then
+			printf '%s' "$p"
+			return 0
+		fi
+		p="$pp"
+	done
+	return 0
+}
+
+# owner_live PANE_FILE SESSION_ID -> true when the pane is held by a DIFFERENT
+# session whose agent process is still running. That is a NESTED agent — one
+# started from inside the owner's own session (`claude -p` in a hook or script)
+# — which inherits $TMUX_PANE and so resolves the same manifest key. Its
+# parent's carousel must survive it.
+#
+# The recorded pid is the discriminator a session id alone cannot provide: a
+# reused pane and a nested agent look identical from the id, and differ only in
+# whether the recorded owner is still alive. Absent pid file -> false, which is
+# the pre-#234 behaviour, so a manifest written before the upgrade still clears.
+owner_live() {
+	local session_id="$2" pid
+	manifest_paths "$1"
+	[[ -f $OWNERPID_FILE && -f $OWNER_FILE ]] || return 1
+	[[ $(<"$OWNER_FILE") != "$session_id" ]] || return 1
+	pid="$(<"$OWNERPID_FILE")"
+	[[ $pid =~ ^[0-9]+$ ]] || return 1
+	kill -0 "$pid" 2>/dev/null
+}
+
+# owner_claim PANE_FILE SESSION_ID -> stamp this session as the pane's owner and
+# record its agent pid, so a later nested start can tell us apart from a pane
+# whose agent has exited. No-op without a session id.
+owner_claim() {
+	local pane_file="$1" session_id="$2" pid
+	[[ -n $session_id ]] || return 0
+	manifest_paths "$pane_file"
+	printf '%s' "$session_id" >"$OWNER_FILE"
+	pid="$(owner_pid_self)"
+	[[ -n $pid ]] && printf '%s' "$pid" >"$OWNERPID_FILE"
+	return 0
 }
 
 # owner_selfheal PANE_FILE SESSION_ID -> self-heal against tmux pane-id reuse:
@@ -67,10 +129,16 @@ owner_selfheal() {
 	local pane_file="$1" session_id="$2"
 	manifest_paths "$pane_file"
 	if [[ -n $session_id ]]; then
+		# A live owner is a session we are nested inside, not a recycled pane, so
+		# neither its manifest nor its ownership may be taken (#234). We append our
+		# own capture to its manifest: the work happened in this pane either way.
+		if owner_live "$pane_file" "$session_id"; then
+			return 0
+		fi
 		if [[ -f $OWNER_FILE && $(<"$OWNER_FILE") != "$session_id" ]]; then
 			rm -f "$MANIFEST"
 		fi
-		printf '%s' "$session_id" >"$OWNER_FILE"
+		owner_claim "$pane_file" "$session_id"
 	fi
 }
 
@@ -92,7 +160,7 @@ append_diagram_line() {
 
 # _gc_rm BASE -> drop a key's manifest and both sidecars.
 _gc_rm() {
-	rm -f "$IMAGES_DIR/$1.jsonl" "$IMAGES_DIR/$1.owner" "$IMAGES_DIR/$1.lock"
+	rm -f "$IMAGES_DIR/$1.jsonl" "$IMAGES_DIR/$1.owner" "$IMAGES_DIR/$1.ownerpid" "$IMAGES_DIR/$1.lock"
 }
 
 # _gc_expired BASE NOW TTL -> true when BASE has been untouched past TTL, aging
@@ -130,11 +198,12 @@ gc_sweep() {
 	# handled once.
 	local -A gc_seen=()
 	local m base
-	for m in "$IMAGES_DIR"/*.jsonl "$IMAGES_DIR"/*.owner "$IMAGES_DIR"/*.lock; do
+	for m in "$IMAGES_DIR"/*.jsonl "$IMAGES_DIR"/*.owner "$IMAGES_DIR"/*.ownerpid "$IMAGES_DIR"/*.lock; do
 		[[ -e $m ]] || continue
 		base="$(basename "$m")"
 		base="${base%.jsonl}"
 		base="${base%.owner}"
+		base="${base%.ownerpid}"
 		base="${base%.lock}"
 		[[ $base == "$pane_file" ]] && continue # never GC the pane we just stamped
 		[[ -n ${gc_seen[$base]:-} ]] && continue

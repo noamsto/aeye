@@ -31,7 +31,7 @@ resolve_state_dirs
 session="$(cursor_session_id "$payload")"
 pane_file="$(resolve_pane_key "$session")"
 
-clear_pane() { rm -f "$IMAGES_DIR/$1.jsonl" "$IMAGES_DIR/$1.owner" "$IMAGES_DIR/$1.lock"; }
+clear_pane() { rm -f "$IMAGES_DIR/$1.jsonl" "$IMAGES_DIR/$1.owner" "$IMAGES_DIR/$1.ownerpid" "$IMAGES_DIR/$1.lock"; }
 
 # --- This pane's manifest ---
 if [[ -n $pane_file ]] && valid_pane_file "$pane_file"; then
@@ -41,9 +41,16 @@ if [[ -n $pane_file ]] && valid_pane_file "$pane_file"; then
 		# Serialize the clear/owner-stamp against a live images.sh append that may
 		# fire the instant the session starts.
 		_manifest_lock "$IMAGES_DIR/$pane_file.lock"
-		owner_file="$IMAGES_DIR/$pane_file.owner"
-		clear_pane "$pane_file"
-		[[ -n $session ]] && printf '%s' "$session" >"$owner_file"
+		# A nested agent — one started from inside this session (a headless run in a
+		# hook, script or tool call) — inherits $TMUX_PANE and so resolves this same
+		# manifest key, then reports its own fresh start. Clearing there wipes the
+		# carousel of the session that spawned it (#234). Skip while the recorded
+		# owner is a different, still-live session; a dead or unrecorded owner is the
+		# exited agent this clear is actually for.
+		if ! owner_live "$pane_file" "$session"; then
+			clear_pane "$pane_file"
+			owner_claim "$pane_file" "$session"
+		fi
 	fi
 	# else: resume detected — session-backfill.sh owns this manifest.
 fi

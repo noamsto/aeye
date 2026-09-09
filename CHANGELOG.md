@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.17.4](https://github.com/noamsto/aeye/compare/v0.17.3...v0.17.4) (2026-09-09)
+
+
+### Bug Fixes
+
+* **manifest:** stop a nested agent wiping the outer session's carousel ([#235](https://github.com/noamsto/aeye/issues/235)) ([7d2793f](https://github.com/noamsto/aeye/commit/7d2793f54766e373451d66aa22abc40a0d2225d4)), closes [#234](https://github.com/noamsto/aeye/issues/234)
+* **relay:** allow the sixel raster backend when LZTMUX_RELAY_GRAPHICS advertises it ([#229](https://github.com/noamsto/aeye/issues/229)) ([a4291aa](https://github.com/noamsto/aeye/commit/a4291aadc43f1f6f66f4c4a0931f161ae36f12ef)), closes [#224](https://github.com/noamsto/aeye/issues/224)
+* **zoom:** apply crop in symbols backend preview ([#230](https://github.com/noamsto/aeye/issues/230)) ([c48aeb5](https://github.com/noamsto/aeye/commit/c48aeb57a2d4c979041b6eeb640cade3c7eef5f6))
+
+
+### Performance Improvements
+
+* **gallery:** cache chafa symbols so View() does not re-fork ([#231](https://github.com/noamsto/aeye/issues/231)) ([deffb74](https://github.com/noamsto/aeye/commit/deffb747dfb71662bc92c5a5d6bb7ac2b94c5821))
+
 ## [0.17.3](https://github.com/noamsto/aeye/compare/v0.17.2...v0.17.3) (2026-09-08)
 
 

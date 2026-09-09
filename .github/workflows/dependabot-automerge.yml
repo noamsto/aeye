@@ -3,9 +3,8 @@ name: dependabot-automerge
 # Turns on GitHub's auto-merge for Dependabot PRs so they land once the main
 # ruleset's required checks pass. Major bumps are left for a human.
 #
-# pull_request_target runs in the base-repo context: Dependabot-triggered
-# events otherwise get a read-only token, which cannot enable auto-merge. No
-# dependency code is checked out or executed here.
+# pull_request_target is what grants the write token: Dependabot-triggered
+# events get a read-only one, which cannot enable auto-merge.
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, closed]

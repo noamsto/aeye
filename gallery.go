@@ -196,6 +196,7 @@ type galleryModel struct {
 	// backlog. bridged also gates storePreviewCrop's raw-vs-PNG choice — see
 	// preferEncodedFrame.
 	dragging             bool
+	dragMoved            bool // a drag was seen since the press, so the release is not a click
 	lastDragX, lastDragY int
 	lastPanAt            time.Time
 	panGen               uint64

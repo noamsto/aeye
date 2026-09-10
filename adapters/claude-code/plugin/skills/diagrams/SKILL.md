@@ -36,6 +36,20 @@ for the concept it draws, in kebab-case — `auth-token-flow`, `render-pipeline`
 redraw, so make it specific — to revise a diagram, overwrite the same file
 rather than adding a second one.
 
+The name is what retires the previous render — the hook prunes any earlier image
+filed under the same name — so an overwrite replaces the diagram in the carousel
+instead of stacking beside it.
+
+That pruning only fires if the write lands under the right name, so write **one
+`.d2` per tool call, named by absolute path**. The hook takes the file the call
+names: an explicit `file_path`, else the first `.d2` token in the command,
+resolved against the *project* cwd. A call naming two `.d2` files renders the
+first only; a path made relative by an earlier `cd` resolves to nothing and
+renders nothing. Give scratch copies some other extension — every `.d2` a
+command names is adopted as a diagram under its own basename, so a `/tmp/a.d2`
+round-trip files the render under the name `a` and leaves the real name on the
+superseded image.
+
 ## House style
 
 The carousel hook applies the sketch look, the mode-appropriate theme, and a set

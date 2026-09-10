@@ -1,13 +1,11 @@
 name: dependabot-vendor-hash
 
-# Dependabot updates go.mod/go.sum but cannot know the vendorHash in flake.nix,
-# so every Go bump it opens fails the `nix` job until the hash is corrected.
-# This pushes the corrected hash onto the PR branch.
+# Dependabot updates go.mod/go.sum but cannot know the vendorHash the Nix
+# expression pins, so every Go bump it opens fails the `nix` job until that
+# hash is corrected. This pushes the correction onto the PR branch.
 #
-# pull_request_target runs in the base-repo context, which is what grants the
-# write token that Dependabot-triggered events are otherwise denied. It builds
-# only the goModules derivation: that fetches modules and runs no dependency
-# code, so no third-party code sees the write token.
+# pull_request_target is what grants the write token: Dependabot-triggered
+# events get a read-only one and cannot read Actions secrets at all.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
@@ -30,38 +28,39 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          # A PAT makes the resulting push re-trigger CI so the stale `nix`
-          # failure clears itself; GITHUB_TOKEN pushes deliberately do not
-          # trigger workflows, leaving the check red until a manual re-run.
-          token: ${{ secrets.VENDOR_HASH_PAT || secrets.GITHUB_TOKEN }}
 
-      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: DeterminateSystems/determinate-nix-action@v3
 
-      - name: Fix vendorHash
+      # No token exists in the job yet, so this build cannot exfiltrate one.
+      # The App token is minted afterwards, purely to push.
+      - name: Fix hashes
+        run: determinate-nixd fix hashes --auto-apply
+
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.VENDOR_HASH_APP_CLIENT_ID }}
+          private-key: ${{ secrets.VENDOR_HASH_APP_PRIVATE_KEY }}
+
+      - name: Push the corrected hashes
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -euo pipefail
-          fake="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
-          current=$(grep -oP 'vendorHash = "\K[^"]+' flake.nix)
-
-          sed -i "s|vendorHash = \"$current\"|vendorHash = \"$fake\"|" flake.nix
-
-          # Expected to fail; the mismatch message carries the real hash.
-          got=$(nix build .#default.goModules --no-link 2>&1 \
-            | grep -oP '^\s+got:\s+\K\S+' || true)
-
-          if [ -z "$got" ]; then
-            echo "::error::Could not determine vendorHash from the build output."
-            exit 1
-          fi
-
-          if [ "$got" = "$current" ]; then
-            echo "vendorHash is already correct ($current) — nothing to do."
+          if git diff --quiet -- '*.nix'; then
+            echo "::notice::hashes already correct"
             exit 0
           fi
 
-          sed -i "s|vendorHash = \"$fake\"|vendorHash = \"$got\"|" flake.nix
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "build(deps): update vendorHash to $got" flake.nix
-          git push
-          echo "::notice::vendorHash updated $current -> $got"
+          # Only .nix files: the fix step ran on PR content, so a wider add
+          # would let a tampered workspace push arbitrary changes.
+          git add -- '*.nix'
+          git commit -m "build(deps): fix Nix hashes"
+          git remote set-url origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # An App token push re-triggers CI, so the stale `nix` failure clears
+          # itself; a GITHUB_TOKEN push would leave the check pending forever.
+          git push origin "HEAD:${HEAD_REF}"

@@ -107,18 +107,15 @@ func (m *galleryModel) cropFillsBox() bool {
 	return math.Abs(m.crop.w()/m.crop.h()-want) < want*1e-3
 }
 
-// zoomBy moves the crop one zoom step (factor > 1 zooms in). From the letterboxed
-// rest view, the first zoom-in adopts box-aspect fill framing (so the preview is
-// packed) then magnifies one step; further steps scale that crop about its center.
-// A Tab-framed region keeps its aspect — only full→zoom switches framing. Zooming
-// out grows the crop until it spills past the image, then snaps back to rest.
+// zoomBy moves the crop one zoom step (factor > 1 zooms in). Every step scales the
+// current crop about its center with aspect preserved — including the first zoom-in
+// from the letterboxed rest view, where switching to box-aspect fill framing would
+// instead magnify 5.6x at once on a 7.2:1 image. Use toggleFill (key f) to pack the
+// preview. Zooming out grows the crop until it spills past the image, then snaps
+// back to the rest view.
 func (m *galleryModel) zoomBy(factor float64) {
 	if factor > 1 {
-		base := m.crop
-		if m.crop.isFull() {
-			base = m.baseFillCrop()
-		}
-		m.crop = scaleCropAbout(base, 1/factor, m.zoomFloor())
+		m.crop = scaleCropAbout(m.crop, 1/factor, m.zoomFloor())
 		return
 	}
 	if m.crop.isFull() {

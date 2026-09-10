@@ -110,15 +110,24 @@ func wideModel() *galleryModel {
 	}
 }
 
-func TestZoomByFirstStepFillsBox(t *testing.T) {
+// boxMag is the on-screen magnification of the current crop once letterboxed into
+// the preview box.
+func (m *galleryModel) boxMag() float64 {
+	b := m.curImg.Bounds()
+	bw := float64(m.l.previewW * m.cellWpx())
+	bh := float64(m.l.previewH * m.cellHpx())
+	return min(bw/(m.crop.w()*float64(b.Dx())), bh/(m.crop.h()*float64(b.Dy())))
+}
+
+func TestZoomByFirstStepIsGradual(t *testing.T) {
 	m := wideModel()
-	m.zoomBy(1.25) // from letterboxed rest: adopt fill framing, then one magnify step
-	fill := m.baseFillCrop()
-	if !approx(m.crop.w(), fill.w()/1.25) || !approx(m.crop.h(), fill.h()/1.25) {
-		t.Errorf("first zoom-in crop = %+v, want fill/1.25 (fill=%+v)", m.crop, fill)
+	rest := m.boxMag()
+	m.zoomBy(1.25)
+	if got := m.boxMag() / rest; !approx(got, 1.25) {
+		t.Errorf("first zoom-in magnified %.3fx, want 1.25x (crop=%+v)", got, m.crop)
 	}
-	if !approx(m.crop.w()/m.crop.h(), fill.w()/fill.h()) {
-		t.Errorf("first zoom must be box-aspect, got %+v", m.crop)
+	if !approx(m.crop.w(), 0.8) || !approx(m.crop.h(), 0.8) {
+		t.Errorf("first zoom-in crop = %+v, want 0.8 on both axes", m.crop)
 	}
 	if !approx(m.crop.cx(), 0.5) || !approx(m.crop.cy(), 0.5) {
 		t.Errorf("first zoom must stay centered, got %+v", m.crop)
@@ -237,7 +246,8 @@ func TestToggleFillFromFill(t *testing.T) {
 
 func TestToggleFillFromZoomed(t *testing.T) {
 	m := wideModel()
-	m.zoomBy(1.25) // zoomed views are already box-aspect fill
+	m.crop = m.baseFillCrop()
+	m.zoomBy(1.25) // magnified, still box-aspect fill
 	m.toggleFill()
 	if !m.crop.isFull() {
 		t.Errorf("toggle from zoomed-fill must go to full, got %+v", m.crop)

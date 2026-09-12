@@ -1,13 +1,23 @@
 {
   "name": "aeye-pi",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Capture images this pi session touches and browse them in a tmux/kitty carousel.",
-  "keywords": ["pi-package", "aeye", "image", "carousel", "d2"],
+  "keywords": [
+    "pi-package",
+    "aeye",
+    "image",
+    "carousel",
+    "d2"
+  ],
   "license": "MIT",
   "type": "module",
   "pi": {
-    "extensions": ["./extensions"],
-    "skills": ["./skills"]
+    "extensions": [
+      "./extensions"
+    ],
+    "skills": [
+      "./skills"
+    ]
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"

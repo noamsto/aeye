@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/noamsto/aeye/compare/v0.18.0...v0.19.0) (2026-09-12)
+
+
+### Features
+
+* **pi:** add pi capture adapter ([#246](https://github.com/noamsto/aeye/issues/246)) ([7f7f84d](https://github.com/noamsto/aeye/commit/7f7f84dc94f20cb9ba8f46c7d7b9943b4134776e))
+
 ## [0.18.0](https://github.com/noamsto/aeye/compare/v0.17.4...v0.18.0) (2026-09-10)
 
 

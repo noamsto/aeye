@@ -69,12 +69,16 @@ resolve_target() {
 	#
 	# PANE stays the bare pane id — it is a tmux *target*, which KEY is not.
 	PANE="${TMUX_PANE:-}"
+	# AEYE_SESSION_ID is the agent-neutral session id a non-Claude adapter (e.g.
+	# the pi extension) exports; CLAUDE_CODE_SESSION_ID stays the primary so the
+	# Claude path is unchanged. SESSION is the viewer's identity (AEYE_OWNER).
+	SESSION="${CLAUDE_CODE_SESSION_ID:-${AEYE_SESSION_ID:-}}"
 	local srv
 	IFS=, read -r _ srv _ <<<"${TMUX:-}"
 	[[ $srv =~ ^[0-9]+$ ]] || srv=""
 	KEY="${PANE#%}"
 	[[ -n $KEY && -n $srv ]] && KEY="$srv-$KEY"
-	[[ -n $KEY ]] || KEY="${CLAUDE_CODE_SESSION_ID:-}"
+	[[ -n $KEY ]] || KEY="$SESSION"
 	MANIFEST="$IMAGES_DIR/$KEY.jsonl"
 
 	# AEYE_HOST forces the launcher; unset = auto-detect. Only `kitty` is useful
@@ -126,7 +130,7 @@ launch_tmux() {
 	# viewer can reject a reused pane's stale manifest. printf '%q' the command so a
 	# binary path with spaces survives tmux re-parsing it via the shell.
 	local env_args=()
-	[[ -n ${CLAUDE_CODE_SESSION_ID:-} ]] && env_args+=(-e AEYE_OWNER="$CLAUDE_CODE_SESSION_ID")
+	[[ -n $SESSION ]] && env_args+=(-e AEYE_OWNER="$SESSION")
 	[[ -n ${AEYE_DEBUG:-} ]] && env_args+=(-e AEYE_DEBUG="$AEYE_DEBUG")
 	[[ -n ${AEYE_BRIDGED:-} ]] && env_args+=(-e AEYE_BRIDGED="$AEYE_BRIDGED")
 	# The viewer's argv is the manifest KEY, which is not a tmux target — forward
@@ -220,7 +224,7 @@ launch_kitty() {
 	# toggle runs without the session id (e.g. a manual prefix+I) — then the guard
 	# stays inert in the viewer.
 	local owner_env=()
-	[[ -n ${CLAUDE_CODE_SESSION_ID:-} ]] && owner_env=(--env AEYE_OWNER="$CLAUDE_CODE_SESSION_ID")
+	[[ -n $SESSION ]] && owner_env=(--env AEYE_OWNER="$SESSION")
 	local debug_env=()
 	[[ -n ${AEYE_DEBUG:-} ]] && debug_env=(--env AEYE_DEBUG="$AEYE_DEBUG")
 	# Toggle: a viewer window is tagged with user_var claude_img_src=$KEY.
@@ -533,7 +537,7 @@ main() {
 		;;
 	kitty | wezterm | ghostty | iterm)
 		[[ -n $KEY ]] || {
-			echo "no CLAUDE_CODE_SESSION_ID; cannot locate images" >&2
+			echo "no session id (CLAUDE_CODE_SESSION_ID / AEYE_SESSION_ID); cannot locate images" >&2
 			exit 0
 		}
 		;;

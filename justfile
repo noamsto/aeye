@@ -84,6 +84,11 @@ test-bats:
 sync-codex-core:
     cp adapters/core/manifest-extract.sh adapters/core/manifest-lifecycle.sh adapters/codex/plugin/scripts/core/
 
+# Re-vendor core/ into the pi adapter (pi packages are loaded from the adapter
+# dir; the vendored copy keeps it working when only that dir is shipped).
+sync-pi-core:
+    cp adapters/core/manifest-extract.sh adapters/core/manifest-lifecycle.sh adapters/pi/scripts/core/
+
 # Re-vendor core/ into the Cursor adapter (hooks.json install ships its own copy).
 sync-cursor-core:
     cp adapters/core/manifest-extract.sh adapters/core/manifest-lifecycle.sh adapters/cursor/scripts/core/

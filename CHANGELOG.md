@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/noamsto/aeye/compare/v0.17.4...v0.18.0) (2026-09-10)
+
+
+### Features
+
+* **mouse:** click a diagram region to drill in ([#244](https://github.com/noamsto/aeye/issues/244)) ([70d0d41](https://github.com/noamsto/aeye/commit/70d0d413612d33d9c1f42fb52fe0af843d016466))
+
 ## [0.17.4](https://github.com/noamsto/aeye/compare/v0.17.3...v0.17.4) (2026-09-09)
 
 

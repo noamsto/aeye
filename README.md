@@ -94,6 +94,16 @@ Codex skips a plugin's hooks until you review and trust them: run `/hooks`
 inside Codex once after installing, and again after any plugin update (trust
 is keyed to the hooks' hash).
 
+**pi** (run in a shell; the package root is `adapters/pi/`, not the repo root):
+
+```bash
+pi install <path-to-aeye>/adapters/pi
+```
+
+The package registers the aeye extension (capture + diagram rendering +
+session guidance) and the `image-gallery` / `diagrams` skills. Open the
+carousel with `/aeye` inside pi or `tmux-claude-images` from the shell.
+
 > 📖 **Step-by-step, agent-friendly guide:** [`docs/INSTALL.md`](docs/INSTALL.md)
 > — host check, both entrypoints, plugin, optional deps, and a smoke test, each
 > with a verification command.
@@ -248,15 +258,16 @@ the manifest; the viewer never changes.
   (`<key>` is `<tmux server pid>-<pane>` inside tmux, else the session id)
   and renders via the kitty graphics protocol (or chafa fallback).
 - **Adapters** (`adapters/`) — per-agent capture, at parity: `claude-code/`,
-  `codex/`, and `cursor/` (each a PostToolUse/SessionStart hook + skills).
+  `codex/`, `cursor/`, and `pi/` (each a PostToolUse/SessionStart hook — or, for
+  pi, an extension — plus skills).
 
 Extracted from [lazytmux](https://github.com/noamsto/lazytmux), which consumes
 this repo as a flake input.
 
 ## Status
 
-Live standalone repo — the viewer binary, the Claude Code, Codex, and Cursor
-capture adapters, and plugin skills all build and are consumed by
+Live standalone repo — the viewer binary, the Claude Code, Codex, Cursor, and
+pi capture adapters, and plugin skills all build and are consumed by
 [lazytmux](https://github.com/noamsto/lazytmux) as a flake input. Zoom/pan and D2
 diagram navigation are implemented; see
 [docs/2026-06-10-design.md](docs/2026-06-10-design.md) for the design notes.

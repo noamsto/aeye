@@ -80,8 +80,9 @@ func manifestPath(pane string) string {
 // owner, and whether they disagree (foreign) — the signal that a reused tmux
 // pane id is serving a prior session's manifest, which loadManifest then refuses
 // rather than bleed in. The capture hooks stamp <pane>.owner with the writing
-// session's id; self comes from AEYE_OWNER, else the Claude session id the
-// adapter forwards. self and owner are returned (not just the bool) so the trace
+// session's id; self comes from AEYE_OWNER, else the Claude session id (or the
+// agent-neutral AEYE_SESSION_ID a non-Claude adapter forwards). self and owner
+// are returned (not just the bool) so the trace
 // can record why a load was accepted or rejected — the only way to attribute an
 // intermittent bleed after the fact. Absent identity or sidecar the check is
 // inert (foreign=false), so a manual/standalone launch behaves as before.
@@ -89,6 +90,9 @@ func ownerCheck(pane string) (self, owner string, foreign bool) {
 	self = os.Getenv("AEYE_OWNER")
 	if self == "" {
 		self = os.Getenv("CLAUDE_CODE_SESSION_ID")
+	}
+	if self == "" {
+		self = os.Getenv("AEYE_SESSION_ID")
 	}
 	if self == "" {
 		return self, "", false

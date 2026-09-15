@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/noamsto/aeye/compare/v1.0.0...v1.0.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* **hooks:** defer post-tool registration to hookyard ([#251](https://github.com/noamsto/aeye/issues/251)) ([83991c4](https://github.com/noamsto/aeye/commit/83991c4155239644d23b7825ea0bb1cec995b408))
+
 ## [1.0.0](https://github.com/noamsto/aeye/compare/v0.19.0...v1.0.0) (2026-09-15)
 
 

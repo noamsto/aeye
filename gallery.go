@@ -741,6 +741,16 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Tick(countdownTick, func(time.Time) tea.Msg { return deleteCountdownMsg{msg.gen} })
 	case galleryTickMsg:
+		// Frame policy (raw-vs-PNG, pan throttle) follows relay detection so a
+		// viewer opened locally and later watched through a lazytmux mirror (or
+		// the reverse) doesn't keep a stale policy from launch. Checked here
+		// rather than per pan frame: relayTermName runs a tmux subprocess, and
+		// this tick already fires at a fixed 1.5s cadence off the hot path.
+		_, relayed := relayTermName()
+		if want := bridgedPolicy(relayed); want != m.bridged {
+			m.bridged = want
+			tracef("bridged policy -> %v (relay=%v)", m.bridged, relayed)
+		}
 		// Anything stored while the pane was off screen was dropped by tmux, and a
 		// window switch replays the pane from tmux's screen buffer without waking
 		// us — so the hidden→visible edge is the only place to notice. Reload as
@@ -1178,7 +1188,7 @@ func runGallery(pane string) error {
 		// OSC 72 can't cross tmux and only kitty implements it; probe only there,
 		// where the query still confirms the running version actually supports it.
 		dragNative: os.Getenv("TMUX") == "" && strings.HasPrefix(termName(), "xterm-kitty") && probeDragProtocol(),
-		bridged:    bridged(),
+		bridged:    bridgedPolicy(relayed),
 	}
 	// Decode the initial selection now so zoom works on the first keystroke
 	// (otherwise curImg is nil until the first refresh tick).
@@ -1241,8 +1251,11 @@ func termName() string {
 // is control-mode (a relay-only session) and, if so, the first non-empty
 // client_termname those relays advertise. Outside tmux, without TMUX_PANE, on
 // error, with no clients, or with any interactive client, returns ("", false)
-// so callers keep the normal path.
-func relayTermName() (string, bool) {
+// so callers keep the normal path. A package var so tests can fake the relay
+// edge without a tmux server.
+var relayTermName = tmuxRelayTermName
+
+func tmuxRelayTermName() (string, bool) {
 	if os.Getenv("TMUX") == "" {
 		return "", false
 	}
@@ -1258,6 +1271,12 @@ func relayTermName() (string, bool) {
 	}
 	return parseRelayTermName(string(out))
 }
+
+// bridgedPolicy reports whether the viewer's frame policy (raw-vs-encoded
+// frames, pan throttle — see preferEncodedFrame/panFrameGapFor) should treat
+// the session as bridged: either the AEYE_BRIDGED force-on, or the relay
+// detection this pane's tmux session reports right now.
+func bridgedPolicy(relayed bool) bool { return bridged() || relayed }
 
 // relayListClientsArgs builds the session-scoped list-clients argv. -t <pane>
 // resolves to the pane's session; omitting it lists every client on the

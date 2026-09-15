@@ -107,13 +107,80 @@ func (m *galleryModel) cropFillsBox() bool {
 	return math.Abs(m.crop.w()/m.crop.h()-want) < want*1e-3
 }
 
-// zoomBy moves the crop one zoom step (factor > 1 zooms in). Every step scales the
-// current crop about its center with aspect preserved — including the first zoom-in
-// from the letterboxed rest view, where switching to box-aspect fill framing would
-// instead magnify 5.6x at once on a 7.2:1 image. Use toggleFill (key f) to pack the
-// preview. Zooming out grows the crop until it spills past the image, then snaps
-// back to the rest view.
+// zoomMagnification derives the on-screen magnification M implied by crop,
+// relative to the rest (fit-to-box) view of the whole image: M=1 at rest, and
+// M=1/cropAxis on whichever axis is pinned to the box at rest (width when
+// frac<=1, height otherwise) — that axis's crop fraction is exactly 1/M for any
+// M>=1, which is what cropAtMagnification inverts.
+func zoomMagnification(crop cropFrac, frac float64) float64 {
+	if frac <= 1 {
+		return 1 / crop.w()
+	}
+	return 1 / crop.h()
+}
+
+// cropAtMagnification is the crop (centered at cx,cy) for magnification mag
+// under the box-fit zoom model: the box-bound axis (width when frac<=1, height
+// otherwise) is 1/mag; the other axis stays at the full image extent — growing
+// the rendered image into its letterbox — until its own rendered size reaches
+// the box, at which point it too shrinks (in lockstep, via frac), pinning the
+// crop's aspect to the box's from then on.
+func cropAtMagnification(mag, cx, cy, frac float64) cropFrac {
+	var w, h float64
+	if frac <= 1 {
+		w, h = 1/mag, min(1, 1/(frac*mag))
+	} else {
+		h, w = 1/mag, min(1, frac/mag)
+	}
+	return recenterScaled(cx, cy, w, h)
+}
+
+// usesBoxFitZoom reports whether zoomBy should use the box-fit magnification
+// model (grow the letterboxed axis into the box) rather than scale the crop
+// uniformly. That model is only meaningful relative to the whole image's rest
+// framing, so it applies while the crop is still anchored to that framing on at
+// least one axis (full, or one axis still at the full-image extent) — and never
+// while a region frame is focused, which zooms relative to its own framing
+// instead (see zoomFloor).
+func (m *galleryModel) usesBoxFitZoom() bool {
+	if m.curImg == nil {
+		return false
+	}
+	if _, ok := m.focusedFrame(); ok {
+		return false
+	}
+	return m.crop.w() >= 0.999 || m.crop.h() >= 0.999
+}
+
+// zoomBy moves the crop one zoom step (factor > 1 zooms in). While the crop is
+// still anchored to the whole image's rest framing (usesBoxFitZoom), zoom models
+// on-screen magnification of that rest view: the box-bound axis shrinks by
+// 1/factor each step while the other stays at the full image extent and grows
+// into its own letterbox, until its rendered size reaches the box — only then do
+// both axes shrink together, aspect pinned to the box's (packed). That avoids
+// both past regressions: scaling a same-aspect crop never grows past the rest
+// band's height (#242), and adopting a box-aspect crop on the first step jumps
+// too far on an extreme aspect ratio (#176: 5.6x on a 7.2:1 image). Zooming out
+// mirrors the same model and snaps back to fullCrop once it retraces to rest.
+//
+// A focused region frame (Tab), or any other non-full crop not anchored to the
+// rest framing, instead scales uniformly about its center with aspect preserved,
+// as before — see usesBoxFitZoom.
 func (m *galleryModel) zoomBy(factor float64) {
+	if m.usesBoxFitZoom() {
+		b := m.curImg.Bounds()
+		frac := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
+		mag := zoomMagnification(m.crop, frac) * factor
+		if maxMag := 1 / m.zoomFloor(); mag > maxMag {
+			mag = maxMag
+		}
+		if mag <= 1 {
+			m.crop = fullCrop()
+			return
+		}
+		m.crop = cropAtMagnification(mag, m.crop.cx(), m.crop.cy(), frac)
+		return
+	}
 	if factor > 1 {
 		m.crop = scaleCropAbout(m.crop, 1/factor, m.zoomFloor())
 		return

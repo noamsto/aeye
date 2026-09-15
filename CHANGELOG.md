@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.0](https://github.com/noamsto/aeye/compare/v0.19.0...v1.0.0) (2026-09-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **relay:** read OG_RELAY_GRAPHICS instead of LZTMUX_RELAY_GRAPHICS ([#249](https://github.com/noamsto/aeye/issues/249))
+
+### Features
+
+* **relay:** read OG_RELAY_GRAPHICS instead of LZTMUX_RELAY_GRAPHICS ([#249](https://github.com/noamsto/aeye/issues/249)) ([b44496a](https://github.com/noamsto/aeye/commit/b44496ae8d3392f945e1b890d1715166eaf1b69b))
+
 ## [0.19.0](https://github.com/noamsto/aeye/compare/v0.18.0...v0.19.0) (2026-09-12)
 
 

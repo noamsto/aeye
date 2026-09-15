@@ -49,13 +49,12 @@ merged="$(jq -n --argjson existing "$existing" --argjson template "$rendered" --
 		));
 
 	($existing.hooks // {}) as $eh |
-	($template.hooks // {}) as $th |
-	($eh | with_entries(.value |= strip_aeye)) as $cleaned |
-	(
-		reduce ($th | to_entries[]) as $ev ($cleaned;
-			.[$ev.key] = ((.[$ev.key] // []) + $ev.value)
-		)
-	) as $hooks |
+	($template.hooks.sessionStart // []) as $session_start |
+	($eh | with_entries(
+		.value |= if type == "array" then strip_aeye else . end
+	)) as $cleaned_hooks |
+	($cleaned_hooks.sessionStart // []) as $cleaned_session_start |
+	($cleaned_hooks + {sessionStart: ($cleaned_session_start + $session_start)}) as $hooks |
 	$existing + {hooks: $hooks} |
 	if has("version") then . else .version = ($template.version // 1) end
 ')"

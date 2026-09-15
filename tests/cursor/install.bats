@@ -9,29 +9,26 @@ setup() {
 	HOOKS_FILE="$AEYE_CURSOR_HOME/hooks.json"
 }
 
-@test "fresh install creates hooks.json with all 5 absolute adapter commands" {
+@test "fresh install creates hooks.json with all 3 absolute session-start commands" {
 	run "$INSTALL"
 	[ "$status" -eq 0 ]
 	[ -f "$HOOKS_FILE" ]
 	jq empty "$HOOKS_FILE"
 
 	mapfile -t cmds < <(jq -r '.hooks | to_entries[] | .value[] | .command' "$HOOKS_FILE")
-	[ "${#cmds[@]}" -eq 5 ]
+	[ "${#cmds[@]}" -eq 3 ]
 
 	expected=(
 		"$ADAPTER_DIR/scripts/diagram-guidance.sh"
 		"$ADAPTER_DIR/scripts/session-reset.sh"
 		"$ADAPTER_DIR/scripts/session-backfill.sh"
-		"$ADAPTER_DIR/scripts/images.sh"
-		"$ADAPTER_DIR/scripts/diagrams.sh"
 	)
 	for i in "${!expected[@]}"; do
 		[[ ${cmds[$i]} == /* ]]
 		[ "${cmds[$i]}" = "${expected[$i]}" ]
 	done
 
-	[ "$(jq -r '.hooks.postToolUse[0].matcher' "$HOOKS_FILE")" = "Read|Write|Shell" ]
-	[ "$(jq -r '.hooks.postToolUse[1].matcher' "$HOOKS_FILE")" = "Write|Shell" ]
+	[ "$(jq -r '.hooks.postToolUse // empty' "$HOOKS_FILE")" = "" ]
 }
 
 @test "install is idempotent" {
@@ -63,8 +60,26 @@ EOF
 
 	count="$(jq '[.hooks.sessionStart[] | select(.command | contains("/adapters/cursor/scripts/"))] | length' "$HOOKS_FILE")"
 	[ "$count" -eq 3 ]
-	images="$(jq '[.hooks.postToolUse[] | select(.command | endswith("/scripts/images.sh"))] | length' "$HOOKS_FILE")"
-	[ "$images" -eq 1 ]
+	[ "$(jq -r '.hooks.postToolUse[0].command' "$HOOKS_FILE")" = "null" ]
+}
+
+@test "install removes stale aeye hooks and preserves unrelated post-tool hooks" {
+	mkdir -p "$AEYE_CURSOR_HOME"
+	cat >"$HOOKS_FILE" <<'EOF'
+{
+  "version": 1,
+  "hooks": {
+    "postToolUse": [
+      { "command": "/old/aeye/adapters/cursor/scripts/images.sh" },
+      { "command": "printf keep" }
+    ]
+  }
+}
+EOF
+	run "$INSTALL"
+	[ "$status" -eq 0 ]
+	[ "$(jq -r '.hooks.postToolUse | length' "$HOOKS_FILE")" -eq 1 ]
+	[ "$(jq -r '.hooks.postToolUse[0].command' "$HOOKS_FILE")" = "printf keep" ]
 }
 
 @test "malformed existing hooks.json exits non-zero and leaves file untouched" {

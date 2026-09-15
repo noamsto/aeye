@@ -17,7 +17,8 @@ command -v "${AEYE_BIN:-aeye}" >/dev/null 2>&1 || missing+=("${AEYE_BIN:-aeye}")
 command -v "${AEYE_RESVG:-resvg}" >/dev/null 2>&1 || missing+=("${AEYE_RESVG:-resvg}")
 if ((${#missing[@]})); then
 	warn="Diagram rendering is unavailable: ${missing[*]} not found on PATH for this hook, so any .d2 you write will silently NOT render into the carousel. Don't draw diagrams this session; tell the user the diagram hook is missing ${missing[*]} on PATH (e.g. add the aeye package to home.packages)."
-	jq -nc --arg ctx "$warn" '{additional_context:$ctx}'
+	jq -nc --arg ctx "$warn" \
+		'{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'
 	exit 0
 fi
 
@@ -35,4 +36,5 @@ working project. The aeye diagrams skill has the few syntax rules that keep a
 render clean; load it when you draw.
 EOF
 
-jq -nc --arg ctx "$guidance" '{additional_context:$ctx}'
+jq -nc --arg ctx "$guidance" \
+	'{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$ctx}}'

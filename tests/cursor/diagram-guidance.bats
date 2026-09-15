@@ -19,11 +19,10 @@ setup() {
 	export TMUX="/tmp/fake"
 	run bash "$APP"
 	[ "$status" -eq 0 ]
-	# Cursor shape — additional_context, never hookSpecificOutput
-	ctx="$(jq -r '.additional_context' <<<"$output")"
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
 	[[ $ctx == *"$AEYE_DIR/images/diagrams/src"* ]]
 	[[ $ctx == *".d2"* ]]
-	run jq -e 'has("hookSpecificOutput") | not' <<<"$output"
+	run jq -e '.hookSpecificOutput | .hookEventName == "SessionStart" and has("additionalContext")' <<<"$output"
 	[ "$status" -eq 0 ]
 }
 
@@ -33,7 +32,7 @@ setup() {
 	export TMUX="/tmp/fake"
 	run bash "$APP"
 	[ "$status" -eq 0 ]
-	ctx="$(jq -r '.additional_context' <<<"$output")"
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
 	[[ $ctx == *"diagrams skill"* ]]
 	[[ $ctx != *"|md"* ]]
 }
@@ -48,7 +47,7 @@ setup() {
 	export KITTY_LISTEN_ON="unix:/tmp/kitty"
 	run bash "$APP"
 	[ -n "$output" ]
-	run jq -e 'has("additional_context") and (has("hookSpecificOutput") | not)' <<<"$output"
+	run jq -e '.hookSpecificOutput | .hookEventName == "SessionStart" and has("additionalContext")' <<<"$output"
 	[ "$status" -eq 0 ]
 }
 
@@ -67,12 +66,12 @@ setup() {
 	export AEYE_BIN="aeye-not-installed"
 	run bash "$APP"
 	[ "$status" -eq 0 ]
-	ctx="$(jq -r '.additional_context' <<<"$output")"
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
 	[[ $ctx == *"unavailable"* ]]
 	[[ $ctx == *"aeye-not-installed"* ]]
 	# the full draw-diagrams nudge (its scratch-dir path) must NOT be present
 	[[ $ctx != *"images/diagrams/src"* ]]
-	run jq -e 'has("hookSpecificOutput") | not' <<<"$output"
+	run jq -e '.hookSpecificOutput | .hookEventName == "SessionStart" and has("additionalContext")' <<<"$output"
 	[ "$status" -eq 0 ]
 }
 
@@ -83,7 +82,7 @@ setup() {
 	export AEYE_RESVG="resvg-not-installed"
 	run bash "$APP"
 	[ "$status" -eq 0 ]
-	ctx="$(jq -r '.additional_context' <<<"$output")"
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
 	[[ $ctx == *"unavailable"* ]]
 	[[ $ctx == *"resvg-not-installed"* ]]
 }

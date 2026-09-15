@@ -56,7 +56,8 @@ for candidate in "${candidates[@]}"; do
 			warn+=' Escape a literal $ in a label as \$ — exactly ONE backslash. \\$ escapes the backslash itself and leaves the $ live as a substitution sigil, which is what failed here.'
 		fi
 		warn+=' Fix the .d2 and write it again.'
-		jq -nc --arg ctx "$warn" '{additional_context:$ctx}'
+		jq -nc --arg ctx "$warn" \
+			'{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}'
 		continue
 	fi
 
@@ -74,7 +75,8 @@ for candidate in "${candidates[@]}"; do
 		printf '%s\t%s\tWARN markdown block(s) render blank in resvg (<foreignObject>) — suppressed\n' \
 			"$now" "$(basename "$candidate")" >>"$DIAGRAMS_DIR/render-errors.log"
 		warn="$(basename "$candidate") contains markdown (|md / |markdown) block(s) that render BLANK in the carousel: resvg can't paint the HTML <foreignObject> that D2 emits for markdown. The diagram was NOT shown. Rewrite those node bodies as plain quoted labels (use \\n for line breaks) — this applies to title: too — then it renders and appears."
-		jq -nc --arg ctx "$warn" '{additional_context:$ctx}'
+		jq -nc --arg ctx "$warn" \
+			'{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}'
 		continue
 	fi
 

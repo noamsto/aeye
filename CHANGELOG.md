@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.2](https://github.com/noamsto/aeye/compare/v1.0.1...v1.0.2) (2026-09-15)
+
+
+### Bug Fixes
+
+* **gallery:** follow relay detection for the bridged frame policy ([#258](https://github.com/noamsto/aeye/issues/258)) ([af3a88d](https://github.com/noamsto/aeye/commit/af3a88d5eb2cf496e4ec359616602feabc1c3da4)), closes [#257](https://github.com/noamsto/aeye/issues/257)
+* **zoom:** grow letterboxed axis into the box before shrinking crop ([#254](https://github.com/noamsto/aeye/issues/254)) ([5c187be](https://github.com/noamsto/aeye/commit/5c187bee8625ecc9ffdb2108b9ac3efd3d904625))
+
 ## [1.0.1](https://github.com/noamsto/aeye/compare/v1.0.0...v1.0.1) (2026-09-15)
 
 

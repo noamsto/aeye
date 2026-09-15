@@ -357,7 +357,7 @@ func chooseGridBackend(termname string, inTmux bool, termProgram, lcTerminal, we
 // chooseRelayBackend picks a grid renderer when output cannot reach a real
 // terminal directly (control-mode relay or AEYE_BRIDGED). Kitty-class
 // termnames get real graphics. Otherwise, relayGraphics is the bridge's own
-// verdict on what it can relay — sourced from LZTMUX_RELAY_GRAPHICS, computed
+// verdict on what it can relay — sourced from OG_RELAY_GRAPHICS, computed
 // once local-side and shared by the relay gate and the remote publish — so
 // this trusts it rather than re-deriving it: DA1/probeSixel would only
 // reflect tmux's own compile-time sixel support, not the displaying

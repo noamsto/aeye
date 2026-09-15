@@ -1144,9 +1144,9 @@ func runGallery(pane string) error {
 	var rasterFmt string
 	// The DA1 probe measures tmux's compile-time sixel support, which says
 	// nothing about a relay's terminal, so the relay path never probes; it
-	// trusts LZTMUX_RELAY_GRAPHICS instead (see chooseRelayBackend).
+	// trusts OG_RELAY_GRAPHICS instead (see chooseRelayBackend).
 	if relayed || bridged() {
-		backend, rasterFmt = chooseRelayBackend(termname, os.Getenv("LZTMUX_RELAY_GRAPHICS"))
+		backend, rasterFmt = chooseRelayBackend(termname, os.Getenv("OG_RELAY_GRAPHICS"))
 	} else {
 		backend, rasterFmt = chooseGridBackend(termname, os.Getenv("TMUX") != "", os.Getenv("TERM_PROGRAM"), os.Getenv("LC_TERMINAL"), os.Getenv("WEZTERM_PANE"), os.Getenv("TERM"), probeSixel)
 	}

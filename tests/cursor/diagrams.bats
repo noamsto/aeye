@@ -127,8 +127,7 @@ run_app() {
 	export AEYE_RENDER_FAIL_MSG="flow.d2:3:9: missing value after colon"
 	run run_app
 	[ "$status" -eq 0 ]
-	# Cursor's hook contract is a bare additional_context, not Claude's wrapper
-	ctx="$(jq -r '.additional_context' <<<"$output")"
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
 	[[ $ctx == *flow.d2* ]]
 	[[ $ctx == *"FAILED to compile"* ]]
 	[[ $ctx == *"missing value after colon"* ]]
@@ -142,7 +141,7 @@ run_app() {
 	# shellcheck disable=SC2030,SC2031
 	export AEYE_RENDER_FAIL_MSG="flow.d2:142:61: substitutions must begin on {"
 	run run_app
-	ctx="$(jq -r '.additional_context' <<<"$output")"
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
 	[[ $ctx == *'ONE backslash'* ]]
 	[[ $ctx == *'\$'* ]]
 }
@@ -151,11 +150,10 @@ run_app() {
 	printf 'a: "ok"\nb: |md\n  blank\n|\na -> b\n' >"$DOTD2"
 	run run_app
 	[ "$status" -eq 0 ]
-	# Cursor shape — never Claude/Codex hookSpecificOutput.
-	ctx="$(jq -r '.additional_context' <<<"$output")"
+	ctx="$(jq -r '.hookSpecificOutput.additionalContext' <<<"$output")"
 	[[ $ctx == *"|md"* ]]
 	[[ $ctx == *BLANK* ]]
-	run jq -e 'has("hookSpecificOutput") | not' <<<"$output"
+	run jq -e '.hookSpecificOutput | .hookEventName == "PostToolUse" and has("additionalContext")' <<<"$output"
 	[ "$status" -eq 0 ]
 	run grep -c 'WARN markdown' "$DIAGRAMS/render-errors.log"
 	[ "$output" -ge 1 ]

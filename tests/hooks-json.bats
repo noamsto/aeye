@@ -9,12 +9,8 @@ setup() {
 	[ "$status" -eq 0 ]
 }
 
-@test "two PostToolUse hooks: images.sh and diagrams.sh" {
-	run jq -e '.hooks.PostToolUse | length == 2' "$HOOKS"
-	[ "$status" -eq 0 ]
-	run jq -e '[.hooks.PostToolUse[].hooks[].command] | any(test("diagrams.sh"))' "$HOOKS"
-	[ "$status" -eq 0 ]
-	run jq -e '[.hooks.PostToolUse[].hooks[].command] | any(test("images.sh"))' "$HOOKS"
+@test "does not register PostToolUse hooks" {
+	run jq -e '(.hooks | has("PostToolUse")) | not' "$HOOKS"
 	[ "$status" -eq 0 ]
 }
 

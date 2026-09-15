@@ -1,19 +1,5 @@
 {
   "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "apply_patch|view_image|Bash",
-        "hooks": [
-          {"type": "command", "command": "\"$PLUGIN_ROOT\"/scripts/images.sh"}
-        ]
-      },
-      {
-        "matcher": "apply_patch",
-        "hooks": [
-          {"type": "command", "command": "\"$PLUGIN_ROOT\"/scripts/diagrams.sh"}
-        ]
-      }
-    ],
     "SessionStart": [
       {
         "hooks": [

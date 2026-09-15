@@ -560,6 +560,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.scheduleVector(), m.schedulePaint())
 	case tea.KeyPressMsg:
 		var cmd tea.Cmd
+		var panCmd tea.Cmd
 		m.status = "" // any keypress clears the previous transient message
 		// Until the pane is sized, the view is still "Loading…" and the layout is
 		// zero (previewW/H == 0). Acting on input now feeds a 0-sized box into the
@@ -584,28 +585,28 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "right", "l":
 			if !m.crop.isFull() {
 				m.panBy(0.1, 0)
-				m.transmitPreviewOnly()
+				panCmd = m.transmitPanFrame()
 			} else {
 				m.selectIndex(m.cursor + 1)
 			}
 		case "left", "h":
 			if !m.crop.isFull() {
 				m.panBy(-0.1, 0)
-				m.transmitPreviewOnly()
+				panCmd = m.transmitPanFrame()
 			} else {
 				m.selectIndex(m.cursor - 1)
 			}
 		case "down", "j":
 			if !m.crop.isFull() {
 				m.panBy(0, 0.1)
-				m.transmitPreviewOnly()
+				panCmd = m.transmitPanFrame()
 			} else {
 				m.selectIndex(m.cursor + 1)
 			}
 		case "up", "k":
 			if !m.crop.isFull() {
 				m.panBy(0, -0.1)
-				m.transmitPreviewOnly()
+				panCmd = m.transmitPanFrame()
 			} else {
 				m.selectIndex(m.cursor - 1)
 			}
@@ -681,7 +682,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// After any key, debounce-schedule a sharp d2 re-render off the event loop.
 		// nil for non-d2/non-kitty, so this is a no-op there.
 		cmd = m.scheduleVector()
-		return m, tea.Batch(cmd, m.schedulePaint())
+		return m, tea.Batch(cmd, panCmd, m.schedulePaint())
 	case tea.MouseMsg:
 		if !m.ready {
 			return m, nil // see the KeyPressMsg gate: no interaction before sizing

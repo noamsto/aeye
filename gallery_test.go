@@ -893,6 +893,228 @@ func TestPendingSurvivesThemeSwitch(t *testing.T) {
 	}
 }
 
+// newZoomedKeyModel builds a ready, zoomed (non-full-crop) model whose keys
+// pan instead of navigating the filmstrip. Returns the model and the path to
+// its tty sink, so a test can count actual re-stores instead of trusting the
+// returned tea.Cmd alone.
+func newZoomedKeyModel(t *testing.T) (galleryModel, string) {
+	t.Helper()
+	dir := t.TempDir()
+	tty, err := os.CreateTemp(dir, "tty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { tty.Close() })
+	m := galleryModel{
+		pane:    "test",
+		images:  []imageEntry{{Path: "fixture.png"}},
+		backend: backendKitty,
+		tty:     tty,
+		ready:   true,
+		l:       layout{previewW: 20, previewH: 10},
+		crop:    cropFrac{0.1, 0.1, 0.3, 0.3},
+	}
+	return m, tty.Name()
+}
+
+// storeCount reports how many times transmitPreviewOnly has actually written
+// a kitty transmit escape to the tty sink — the real side effect a throttled
+// re-store must produce, as opposed to merely returning a nil/non-nil cmd.
+func storeCount(t *testing.T, ttyPath string) int {
+	t.Helper()
+	data, err := os.ReadFile(ttyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Count(string(data), "\x1b_Gi=")
+}
+
+// A burst of keyboard pans arriving faster than panFrameGap must throttle
+// exactly like a mouse drag: at most one immediate re-store, then a single
+// trailing flush that lands the final position — no backlog, no dropped frame.
+func TestKeyboardPanThrottlesBurst(t *testing.T) {
+	m, ttyPath := newZoomedKeyModel(t)
+	m.lastPanAt = time.Time{} // idle: the first press must go out immediately
+
+	out, cmd := m.Update(tea.KeyPressMsg{Text: "l", Code: 'l'})
+	m = out.(galleryModel)
+	if cmd != nil {
+		t.Fatal("first press with the gap elapsed was deferred; it must re-store immediately")
+	}
+	if got := storeCount(t, ttyPath); got != 1 {
+		t.Fatalf("after the first press, tty saw %d stores, want 1", got)
+	}
+
+	// The remaining presses of the burst must throttle rather than re-store.
+	// Pin lastPanAt to "just now" before each one so throttling is asserted on
+	// the pacing logic itself, not on this loop happening to run inside the
+	// real 8ms gap (which a loaded CI runner cannot guarantee).
+	const burst = 4
+	var lastCmd tea.Cmd
+	for i := range burst {
+		m.lastPanAt = time.Now()
+		out, cmd := m.Update(tea.KeyPressMsg{Text: "l", Code: 'l'})
+		m = out.(galleryModel)
+		if cmd == nil {
+			t.Fatalf("press %d inside panFrameGap re-stored immediately instead of throttling", i)
+		}
+		lastCmd = cmd
+	}
+	if got := storeCount(t, ttyPath); got != 1 {
+		t.Fatalf("throttled burst wrote %d stores, want 1 (still just the first press)", got)
+	}
+	finalCrop := m.crop
+
+	// Only the trailing flush should ever fire; earlier ones are superseded by
+	// generation. Simulate the flush arriving.
+	msg := lastCmd()
+	flush, ok := msg.(panFlushMsg)
+	if !ok {
+		t.Fatalf("throttled burst's cmd resolved to %T, want panFlushMsg", msg)
+	}
+	out, _ = m.Update(flush)
+	got := out.(galleryModel)
+	if got.crop != finalCrop {
+		t.Fatalf("panFlushMsg re-store landed at %+v, want the post-burst crop %+v", got.crop, finalCrop)
+	}
+	if n := storeCount(t, ttyPath); n != 2 {
+		t.Fatalf("after the trailing flush, tty saw %d stores, want 2 (immediate + flush)", n)
+	}
+}
+
+// A single isolated keyboard pan (gap already elapsed) must still re-store
+// immediately — throttling must not add latency to slow, deliberate panning.
+func TestKeyboardPanIsolatedKeyImmediate(t *testing.T) {
+	m, ttyPath := newZoomedKeyModel(t)
+	m.lastPanAt = time.Now().Add(-time.Second) // long idle: well past panFrameGap
+	preCrop := m.crop
+
+	out, cmd := m.Update(tea.KeyPressMsg{Text: "l", Code: 'l'})
+	got := out.(galleryModel)
+	if got.crop == preCrop {
+		t.Fatal("pan did not move the crop")
+	}
+	if cmd != nil {
+		t.Fatal("isolated keypress with the gap elapsed was deferred instead of re-storing immediately")
+	}
+	if n := storeCount(t, ttyPath); n != 1 {
+		t.Fatalf("isolated keypress wrote %d stores to tty, want 1", n)
+	}
+}
+
+// When not zoomed (crop is full), hjkl must still navigate the filmstrip —
+// throttling the pan path must not touch this branch.
+func TestKeyboardHjklNavigatesFilmstripWhenNotZoomed(t *testing.T) {
+	m := &galleryModel{
+		pane:    "test",
+		images:  []imageEntry{{Path: "a.png"}, {Path: "b.png"}, {Path: "c.png"}},
+		backend: backendKitty,
+		ready:   true,
+		l:       layout{previewW: 20, previewH: 10},
+		crop:    fullCrop(),
+		cursor:  0,
+	}
+	out, _ := m.Update(tea.KeyPressMsg{Text: "l", Code: 'l'})
+	got := out.(galleryModel)
+	if !got.crop.isFull() {
+		t.Fatalf("not-zoomed hjkl changed the crop: %+v", got.crop)
+	}
+	if got.cursor != 1 {
+		t.Fatalf("not-zoomed 'l' cursor = %d, want 1 (filmstrip advance)", got.cursor)
+	}
+}
+
+// TestKeyboardPanCoalescingVsRealRepeatPacing measures storePreviewCrop's real
+// cost at a low-zoom (large) crop — the shape #242 made common — against real
+// key-repeat pacing (~30Hz), to check whether panFrameGap is actually smaller
+// than a frame costs rather than assuming it.
+//
+// Measured on this branch (4032x3024 source, crop=0.1..0.9/0..1.0 into a
+// 100x40-cell / ~1000x880px preview box, non-bridged raw-write path):
+//   - storePreviewCrop (crop+scale only): ~9-11ms/frame
+//   - transmitPreviewOnly (compute+write): ~8-10ms/frame
+//   - panFrameGap (non-bridged, local terminal): 8ms
+//   - bridgedPanFrameGap (AEYE_BRIDGED, relayed over lazytmux): 60ms
+//
+// Locally, per-frame cost already exceeds panFrameGap: each press's
+// synchronous store finishes before the next real key-repeat press arrives,
+// so there's no backlog for transmitPanFrame to coalesce — see #257, which
+// tracks relayed viewers running without AEYE_BRIDGED (and thus this gap)
+// set. Under AEYE_BRIDGED's wider 60ms gap, coalescing does kick in.
+func TestKeyboardPanCoalescingVsRealRepeatPacing(t *testing.T) {
+	dir := t.TempDir()
+	tty, err := os.CreateTemp(dir, "tty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { tty.Close() })
+
+	// A realistic decoded photo and a low-zoom (large) crop: the shape #256's
+	// root-cause analysis says became common after #242.
+	src := image.NewRGBA(image.Rect(0, 0, 4032, 3024))
+	newLowZoomModel := func(bridged bool) galleryModel {
+		return galleryModel{
+			pane:       "test",
+			images:     []imageEntry{{Path: filepath.Join(dir, "fixture.png")}},
+			backend:    backendKitty,
+			tty:        tty,
+			ready:      true,
+			l:          layout{previewW: 100, previewH: 40},
+			curImg:     src,
+			curImgPath: filepath.Join(dir, "fixture.png"),
+			crop:       cropFrac{0.1, 0, 0.9, 1.0},
+			bridged:    bridged,
+		}
+	}
+
+	m := newLowZoomModel(false)
+	const frames = 10
+	start := time.Now()
+	for range frames {
+		m.storePreviewCrop()
+	}
+	perFrame := time.Since(start) / frames
+	t.Logf("storePreviewCrop at a low-zoom crop: %v/frame (panFrameGap=%v, bridgedPanFrameGap=%v)",
+		perFrame, panFrameGap, bridgedPanFrameGap)
+
+	// Real key-repeat pacing, non-bridged: each press is spaced further apart
+	// than a frame costs, so nothing should ever need to throttle.
+	m = newLowZoomModel(false)
+	m.lastPanAt = time.Now()
+	throttledLocal := 0
+	for range 8 {
+		time.Sleep(33 * time.Millisecond) // ~30Hz, typical OS key-repeat
+		out, cmd := m.Update(tea.KeyPressMsg{Text: "l", Code: 'l'})
+		m = out.(galleryModel)
+		if cmd != nil {
+			throttledLocal++
+		}
+	}
+	t.Logf("non-bridged (8ms gap): %d/8 presses throttled at 33ms real spacing", throttledLocal)
+	if throttledLocal != 0 {
+		t.Errorf("non-bridged gap unexpectedly throttled %d/8 real-paced presses; "+
+			"the frame-cost-vs-gap relationship this test documents may have changed — "+
+			"re-check whether the fix now helps local panning and update the comment above", throttledLocal)
+	}
+
+	// Same real pacing, bridged: the wider gap should coalesce every repeat.
+	m = newLowZoomModel(true)
+	m.lastPanAt = time.Now()
+	throttledBridged := 0
+	for range 8 {
+		time.Sleep(33 * time.Millisecond)
+		out, cmd := m.Update(tea.KeyPressMsg{Text: "l", Code: 'l'})
+		m = out.(galleryModel)
+		if cmd != nil {
+			throttledBridged++
+		}
+	}
+	t.Logf("bridged (60ms gap): %d/8 presses throttled at 33ms real spacing", throttledBridged)
+	if throttledBridged == 0 {
+		t.Error("bridged gap did not throttle any real-paced presses; expected coalescing at 60ms vs 33ms spacing")
+	}
+}
+
 func TestTruncateToWidthRuneSafe(t *testing.T) {
 	s := "✗ Deleting café  ▓▓░░░ 2s"
 	for w := 1; w < len(s); w++ {

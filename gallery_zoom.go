@@ -109,14 +109,28 @@ func (m *galleryModel) cropFillsBox() bool {
 
 // zoomMagnification derives the on-screen magnification M implied by crop,
 // relative to the rest (fit-to-box) view of the whole image: M=1 at rest, and
-// M=1/cropAxis on whichever axis is pinned to the box at rest (width when
-// frac<=1, height otherwise) — that axis's crop fraction is exactly 1/M for any
-// M>=1, which is what cropAtMagnification inverts.
+// M=1/cropAxis on whichever axis is pinned to the box at rest — that axis's
+// crop fraction is exactly 1/M for any M>=1, which is what cropAtMagnification
+// inverts.
+//
+// While one axis is still at the full image extent (not yet packed), that axis
+// IS the letterboxed one — read directly off the crop, not off frac. frac
+// reflects the box's *current* dimensions, which can have changed since this
+// crop was shaped (a terminal resize mid zoom-sequence); trusting it here could
+// pick the wrong axis and silently reset the effective zoom. Only once packed
+// (both axes below the full extent) is frac needed to tell them apart — and by
+// then it's the current frac shaping the current crop, so it's trustworthy.
 func zoomMagnification(crop cropFrac, frac float64) float64 {
-	if frac <= 1 {
+	switch {
+	case crop.w() >= 0.999:
+		return 1 / crop.h()
+	case crop.h() >= 0.999:
 		return 1 / crop.w()
+	case frac <= 1:
+		return 1 / crop.w()
+	default:
+		return 1 / crop.h()
 	}
-	return 1 / crop.h()
 }
 
 // cropAtMagnification is the crop (centered at cx,cy) for magnification mag
@@ -138,10 +152,17 @@ func cropAtMagnification(mag, cx, cy, frac float64) cropFrac {
 // usesBoxFitZoom reports whether zoomBy should use the box-fit magnification
 // model (grow the letterboxed axis into the box) rather than scale the crop
 // uniformly. That model is only meaningful relative to the whole image's rest
-// framing, so it applies while the crop is still anchored to that framing on at
-// least one axis (full, or one axis still at the full-image extent) — and never
-// while a region frame is focused, which zooms relative to its own framing
-// instead (see zoomFloor).
+// framing, so it applies while the crop is still anchored to that framing: at
+// rest, growing into the letterbox (one axis still at the full extent), or
+// already packed (aspect matches the box — cropFillsBox — having shrunk both
+// axes together past the pack point). Packed still counts: its floor and
+// zoom-out-then-snap-to-full both key off the *primary* (box-bound) axis, which
+// scaleCropAbout can't tell from the other one once neither is pinned at 1 —
+// treating packed as "no longer box-fit" let the secondary axis's floor pass
+// while the primary blew straight through it, and let zoom-out's "either axis
+// hits 1" check fire on the secondary axis and jump to full in one step instead
+// of retracing. Never while a region frame is focused, which zooms relative to
+// its own framing instead (see zoomFloor).
 func (m *galleryModel) usesBoxFitZoom() bool {
 	if m.curImg == nil {
 		return false
@@ -149,7 +170,7 @@ func (m *galleryModel) usesBoxFitZoom() bool {
 	if _, ok := m.focusedFrame(); ok {
 		return false
 	}
-	return m.crop.w() >= 0.999 || m.crop.h() >= 0.999
+	return m.crop.w() >= 0.999 || m.crop.h() >= 0.999 || m.cropFillsBox()
 }
 
 // zoomBy moves the crop one zoom step (factor > 1 zooms in). While the crop is

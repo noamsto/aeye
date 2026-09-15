@@ -126,11 +126,146 @@ func TestZoomByFirstStepIsGradual(t *testing.T) {
 	if got := m.boxMag() / rest; !approx(got, 1.25) {
 		t.Errorf("first zoom-in magnified %.3fx, want 1.25x (crop=%+v)", got, m.crop)
 	}
-	if !approx(m.crop.w(), 0.8) || !approx(m.crop.h(), 0.8) {
-		t.Errorf("first zoom-in crop = %+v, want 0.8 on both axes", m.crop)
+	// The box-bound axis (width, on this 7.2:1 image) shrinks; the letterboxed
+	// axis (height) stays at the full image extent — it grows into its own
+	// letterbox on screen, it doesn't need less of the source yet.
+	if !approx(m.crop.w(), 0.8) || !approx(m.crop.h(), 1.0) {
+		t.Errorf("first zoom-in crop = %+v, want w=0.8 h=1.0", m.crop)
 	}
 	if !approx(m.crop.cx(), 0.5) || !approx(m.crop.cy(), 0.5) {
 		t.Errorf("first zoom must stay centered, got %+v", m.crop)
+	}
+}
+
+// Regression: zoomMagnification used to pick which axis to read purely off
+// frac's sign, which reflects the box's CURRENT dimensions. A terminal resize
+// mid zoom-sequence that flips which axis the box binds (frac crosses 1) then
+// made it read the still-pinned-at-1 axis instead of the one the zoom actually
+// grew, silently resetting the effective magnification back to ~1.
+func TestZoomMagnificationSurvivesAxisFlippingResize(t *testing.T) {
+	m := wideModel() // frac<=1 here: width is box-bound, height letterboxed.
+	m.zoomBy(1.25)
+	if !approx(m.crop.w(), 0.8) || !approx(m.crop.h(), 1.0) {
+		t.Fatalf("setup: expected a growth-phase crop, got %+v", m.crop)
+	}
+	// Resize the box so height becomes box-bound instead (frac crosses 1),
+	// without touching the crop itself — mirrors a live terminal resize.
+	m.l.previewW, m.l.previewH = 1000, 10
+	b := m.curImg.Bounds()
+	frac := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
+	if got := zoomMagnification(m.crop, frac); !approx(got, 1.25) {
+		t.Errorf("magnification after an axis-flipping resize = %v, want 1.25 (still-pinned axis is h, not w)", got)
+	}
+}
+
+// renderedSize is the on-screen pixel size the current crop renders at once
+// letterboxed into the preview box, mirroring cropRaster's own fit-to-box scale.
+func (m *galleryModel) renderedSize() (w, h float64) {
+	b := m.curImg.Bounds()
+	scale := m.boxMag()
+	return m.crop.w() * float64(b.Dx()) * scale, m.crop.h() * float64(b.Dy()) * scale
+}
+
+func TestZoomInGrowsIntoLetterboxThenPacksWide(t *testing.T) {
+	m := wideModel() // 7.2:1 image in a 1.6:1 box: letterboxed on height at rest.
+	boxH := float64(m.l.previewH * m.cellHpx())
+	lastH := -1.0
+	packed := false
+	for i := 0; i < 10; i++ {
+		m.zoomBy(1.25)
+		_, h := m.renderedSize()
+		if approx(m.crop.h(), 1.0) {
+			if h <= lastH+1e-9 {
+				t.Fatalf("step %d: rendered height did not grow (%.4f -> %.4f)", i, lastH, h)
+			}
+		} else {
+			packed = true
+		}
+		if h > boxH+1e-6 {
+			t.Fatalf("step %d: rendered height %.4f exceeds box height %.4f", i, h, boxH)
+		}
+		lastH = h
+	}
+	if !packed {
+		t.Fatal("crop height never started shrinking — zoom never reached the box")
+	}
+	if !m.cropFillsBox() {
+		t.Errorf("once packed, crop must match the box aspect, got %+v", m.crop)
+	}
+}
+
+// tallModel builds a model whose decoded image is 5:12 (portrait) in the same
+// 1.6:1 box as wideModel, so it's letterboxed on width at rest — the packed
+// threshold (3.84x) stays comfortably under zoomMax.
+func tallModel() *galleryModel {
+	return &galleryModel{
+		curImg: image.NewRGBA(image.Rect(0, 0, 300, 720)),
+		l:      layout{previewW: 160, previewH: 50},
+		crop:   fullCrop(),
+	}
+}
+
+func TestZoomInGrowsIntoLetterboxThenPacksTall(t *testing.T) {
+	m := tallModel()
+	boxW := float64(m.l.previewW * m.cellWpx())
+	lastW := -1.0
+	packed := false
+	for i := 0; i < 10; i++ {
+		m.zoomBy(1.25)
+		w, _ := m.renderedSize()
+		if approx(m.crop.w(), 1.0) {
+			if w <= lastW+1e-9 {
+				t.Fatalf("step %d: rendered width did not grow (%.4f -> %.4f)", i, lastW, w)
+			}
+		} else {
+			packed = true
+		}
+		if w > boxW+1e-6 {
+			t.Fatalf("step %d: rendered width %.4f exceeds box width %.4f", i, w, boxW)
+		}
+		lastW = w
+	}
+	if !packed {
+		t.Fatal("crop width never started shrinking — zoom never reached the box")
+	}
+	if !m.cropFillsBox() {
+		t.Errorf("once packed, crop must match the box aspect, got %+v", m.crop)
+	}
+}
+
+// Regression: once packed (past the box-aspect threshold), usesBoxFitZoom used
+// to fall back to scaleCropAbout, whose floor keys off the crop's LONGER side —
+// the secondary axis here, not the box-bound primary one that actually sets
+// on-screen magnification. That let the primary axis blow straight through
+// zoomFloor while the secondary axis alone got floored.
+func TestZoomInPastPackClampsPrimaryAxisAtZoomFloor(t *testing.T) {
+	m := wideModel()
+	for i := 0; i < 30; i++ {
+		m.zoomBy(1.25)
+	}
+	if mag := 1 / m.crop.w(); mag > zoomMax+1e-9 {
+		t.Errorf("box-bound axis magnification %v exceeds zoomMax %v after deep zoom-in, crop=%+v", mag, zoomMax, m.crop)
+	}
+}
+
+// Regression: the same fallback made zoom-out from a packed crop snap straight
+// to fullCrop in a single step (whichever axis was "longer" would cross 1
+// before the other), reintroducing the #242 jump on the way out instead of
+// retracing gradually.
+func TestZoomOutFromDeepPackRetracesGradually(t *testing.T) {
+	m := wideModel()
+	for i := 0; i < 7; i++ {
+		m.zoomBy(1.25) // past the ~4.5x pack threshold
+	}
+	m.zoomBy(1 / 1.25)
+	if m.crop.isFull() {
+		t.Errorf("one zoom-out step from a packed crop must not jump straight to full, got %+v", m.crop)
+	}
+	for i := 0; i < 50; i++ {
+		m.zoomBy(1 / 1.25)
+	}
+	if !m.crop.isFull() {
+		t.Errorf("continued zoom-out from a packed crop must still reach full eventually, got %+v", m.crop)
 	}
 }
 
@@ -180,12 +315,30 @@ func TestZoomInClampsLongSideAtMax(t *testing.T) {
 	}
 }
 
-func TestZoomOutFromFillReachesFull(t *testing.T) {
+func TestZoomOutFromFillRetracesToFull(t *testing.T) {
 	m := wideModel()
-	m.crop = m.baseFillCrop() // full-height slice; h == 1
-	m.zoomBy(1 / 1.25)
+	m.crop = m.baseFillCrop() // packed box-aspect fill; the deepest step zoom-in reaches
+	for i := 0; i < 50; i++ {
+		m.zoomBy(1 / 1.25)
+	}
 	if !m.crop.isFull() {
-		t.Errorf("zoom-out from a full-height fill must reach full, got %+v", m.crop)
+		t.Errorf("zoom-out from a packed fill must retrace to full, got %+v", m.crop)
+	}
+}
+
+// Zooming in N steps then out the same N steps must retrace to (near) the
+// original crop, mirroring the box-fit model in both directions.
+func TestZoomOutRetracesZoomIn(t *testing.T) {
+	m := wideModel()
+	for i := 0; i < 5; i++ {
+		m.zoomBy(1.25)
+	}
+	mid := m.crop
+	for i := 0; i < 5; i++ {
+		m.zoomBy(1 / 1.25)
+	}
+	if !m.crop.isFull() {
+		t.Errorf("5 zoom-outs after 5 zoom-ins must retrace to full, got %+v (mid was %+v)", m.crop, mid)
 	}
 }
 

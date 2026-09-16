@@ -8,6 +8,18 @@ import (
 	"testing"
 )
 
+// tempDirReal is t.TempDir() with symlinks resolved. On macOS it lands under
+// /var, itself a symlink to /private/var, so an unresolved expectation never
+// matches the path launcherBin returns.
+func tempDirReal(t *testing.T) string {
+	t.Helper()
+	d, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
 // stubAeye writes an executable named `name` that prints ver for --version and
 // appends a line to a call log, so a test can tell whether it was exec'd.
 func stubAeye(t *testing.T, dir, name, ver, callLog string) string {
@@ -40,7 +52,7 @@ func TestDriftHint(t *testing.T) {
 }
 
 func TestLauncherBinPrefersAEYEBIN(t *testing.T) {
-	dir := t.TempDir()
+	dir := tempDirReal(t)
 	log := filepath.Join(dir, "calls")
 	onPath := stubAeye(t, dir, "aeye", "1.0.2-onpath", log)
 	pinned := stubAeye(t, dir, "aeye-pinned", "0.19.0-pinned", log)
@@ -61,9 +73,9 @@ func TestLauncherBinPrefersAEYEBIN(t *testing.T) {
 // Regression guard for the case that motivated this: /etc/profiles/…/aeye is a
 // symlink, so an unresolved path looks identical across a nix switch.
 func TestLauncherBinResolvesSymlinks(t *testing.T) {
-	dir := t.TempDir()
+	dir := tempDirReal(t)
 	real := stubAeye(t, dir, "aeye-real", "1.0.2", filepath.Join(dir, "calls"))
-	linkDir := t.TempDir()
+	linkDir := tempDirReal(t)
 	if err := os.Symlink(real, filepath.Join(linkDir, "aeye")); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +87,7 @@ func TestLauncherBinResolvesSymlinks(t *testing.T) {
 }
 
 func TestLauncherBinMissing(t *testing.T) {
-	t.Setenv("PATH", t.TempDir())
+	t.Setenv("PATH", tempDirReal(t))
 	t.Setenv("AEYE_BIN", "")
 	if got := launcherBin(); got != "" {
 		t.Errorf("no aeye on PATH: got %q, want \"\"", got)
@@ -83,7 +95,7 @@ func TestLauncherBinMissing(t *testing.T) {
 }
 
 func TestBinVersion(t *testing.T) {
-	dir := t.TempDir()
+	dir := tempDirReal(t)
 	p := stubAeye(t, dir, "aeye", "1.0.2-b421285", filepath.Join(dir, "calls"))
 	if got := binVersion(p); got != "1.0.2-b421285" {
 		t.Errorf("binVersion() = %q, want %q", got, "1.0.2-b421285")
@@ -91,7 +103,7 @@ func TestBinVersion(t *testing.T) {
 }
 
 func TestProbeUpdateCmdExecsOnNewPath(t *testing.T) {
-	dir := t.TempDir()
+	dir := tempDirReal(t)
 	log := filepath.Join(dir, "calls")
 	p := stubAeye(t, dir, "aeye", "1.0.2-b421285", log)
 	t.Setenv("PATH", dir)
@@ -109,7 +121,7 @@ func TestProbeUpdateCmdExecsOnNewPath(t *testing.T) {
 // The probe runs every 30s for the life of the viewer; only a changed path may
 // cost a fork.
 func TestProbeUpdateCmdSkipsExecOnUnchangedPath(t *testing.T) {
-	dir := t.TempDir()
+	dir := tempDirReal(t)
 	log := filepath.Join(dir, "calls")
 	p := stubAeye(t, dir, "aeye", "1.0.2-b421285", log)
 	t.Setenv("PATH", dir)
@@ -126,7 +138,7 @@ func TestProbeUpdateCmdSkipsExecOnUnchangedPath(t *testing.T) {
 }
 
 func TestProbeUpdateCmdClearsWhenBinaryGone(t *testing.T) {
-	t.Setenv("PATH", t.TempDir())
+	t.Setenv("PATH", tempDirReal(t))
 	t.Setenv("AEYE_BIN", "")
 	msg := probeUpdateCmd(updateWatch{path: "/gone/aeye", ver: "1.0.2"})().(updateProbeMsg)
 	if msg.path != "" || msg.ver != "" {

@@ -10,7 +10,7 @@ require (
 	github.com/charmbracelet/ultraviolet v0.0.0-20260812204455-68fa937c71be
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/noamsto/themestate v0.1.0
-	golang.org/x/image v0.45.0
+	golang.org/x/image v0.46.0
 	oss.terrastruct.com/d2 v0.7.2
 	oss.terrastruct.com/util-go v0.1.0
 )
@@ -39,8 +39,8 @@ require (
 	github.com/yuin/goldmark v1.8.5 // indirect
 	golang.org/x/exp v0.0.0-20260824195058-e88cd73687aa // indirect
 	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 )

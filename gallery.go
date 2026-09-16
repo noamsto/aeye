@@ -163,7 +163,8 @@ type galleryModel struct {
 	// transmit — the restore paths clear it because tmux can drop the store
 	// (alt-screen switch, hidden window) without any model state changing.
 	lastTransmitSig *transmitSig
-	mtime           int64 // manifest mtime at last load (for auto-refresh)
+	mtime           int64       // manifest mtime at last load (for auto-refresh)
+	update          updateWatch // newer aeye on PATH than this build (see probeUpdateCmd)
 	ready           bool
 	visible         bool        // pane reachable by the image store at the last tick (see paneVisible)
 	pinned          bool        // follow the newest image until the user first navigates
@@ -225,15 +226,18 @@ const (
 )
 
 func (m galleryModel) Init() tea.Cmd {
+	// Probed at startup too: the launcher can pin an old store path, so a viewer
+	// is often already behind at its first frame.
+	cmds := []tea.Cmd{galleryTickCmd(), updateTickCmd(), probeUpdateCmd(m.update)}
 	if m.dragNative && m.tty != nil {
 		// Register as a drag source up front so a plain mouse drag exports the
 		// image — no key to press. The terminal reports each gesture via OSC 72.
-		return tea.Batch(galleryTickCmd(), func() tea.Msg {
+		cmds = append(cmds, func() tea.Msg {
 			m.tty.WriteString(dragArmSeq())
 			return nil
 		})
 	}
-	return galleryTickCmd()
+	return tea.Batch(cmds...)
 }
 
 type galleryTickMsg struct{}
@@ -780,6 +784,12 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(galleryTickCmd(), m.kickVector(), m.schedulePaint())
 		}
 		return m, galleryTickCmd()
+	case updateTickMsg:
+		return m, tea.Batch(updateTickCmd(), probeUpdateCmd(m.update))
+	case updateProbeMsg:
+		m.update.path, m.update.ver = msg.path, msg.ver
+		m.update.hint = driftHint(version(), msg.ver)
+		return m, nil
 	case sizeRetryMsg:
 		if m.ready {
 			return m, nil
@@ -1022,8 +1032,13 @@ func (m galleryModel) renderView() string {
 	// Centered title + subtitle (current image).
 	hintFg, textFg := m.hintFg, m.textFg
 	center := func(s string) string { return lipgloss.PlaceHorizontal(m.width, lipgloss.Center, s) }
+	versionChip := lipgloss.NewStyle().Foreground(hintFg).Render("  " + version())
+	if m.update.hint != "" {
+		versionChip += lipgloss.NewStyle().Foreground(selColor).
+			Render(" → " + m.update.hint + " · restart pane")
+	}
 	title := center(lipgloss.NewStyle().Foreground(selColor).Bold(true).Render(galleryTitleIcon+"  "+galleryTitle) +
-		lipgloss.NewStyle().Foreground(hintFg).Render("  "+version()))
+		versionChip)
 	capText := m.images[m.cursor].caption()
 	capFg := textFg
 	if m.isPending(m.images[m.cursor]) {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/noamsto/aeye/compare/v1.0.2...v1.1.0) (2026-09-17)
+
+
+### Features
+
+* **viewer:** warn when a newer aeye is on PATH (restart hint) ([#260](https://github.com/noamsto/aeye/issues/260)) ([66ed62f](https://github.com/noamsto/aeye/commit/66ed62ff8ed3c7cfa1acf6165759e9811b178947))
+
 ## [1.0.2](https://github.com/noamsto/aeye/compare/v1.0.1...v1.0.2) (2026-09-15)
 
 

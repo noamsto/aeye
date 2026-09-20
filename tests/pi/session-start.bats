@@ -6,14 +6,14 @@ setup() {
 	ROOT="$(dirname "$(dirname "$BATS_TEST_DIRNAME")")"
 	PLUGIN_ROOT="$ROOT/adapters/pi"
 
-	# A symlinked package tree lets one test swap a single sub-script for a
-	# stub (a broken diagram-guidance.sh, or one that just records that it
-	# ran) without touching the real scripts/ everything else here reuses.
+	# This mostly symlinked package tree lets tests replace a sub-script without
+	# touching the real scripts/. session-backfill.sh is copied because its stub
+	# records the payload written to it.
 	PKG="$BATS_TEST_TMPDIR/pkg"
 	mkdir -p "$PKG/handlers" "$PKG/scripts"
 	cp "$PLUGIN_ROOT/handlers/session-start.sh" "$PKG/handlers/session-start.sh"
 	cp "$PLUGIN_ROOT/handlers/backfill-calls.sh" "$PKG/handlers/backfill-calls.sh"
-	ln -s "$PLUGIN_ROOT/scripts/session-backfill.sh" "$PKG/scripts/session-backfill.sh"
+	cp "$PLUGIN_ROOT/scripts/session-backfill.sh" "$PKG/scripts/session-backfill.sh"
 	ln -s "$PLUGIN_ROOT/scripts/diagram-guidance.sh" "$PKG/scripts/diagram-guidance.sh"
 	ln -s "$PLUGIN_ROOT/scripts/core" "$PKG/scripts/core"
 	ln -s "$PLUGIN_ROOT/scripts/lib" "$PKG/scripts/lib"
@@ -33,6 +33,25 @@ touch "$RESET_RAN"
 $1
 EOF
 	chmod +x "$PKG/scripts/session-reset.sh"
+}
+
+stub_backfill() {
+	cat >"$PKG/scripts/session-backfill.sh" <<EOF
+#!/usr/bin/env bash
+payload="\$(cat)"
+printf '%s' "\$payload" >"$BATS_TEST_TMPDIR/backfill-payload"
+calls_file="\$(jq -r '.calls_file // empty' <<<"\$payload")"
+cp "\$calls_file" "$BATS_TEST_TMPDIR/backfill-calls"
+EOF
+	chmod +x "$PKG/scripts/session-backfill.sh"
+}
+
+write_transcript_call() {
+	local transcript="$1"
+	printf '%s\n' \
+		'{"id":"root","type":"session"}' \
+		'{"id":"assistant","parentId":"root","type":"message","message":{"role":"assistant","content":[{"type":"toolCall","id":"call-1","name":"read","arguments":{"path":"/tmp/image.png"}}]}}' \
+		>"$transcript"
 }
 
 @test "session-reset.sh runs even when diagram-guidance.sh exits non-zero" {
@@ -73,4 +92,45 @@ EOF
 	run bash -c 'printf "" | "$0"' "$APP"
 	[ "$status" -eq 0 ]
 	[ ! -f "$RESET_RAN" ]
+}
+
+@test "startup with transcript history backfills (pi -c continuation)" {
+	stub_reset ""
+	stub_backfill
+	transcript="$BATS_TEST_TMPDIR/history.jsonl"
+	write_transcript_call "$transcript"
+
+	run bash -c 'jq -nc --arg sf "$1" '\''{session_id: "s1", cwd: "/tmp", native: {reason: "startup", session_file: $sf}}'\'' | "$0"' "$APP" "$transcript"
+	[ "$status" -eq 0 ]
+	[ -f "$BATS_TEST_TMPDIR/backfill-payload" ]
+	run jq -e '.source == "startup" and .calls_file != ""' "$BATS_TEST_TMPDIR/backfill-payload"
+	[ "$status" -eq 0 ]
+	run jq -e '.tool_name == "read" and .tool_input == {path: "/tmp/image.png"} and .tool_response == {content: [""]} and .cwd == "/tmp" and .session_id == "s1"' "$BATS_TEST_TMPDIR/backfill-calls"
+	[ "$status" -eq 0 ]
+}
+
+@test "empty transcript does not invoke backfill" {
+	stub_reset ""
+	stub_backfill
+	transcript="$BATS_TEST_TMPDIR/empty.jsonl"
+	: >"$transcript"
+
+	run bash -c 'jq -nc --arg sf "$1" '\''{session_id: "s1", cwd: "/tmp", native: {reason: "new", session_file: $sf}}'\'' | "$0"' "$APP" "$transcript"
+	[ "$status" -eq 0 ]
+	[ ! -f "$BATS_TEST_TMPDIR/backfill-payload" ]
+}
+
+@test "resume and fork with transcript history backfill" {
+	transcript="$BATS_TEST_TMPDIR/history.jsonl"
+	write_transcript_call "$transcript"
+
+	for reason in resume fork; do
+		stub_reset ""
+		stub_backfill
+		rm -f "$BATS_TEST_TMPDIR/backfill-payload"
+		run bash -c 'jq -nc --arg reason "$1" --arg sf "$2" '\''{session_id: "s1", cwd: "/tmp", native: {reason: $reason, session_file: $sf}}'\'' | "$0"' "$APP" "$reason" "$transcript"
+		[ "$status" -eq 0 ]
+		run jq -e '.source == "resume"' "$BATS_TEST_TMPDIR/backfill-payload"
+		[ "$status" -eq 0 ]
+	done
 }

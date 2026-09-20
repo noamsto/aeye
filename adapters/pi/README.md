@@ -51,7 +51,7 @@ commit the result.
 | pi event | Handler | Action |
 |----------|---------|--------|
 | `post_tool` (read/write/edit/bash/shell) | `aeye-tool-result` (`handlers/tool-result.sh`) | Append touched images to the manifest; render `.d2` files and append them (with their SVG as a zoom vector) |
-| `session_start` | `aeye-session-start` (`handlers/session-start.sh`) | Inject diagram guidance; clear a foreign manifest and stamp ownership; on `resume`/`fork` rebuild the manifest from the session history (via `handlers/backfill-calls.sh`) |
+| `session_start` | `aeye-session-start` (`handlers/session-start.sh`) | Inject diagram guidance; clear a foreign manifest and stamp ownership; when the transcript yields historical calls, rebuild the manifest from session history (via `handlers/backfill-calls.sh`) |
 | `/aeye` command | `commands/aeye.sh` | Open the carousel (re-exports `$HOOKYARD_SESSION_ID` as `$AEYE_SESSION_ID`, then execs `tmux-claude-images`) |
 
 Keying matches every other adapter: inside tmux the manifest is

@@ -3,8 +3,9 @@
 # normalized envelope on stdin: top-level session_id/cwd, plus a `native` object
 # carrying pi's own session_start fields (native.reason, native.session_file).
 #
-# Runs diagram guidance, a history-driven manifest rebuild on resume/fork, and
-# the pane-ownership reset — then replies with the guidance text, if any.
+# Runs diagram guidance, a history-driven manifest rebuild when the transcript
+# has historical calls, and the pane-ownership reset — then replies with the
+# guidance text, if any.
 #
 # session-reset.sh must run regardless of whether diagram-guidance.sh or the
 # backfill step fails. That guarantee is structural, not a chain of `||`
@@ -49,15 +50,17 @@ if [[ -n $base ]]; then
 	guidance="$(jq -r '.hookSpecificOutput.additionalContext // empty' <<<"$guidance_out" 2>/dev/null)" || guidance=""
 fi
 
-if [[ $source == resume && -n $session_file && -n $base ]]; then
+if [[ -n $session_file && -n $base ]]; then
 	calls_file="$(mktemp 2>/dev/null)" || calls_file=""
 	if [[ -n $calls_file ]]; then
 		"$dir/backfill-calls.sh" "$session_file" "$cwd" "$session_id" >"$calls_file" 2>/dev/null || true
 
-		backfill_payload="$(jq -nc --arg sid "$session_id" --arg cwd "$cwd" --arg source "$source" --arg cf "$calls_file" \
-			'{session_id: $sid, cwd: $cwd, source: $source, calls_file: $cf}')" || backfill_payload=""
-		if [[ -n $backfill_payload ]]; then
-			printf '%s' "$backfill_payload" | "$dir/../scripts/session-backfill.sh" >/dev/null 2>&1 || true
+		if [[ -s $calls_file ]]; then
+			backfill_payload="$(jq -nc --arg sid "$session_id" --arg cwd "$cwd" --arg source "$source" --arg cf "$calls_file" \
+				'{session_id: $sid, cwd: $cwd, source: $source, calls_file: $cf}')" || backfill_payload=""
+			if [[ -n $backfill_payload ]]; then
+				printf '%s' "$backfill_payload" | "$dir/../scripts/session-backfill.sh" >/dev/null 2>&1 || true
+			fi
 		fi
 
 		rm -f "$calls_file"

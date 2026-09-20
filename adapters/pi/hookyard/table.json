@@ -1,0 +1,1 @@
+{"handlers":[{"id":"aeye-session-start","exec":"handlers/session-start.sh","events":["session_start"],"engines":["pi"],"match":null,"timeout_ms":0,"lane":"verdict"},{"id":"aeye-tool-result","exec":"handlers/tool-result.sh","events":["post_tool"],"engines":["pi"],"match":null,"timeout_ms":0,"lane":"verdict"}]}

@@ -5,9 +5,9 @@ description: Use when the user wants to see the images from this conversation �
 
 # Image Gallery
 
-The aeye pi extension captures every image this pi session touches (read /
-write / edit / bash screenshot tool calls) into a per-pane manifest, and renders
-them as a browsable **carousel** — a big preview of the selected image plus a
+aeye's pi hookyard handlers capture every image this pi session touches (read /
+write / edit / bash screenshot tool calls) into a per-pane manifest, which
+renders as a browsable **carousel** — a big preview of the selected image plus a
 filmstrip of thumbnails — in a tmux split or a kitty window.
 
 ## Opening it
@@ -27,7 +27,7 @@ close):
   it with `prefix + I` if their tmux config binds it (lazytmux does).
 - **Outside tmux, in kitty with remote control** (`$KITTY_LISTEN_ON` set) — a
   `kitty @ launch` window, keyed by the pi session id (`$AEYE_SESSION_ID`, which
-  the extension exports).
+  the `/aeye` command's exec script exports).
 
 You can also open it from inside pi with the `/aeye` command.
 

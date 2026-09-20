@@ -1,0 +1,9 @@
+{
+  "handlers": [
+    {"id": "aeye-session-start", "exec": "handlers/session-start.sh", "events": ["session_start"], "engines": ["pi"]},
+    {"id": "aeye-tool-result", "exec": "handlers/tool-result.sh", "events": ["post_tool"], "engines": ["pi"]}
+  ],
+  "commands": [
+    {"name": "aeye", "description": "Open the aeye image carousel for this session", "exec": "commands/aeye.sh"}
+  ]
+}

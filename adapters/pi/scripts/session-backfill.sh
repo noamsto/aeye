@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# session_start(resume|fork) for the aeye pi extension: rebuild this pane/
-# session's image manifest from the pi session history, so the carousel is
-# populated after resuming (or forking) a session instead of empty. The
-# extension collects every historical tool call (read/write/edit/bash, plus the
-# paired tool output for screenshots) as normalized payloads, one JSON object
-# per line in calls_file, and this script replays them through the same
-# extraction the live hook uses.
+# session_start(resume|fork) for the aeye-session-start hookyard handler
+# wrapper (handlers/session-start.sh): rebuild this pane/session's image
+# manifest from the pi session history, so the carousel is populated after
+# resuming (or forking) a session instead of empty. handlers/backfill-calls.sh
+# collects every historical tool call (read/write/edit/bash, plus the paired
+# tool output for screenshots) as normalized payloads, one JSON object per line
+# in calls_file, and this script replays them through the same extraction the
+# live hook uses.
 #
 # The history is authoritative: the manifest is rebuilt from scratch, so a prior
 # session's images left under a reused tmux pane id cannot bleed through. This

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# session_start for the aeye pi extension. Keeps the carousel from showing a
-# different session's images when a tmux pane id is reused (tmux renumbers panes
-# from low values on every server restart, and the manifest dir is shared
-# machine-wide). Two jobs:
+# session_start for the aeye-session-start hookyard handler wrapper
+# (handlers/session-start.sh). Keeps the carousel from showing a different
+# session's images when a tmux pane id is reused (tmux renumbers panes from low
+# values on every server restart, and the manifest dir is shared machine-wide).
+# Two jobs:
 #   1. This pane's manifest — clear a manifest that belongs to a different (or
 #      unknown) session and stamp ownership, before the viewer reads. A
 #      same-session continuation (pi -c, /reload) keeps its manifest, so a
-#      resumed run does not blank the carousel. On resume/fork the extension's
+#      resumed run does not blank the carousel. On resume/fork the handler's
 #      backfill script is the sole writer and rebuilds the manifest from the
 #      session history, so nothing is done here.
 #   2. GC — sweep manifests (and their orphaned owner sidecars) for tmux panes no

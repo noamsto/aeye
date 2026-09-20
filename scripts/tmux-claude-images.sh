@@ -70,8 +70,9 @@ resolve_target() {
 	# PANE stays the bare pane id — it is a tmux *target*, which KEY is not.
 	PANE="${TMUX_PANE:-}"
 	# AEYE_SESSION_ID is the agent-neutral session id a non-Claude adapter (e.g.
-	# the pi extension) exports; CLAUDE_CODE_SESSION_ID stays the primary so the
-	# Claude path is unchanged. SESSION is the viewer's identity (AEYE_OWNER).
+	# the pi `/aeye` command's exec script) exports; CLAUDE_CODE_SESSION_ID stays
+	# the primary so the Claude path is unchanged. SESSION is the viewer's
+	# identity (AEYE_OWNER).
 	SESSION="${CLAUDE_CODE_SESSION_ID:-${AEYE_SESSION_ID:-}}"
 	local srv
 	IFS=, read -r _ srv _ <<<"${TMUX:-}"

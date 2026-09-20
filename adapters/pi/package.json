@@ -13,7 +13,7 @@
   "type": "module",
   "pi": {
     "extensions": [
-      "./extensions"
+      "./extensions/hookyard.ts"
     ],
     "skills": [
       "./skills"

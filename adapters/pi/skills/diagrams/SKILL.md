@@ -6,7 +6,7 @@ description: Use when a picture beats prose — drawing architecture, data flow,
 # Diagrams (D2 → carousel)
 
 When structure is clearer seen than read, write a [D2](https://d2lang.com)
-diagram as a `.d2` file. The aeye pi extension renders it browser-free
+diagram as a `.d2` file. aeye's pi hookyard handler renders it browser-free
 (`aeye render-diagram` → svg → resvg → png) into the per-pane image manifest,
 and the carousel shows it like any other image — auto-opening once per session.
 

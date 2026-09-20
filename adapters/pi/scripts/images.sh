@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Append images this pi session touches (read/write/edit/bash screenshots) to a
-# per-pane manifest. Runs from the aeye pi extension's tool_result handler,
-# which feeds a normalized hook JSON payload on stdin. Self-contained, keyed per
-# tmux server+pane or the pi session id.
+# per-pane manifest. Runs from the aeye-tool-result hookyard handler wrapper
+# (handlers/tool-result.sh), which feeds a normalized hook JSON payload on
+# stdin. Self-contained, keyed per tmux server+pane or the pi session id.
 set -euo pipefail
 
 PLUGIN_ROOT="${PLUGIN_ROOT:-$(dirname "${BASH_SOURCE[0]}")/..}"

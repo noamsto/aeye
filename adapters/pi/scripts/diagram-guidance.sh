@@ -1,24 +1,25 @@
 #!/usr/bin/env bash
-# session_start for the aeye pi extension: when a carousel host is present, nudge
-# the agent to draw diagrams as .d2 files (rendered into the carousel by
-# diagrams.sh). Host-gated so the guidance only loads where a diagram can
-# actually be displayed. Reads the normalized hook JSON on stdin and prints an
-# {hookSpecificOutput:{additionalContext}} object the extension injects.
+# session_start for the aeye-session-start hookyard handler wrapper
+# (handlers/session-start.sh): when a carousel host is present, nudge the agent
+# to draw diagrams as .d2 files (rendered into the carousel by diagrams.sh).
+# Host-gated so the guidance only loads where a diagram can actually be
+# displayed. Reads the normalized hook JSON on stdin and prints an
+# {hookSpecificOutput:{additionalContext}} object the handler injects.
 set -euo pipefail
 
 [[ -n ${TMUX:-} || -n ${KITTY_LISTEN_ON:-} ]] || exit 0
 
 # Render-pipeline preflight. diagrams.sh runs `aeye render-diagram` (d2 is
 # embedded; it shells out only to resvg), and silently no-ops when either is
-# unreachable on the PATH this extension's scripts share. Detect that here —
-# once, at session start — and warn instead of nudging the agent to draw
+# unreachable on the PATH these handler wrapper scripts share. Detect that
+# here — once, at session start — and warn instead of nudging the agent to draw
 # diagrams that will never render. Resolution mirrors d2_render (AEYE_BIN /
 # AEYE_RESVG overrides).
 missing=()
 command -v "${AEYE_BIN:-aeye}" >/dev/null 2>&1 || missing+=("${AEYE_BIN:-aeye}")
 command -v "${AEYE_RESVG:-resvg}" >/dev/null 2>&1 || missing+=("${AEYE_RESVG:-resvg}")
 if ((${#missing[@]})); then
-	warn="Diagram rendering is unavailable: ${missing[*]} not found on PATH for the aeye extension, so any .d2 you write will silently NOT render into the carousel. Don't draw diagrams this session; tell the user the aeye extension is missing ${missing[*]} on PATH (e.g. add the aeye package to home.packages)."
+	warn="Diagram rendering is unavailable: ${missing[*]} not found on PATH for the aeye pi handler, so any .d2 you write will silently NOT render into the carousel. Don't draw diagrams this session; tell the user aeye's pi handler is missing ${missing[*]} on PATH (e.g. add the aeye package to home.packages)."
 	jq -nc --arg ctx "$warn" \
 		'{hookSpecificOutput:{hookEventName:"session_start",additionalContext:$ctx}}'
 	exit 0

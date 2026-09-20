@@ -100,7 +100,7 @@ is keyed to the hooks' hash).
 pi install <path-to-aeye>/adapters/pi
 ```
 
-The package registers the aeye extension (capture + diagram rendering +
+The package registers aeye's hookyard handlers (capture + diagram rendering +
 session guidance) and the `image-gallery` / `diagrams` skills. Open the
 carousel with `/aeye` inside pi or `tmux-claude-images` from the shell.
 
@@ -258,8 +258,8 @@ the manifest; the viewer never changes.
   (`<key>` is `<tmux server pid>-<pane>` inside tmux, else the session id)
   and renders via the kitty graphics protocol (or chafa fallback).
 - **Adapters** (`adapters/`) — per-agent capture, at parity: `claude-code/`,
-  `codex/`, `cursor/`, and `pi/` (each a PostToolUse/SessionStart hook — or, for
-  pi, an extension — plus skills).
+  `codex/`, `cursor/`, and `pi/` (each a PostToolUse/SessionStart hook — or,
+  for pi, hookyard handlers — plus skills).
 
 Extracted from [lazytmux](https://github.com/noamsto/lazytmux), which consumes
 this repo as a flake input.

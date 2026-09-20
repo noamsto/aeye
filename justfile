@@ -89,6 +89,26 @@ sync-codex-core:
 sync-pi-core:
     cp adapters/core/manifest-extract.sh adapters/core/manifest-lifecycle.sh adapters/pi/scripts/core/
 
+hookyard_src := env_var_or_default("HOOKYARD_SRC", "")
+
+# Regenerate adapters/pi's hookyard-built plugin package (extensions/hookyard.ts,
+# bin/hookyard*, hookyard/table.json, package.json's pi.extensions entry).
+# Requires `hookyard` on PATH — at the commit adapters/pi/hookyard.json and the
+# handler scripts were written against (noamsto/hookyard @ f7ada54, "consolidate
+# pi's hook surface"); an older binary predating `build --engine pi`/`commands[]`
+# fails with an opaque `--engine pi` error rather than a clear version mismatch.
+# HOOKYARD_SRC must point at a hookyard source checkout at that same commit, used
+# to cross-build both arches aeye ships (hookyard build only ever bundles the
+# arch it ran on — see build.go — so the *other* arch needs an explicit build or
+# it's a silent no-op on that platform, per bin/hookyard's fail-open dispatcher).
+build-pi-plugin:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ -n "{{hookyard_src}}" ] || { echo "set HOOKYARD_SRC to a hookyard checkout" >&2; exit 1; }
+    hookyard build --engine pi --manifest adapters/pi/hookyard.json --out adapters/pi --name aeye-pi
+    (cd "{{hookyard_src}}" && GOOS=linux  GOARCH=amd64 go build -o "{{justfile_directory()}}/adapters/pi/bin/hookyard-linux-amd64"  ./cmd/hookyard)
+    (cd "{{hookyard_src}}" && GOOS=darwin GOARCH=arm64 go build -o "{{justfile_directory()}}/adapters/pi/bin/hookyard-darwin-arm64" ./cmd/hookyard)
+
 # Re-vendor core/ into the Cursor adapter (hooks.json install ships its own copy).
 sync-cursor-core:
     cp adapters/core/manifest-extract.sh adapters/core/manifest-lifecycle.sh adapters/cursor/scripts/core/

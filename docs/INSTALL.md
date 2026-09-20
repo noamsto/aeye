@@ -159,15 +159,16 @@ Run in a shell (not inside pi). The package root is `adapters/pi/`:
 pi install <path-to-aeye>/adapters/pi
 ```
 
-This registers the aeye extension and the `image-gallery` / `diagrams` skills
-in your pi settings. Then, inside pi, open the carousel with `/aeye`, or from
-the shell with `tmux-claude-images`. See
+This registers aeye's hookyard handlers and command, and the `image-gallery` /
+`diagrams` skills, in your pi settings. Then, inside pi, open the carousel with
+`/aeye`, or from the shell with `tmux-claude-images`. See
 [`adapters/pi/README.md`](../adapters/pi/README.md) for details, the smoke test,
 and limitations.
 
 Requires `jq` on PATH. Primary runtime is pi in tmux; outside tmux the manifest
-is keyed by the pi session id (exported as `$AEYE_SESSION_ID`), and diagrams
-need `resvg` (`aeye` embeds the d2 compiler).
+is keyed by the pi session id (exported as `$AEYE_SESSION_ID` by the `/aeye`
+command's exec script), and diagrams need `resvg` (`aeye` embeds the d2
+compiler).
 
 ## Step 4 — Smoke test
 
@@ -201,6 +202,6 @@ need `resvg` (`aeye` embeds the d2 compiler).
 |---|---|
 | `AEYE_BIN` | Override the viewer binary the toggle launches (default: `aeye` on PATH). |
 | `AEYE_DIR` | State dir for manifests. Falls back to `CLAUDE_STATUS_DIR`, then `/tmp/claude-status`. |
-| `AEYE_SESSION_ID` | Agent-neutral session id used to key the manifest (and viewer) outside tmux. Exported by the pi extension; `CLAUDE_CODE_SESSION_ID` is the Claude equivalent. |
+| `AEYE_SESSION_ID` | Agent-neutral session id used to key the manifest (and viewer) outside tmux. Exported by the pi `/aeye` command's exec script; `CLAUDE_CODE_SESSION_ID` is the Claude equivalent. |
 | `CLAUDE_STATUS_DIR` | Secondary state-dir fallback (shared with claude-status tooling). |
 | `AEYE_D2` / `AEYE_RESVG` | Override the `d2` / `resvg` binaries used for diagram rendering. |

@@ -80,7 +80,7 @@ write_transcript_call() {
 
 @test "guidance text still reaches the reply when reset also runs" {
 	stub_reset ""
-	run bash -c 'echo "{\"session_id\":\"s1\",\"cwd\":\"/tmp\",\"native\":{\"reason\":\"new\"}}" | "$0"' "$APP"
+	run env TMUX=1 bash -c 'echo "{\"session_id\":\"s1\",\"cwd\":\"/tmp\",\"native\":{\"reason\":\"new\"}}" | "$0"' "$APP"
 	[ "$status" -eq 0 ]
 	[ -f "$RESET_RAN" ]
 	[[ $output == *hookSpecificOutput* ]]

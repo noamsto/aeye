@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/noamsto/aeye/compare/v1.1.0...v1.2.0) (2026-09-20)
+
+
+### Features
+
+* **pi:** migrate to hookyard build-mode handlers ([#267](https://github.com/noamsto/aeye/issues/267)) ([902829d](https://github.com/noamsto/aeye/commit/902829db66debc7a4f30b516ec9172c400d42919))
+
 ## [1.1.0](https://github.com/noamsto/aeye/compare/v1.0.2...v1.1.0) (2026-09-17)
 
 

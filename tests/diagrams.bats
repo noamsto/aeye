@@ -7,7 +7,9 @@ setup() {
 	unset CLAUDE_CODE_SESSION_ID
 	MANIFEST="$CLAUDE_STATUS_DIR/images/4242-7.jsonl"
 	DIAGRAMS="$CLAUDE_STATUS_DIR/images/diagrams"
-	DOTD2="$BATS_TEST_TMPDIR/flow.d2"
+	SRC="$DIAGRAMS/src"
+	mkdir -p "$SRC"
+	DOTD2="$SRC/flow.d2"
 	printf 'a -> b\n' >"$DOTD2"
 	APP="$(dirname "$BATS_TEST_DIRNAME")/adapters/claude-code/plugin/scripts/diagrams.sh"
 
@@ -90,9 +92,9 @@ run_app() { # $1 = fixture name
 }
 
 @test "a relative .d2 file_path is resolved against cwd" {
-	mkdir -p "$BATS_TEST_TMPDIR/proj/sub"
-	printf 'a -> b\n' >"$BATS_TEST_TMPDIR/proj/sub/flow.d2"
-	sed "s#CWD#$BATS_TEST_TMPDIR/proj#g" "$BATS_TEST_DIRNAME/fixtures/hook-write-d2-relative.json" | bash "$APP"
+	mkdir -p "$SRC/sub"
+	printf 'a -> b\n' >"$SRC/sub/flow.d2"
+	sed "s#CWD#$SRC#g" "$BATS_TEST_DIRNAME/fixtures/hook-write-d2-relative.json" | bash "$APP"
 	[ -f "$MANIFEST" ]
 	run jq -r '.source' "$MANIFEST"
 	[ "$output" = "d2" ]
@@ -264,4 +266,22 @@ run_app() { # $1 = fixture name
 	[ -n "$vector" ]
 	[ -f "$vector" ]
 	[ "$vector" = "${png%.png}.svg" ]
+}
+
+@test "a .d2 outside the source dir is not appended (#271)" {
+	OUTSIDE="$BATS_TEST_TMPDIR/scratch.d2"
+	printf 'a -> b\n' >"$OUTSIDE"
+	sed "s#DOTD2#$OUTSIDE#g" "$BATS_TEST_DIRNAME/fixtures/hook-write-d2.json" | bash "$APP"
+	[ ! -f "$MANIFEST" ]
+	[ ! -s "$TOGGLE_LOG" ]
+}
+
+@test "a content-differing *-check.d2 copy leaves one entry for the real source (#271)" {
+	run_app hook-write-d2.json
+	printf 'direction: right\na -> b: one\n' >"$SRC/flow-check.d2"
+	sed "s#DOTD2#$SRC/flow-check.d2#g" "$BATS_TEST_DIRNAME/fixtures/hook-write-d2.json" | bash "$APP"
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 1 ]
+	run jq -r '.name' "$MANIFEST"
+	[ "$output" = "flow" ]
 }

@@ -70,6 +70,20 @@ scan_response_image_path() {
 	return 0
 }
 
+# d2_source_adoptable PATH SRC_DIR -> true when PATH is a .d2 the carousel may
+# adopt. Adoption is keyed on the basename, so a scratch verification copy files
+# a second, permanent carousel entry under its own name (#271); reject a scratch
+# basename (*-check.d2 / *-test.d2) and, when SRC_DIR is given, require PATH to
+# live under the canonical diagrams source dir. An empty SRC_DIR keeps the
+# legacy "any .d2" behavior for callers that do not know the state dir.
+d2_source_adoptable() {
+	local path="$1" src="${2:-}" base
+	[[ ${path,,} == *.d2 ]] || return 1
+	base="${path##*/}"
+	[[ ${base,,} != *-check.d2 && ${base,,} != *-test.d2 ]] || return 1
+	[[ -z $src || $path == "${src%/}"/* ]]
+}
+
 # d2_png_for SRC DIAGRAMS_DIR THEME -> echoes the cache png path for one theme
 # variant (<hash>-<theme>.png). The hash is of the source content only — the
 # palette/theme is applied by aeye at render time, so both variants share a hash

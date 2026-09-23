@@ -23,11 +23,13 @@ pane_file="$(resolve_pane_key "$session")"
 valid_pane_file "$pane_file" || exit 0
 
 # codex_extract_touched_paths returns both images and .d2 paths in one call;
-# images.sh owns everything else, this hook only cares about the .d2s.
+# images.sh owns everything else, this hook only cares about the .d2s. Only a
+# canonical source (under $DIAGRAMS_DIR/src, not a *-check.d2 scratch copy) is
+# adopted, so a verification copy never files a second carousel entry (#271).
 candidates=()
 while IFS= read -r p; do
 	[[ -n $p ]] || continue
-	[[ ${p,,} == *.d2 ]] || continue
+	d2_source_adoptable "$p" "$DIAGRAMS_DIR/src" || continue
 	candidates+=("$p")
 done < <(codex_extract_touched_paths "$payload")
 [[ ${#candidates[@]} -gt 0 ]] || exit 0

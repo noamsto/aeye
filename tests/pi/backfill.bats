@@ -65,7 +65,8 @@ write_calls() {
 }
 
 @test "renders a historical .d2 into the manifest" {
-	D2="$BATS_TEST_TMPDIR/flow.d2"
+	D2="$AEYE_DIR/images/diagrams/src/flow.d2"
+	mkdir -p "$(dirname "$D2")"
 	printf 'a -> b\n' >"$D2"
 	d2_call="$(jq -nc --arg p "$D2" '{tool_name:"write",tool_input:{file_path:$p},tool_response:{content:[""]},cwd:"/repo"}')"
 	calls="$BATS_TEST_TMPDIR/calls.jsonl"

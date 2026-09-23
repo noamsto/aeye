@@ -11,7 +11,8 @@ setup() {
 
 	IMG="$BATS_TEST_TMPDIR/pic.png"
 	printf 'x' >"$IMG"
-	DOTD2="$BATS_TEST_TMPDIR/flow.d2"
+	DOTD2="$CLAUDE_STATUS_DIR/images/diagrams/src/flow.d2"
+	mkdir -p "$(dirname "$DOTD2")"
 	printf 'a -> b\n' >"$DOTD2"
 
 	TRANSCRIPT="$BATS_TEST_TMPDIR/transcript.jsonl"

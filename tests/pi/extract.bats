@@ -83,3 +83,57 @@ setup() {
 	[ "$status" -eq 0 ]
 	[ "$output" = "$D2" ]
 }
+
+@test "extract_d2_path: a file_path outside src is not adopted" {
+	SRC="$BATS_TEST_TMPDIR/diagrams/src"
+	mkdir -p "$SRC"
+	D2="$BATS_TEST_TMPDIR/scratch.d2"
+	printf 'a -> b\n' >"$D2"
+	payload="$(jq -nc --arg p "$D2" '{tool_name:"write",tool_input:{file_path:$p},cwd:"/repo"}')"
+	run extract_d2_path "$payload" "$SRC"
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
+@test "extract_d2_path: a file_path inside src is adopted" {
+	SRC="$BATS_TEST_TMPDIR/diagrams/src"
+	mkdir -p "$SRC"
+	D2="$SRC/flow.d2"
+	printf 'a -> b\n' >"$D2"
+	payload="$(jq -nc --arg p "$D2" '{tool_name:"write",tool_input:{file_path:$p},cwd:"/repo"}')"
+	run extract_d2_path "$payload" "$SRC"
+	[ "$status" -eq 0 ]
+	[ "$output" = "$D2" ]
+}
+
+@test "extract_d2_path: a *-check.d2 scratch copy is skipped" {
+	SRC="$BATS_TEST_TMPDIR/diagrams/src"
+	mkdir -p "$SRC"
+	D2="$SRC/flow-check.d2"
+	printf 'a -> b\n' >"$D2"
+	payload="$(jq -nc --arg p "$D2" '{tool_name:"write",tool_input:{file_path:$p},cwd:"/repo"}')"
+	run extract_d2_path "$payload" "$SRC"
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
+@test "extract_d2_path: a .d2 token outside src in a command is not adopted" {
+	SRC="$BATS_TEST_TMPDIR/diagrams/src"
+	mkdir -p "$SRC"
+	D2="$BATS_TEST_TMPDIR/scratch.d2"
+	printf 'a -> b\n' >"$D2"
+	payload="$(jq -nc --arg p "$D2" '{tool_name:"bash",tool_input:{command:("cat > "+$p+" <<EOF\na -> b\nEOF")},cwd:"/repo"}')"
+	run extract_d2_path "$payload" "$SRC"
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
+@test "extract_d2_path: a $var-built scratch target is not adopted" {
+	SRC="$BATS_TEST_TMPDIR/diagrams/src"
+	mkdir -p "$SRC"
+	printf 'a -> b\n' >"$SRC/flow-check.d2"
+	payload="$(jq -nc '{tool_name:"bash",tool_input:{command:"cat > \"$SRC_DIR/flow-check.d2\" <<EOF"},cwd:"/repo"}')"
+	run extract_d2_path "$payload" "$SRC"
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}

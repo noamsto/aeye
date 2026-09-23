@@ -117,6 +117,7 @@ while IFS= read -r line; do
 	while IFS= read -r p; do
 		[[ -n $p ]] || continue
 		if [[ ${p,,} == *.d2 ]]; then
+			d2_source_adoptable "$p" "$DIAGRAMS_DIR/src" || continue
 			png="$(d2_render "$p" "$DIAGRAMS_DIR")" || continue
 			append_diagram "$png" "${png%.png}.svg" "$ts" "$(basename "$p" .d2)"
 		else

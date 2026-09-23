@@ -11,9 +11,11 @@ setup() {
 	export TMUX="fake,4242,0" # pane ids are per server; pin one so the key is stable
 	MANIFEST="$AEYE_DIR/images/4242-7.jsonl"
 	DIAGRAMS="$AEYE_DIR/images/diagrams"
-	DOTD2="$BATS_TEST_TMPDIR/flow.d2"
+	SRC="$DIAGRAMS/src"
+	mkdir -p "$SRC"
+	DOTD2="$SRC/flow.d2"
 	printf 'a -> b\n' >"$DOTD2"
-	DOTD2B="$BATS_TEST_TMPDIR/other.d2"
+	DOTD2B="$SRC/other.d2"
 	printf 'x -> y\n' >"$DOTD2B"
 
 	# Stub aeye the same way the Claude adapter's diagrams.bats does: the whole
@@ -186,4 +188,22 @@ run_app() { # $1 = fixture name
 	run_app apply-patch-d2.json
 	run grep -c -- '--ensure-open' "$TOGGLE_LOG"
 	[ "$output" -eq 1 ]
+}
+
+@test "a .d2 outside the source dir is not appended (#271)" {
+	OUTSIDE="$BATS_TEST_TMPDIR/scratch.d2"
+	printf 'a -> b\n' >"$OUTSIDE"
+	sed "s#D2PATH#$OUTSIDE#g" "$FIXTURES/apply-patch-d2.json" | bash "$APP"
+	[ ! -f "$MANIFEST" ]
+	[ ! -s "$TOGGLE_LOG" ]
+}
+
+@test "a content-differing *-check.d2 copy leaves one entry for the real source (#271)" {
+	run_app apply-patch-d2.json
+	printf 'direction: right\na -> b: one\n' >"$SRC/flow-check.d2"
+	sed "s#D2PATH#$SRC/flow-check.d2#g" "$FIXTURES/apply-patch-d2.json" | bash "$APP"
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 1 ]
+	run jq -r '.name' "$MANIFEST"
+	[ "$output" = "flow" ]
 }

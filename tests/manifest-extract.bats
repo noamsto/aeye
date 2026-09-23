@@ -282,3 +282,44 @@ STUB
 	# both variants rendered
 	[ -f "${output/-dark.png/-light.png}" ]
 }
+
+@test "extract_d2_path: a candidate outside src is not adopted" {
+	SRC="$BATS_TEST_TMPDIR/diagrams/src"
+	mkdir -p "$SRC"
+	d2="$BATS_TEST_TMPDIR/scratch.d2"
+	printf 'a -> b\n' >"$d2"
+	payload="$(jq -nc --arg p "$d2" '{cwd:"/work",tool_input:{file_path:$p}}')"
+	run extract_d2_path "$payload" "$SRC"
+	[ "$status" -eq 0 ]
+	[ -z "$output" ]
+}
+
+@test "extract_d2_path: a candidate inside src is adopted" {
+	SRC="$BATS_TEST_TMPDIR/diagrams/src"
+	mkdir -p "$SRC"
+	d2="$SRC/flow.d2"
+	printf 'a -> b\n' >"$d2"
+	payload="$(jq -nc --arg p "$d2" '{cwd:"/work",tool_input:{file_path:$p}}')"
+	run extract_d2_path "$payload" "$SRC"
+	[ "$output" = "$d2" ]
+}
+
+@test "extract_d2_path: a *-check.d2 scratch copy is skipped" {
+	SRC="$BATS_TEST_TMPDIR/diagrams/src"
+	mkdir -p "$SRC"
+	d2="$SRC/flow-check.d2"
+	printf 'a -> b\n' >"$d2"
+	payload="$(jq -nc --arg p "$d2" '{cwd:"/work",tool_input:{file_path:$p}}')"
+	run extract_d2_path "$payload" "$SRC"
+	[ -z "$output" ]
+}
+
+@test "extract_d2_path: a .d2 token outside src in a command is not adopted" {
+	SRC="$BATS_TEST_TMPDIR/diagrams/src"
+	mkdir -p "$SRC"
+	d2="$BATS_TEST_TMPDIR/scratch.d2"
+	printf 'a -> b\n' >"$d2"
+	payload="$(jq -nc --arg p "$d2" '{cwd:"/work",tool_name:"Bash",tool_input:{command:("cat > "+$p+" <<EOF")}}')"
+	run extract_d2_path "$payload" "$SRC"
+	[ -z "$output" ]
+}

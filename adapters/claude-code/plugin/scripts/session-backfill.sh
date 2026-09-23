@@ -98,7 +98,7 @@ while IFS= read -r line; do
 			append_image "$img" "$(jq -r '.name // "?"' <<<"$tu")" "$ts"
 			continue
 		fi
-		d2="$(extract_d2_path "$synth")"
+		d2="$(extract_d2_path "$synth" "$DIAGRAMS_DIR/src")"
 		if [[ -n $d2 ]]; then
 			png="$(d2_render "$d2" "$DIAGRAMS_DIR")" || continue
 			append_diagram "$png" "${png%.png}.svg" "$ts" "$(basename "$d2" .d2)"

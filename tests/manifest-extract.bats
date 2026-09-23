@@ -283,43 +283,41 @@ STUB
 	[ -f "${output/-dark.png/-light.png}" ]
 }
 
-@test "extract_d2_path: a candidate outside src is not adopted" {
+@test "extract_d2_path: extraction is independent of adoption (returns an outside path)" {
 	SRC="$BATS_TEST_TMPDIR/diagrams/src"
 	mkdir -p "$SRC"
 	d2="$BATS_TEST_TMPDIR/scratch.d2"
-	printf 'a -> b\n' >"$d2"
-	payload="$(jq -nc --arg p "$d2" '{cwd:"/work",tool_input:{file_path:$p}}')"
-	run extract_d2_path "$payload" "$SRC"
-	[ "$status" -eq 0 ]
-	[ -z "$output" ]
-}
-
-@test "extract_d2_path: a candidate inside src is adopted" {
-	SRC="$BATS_TEST_TMPDIR/diagrams/src"
-	mkdir -p "$SRC"
-	d2="$SRC/flow.d2"
 	printf 'a -> b\n' >"$d2"
 	payload="$(jq -nc --arg p "$d2" '{cwd:"/work",tool_input:{file_path:$p}}')"
 	run extract_d2_path "$payload" "$SRC"
 	[ "$output" = "$d2" ]
 }
 
-@test "extract_d2_path: a *-check.d2 scratch copy is skipped" {
+@test "d2_source_adoptable: inside src accepted, outside src rejected" {
 	SRC="$BATS_TEST_TMPDIR/diagrams/src"
-	mkdir -p "$SRC"
-	d2="$SRC/flow-check.d2"
-	printf 'a -> b\n' >"$d2"
-	payload="$(jq -nc --arg p "$d2" '{cwd:"/work",tool_input:{file_path:$p}}')"
-	run extract_d2_path "$payload" "$SRC"
-	[ -z "$output" ]
+	run d2_source_adoptable "$SRC/flow.d2" "$SRC"
+	[ "$status" -eq 0 ]
+	run d2_source_adoptable "$BATS_TEST_TMPDIR/scratch.d2" "$SRC"
+	[ "$status" -ne 0 ]
 }
 
-@test "extract_d2_path: a .d2 token outside src in a command is not adopted" {
+@test "d2_source_adoptable: *-check.d2 / *-test.d2 scratch names are rejected" {
 	SRC="$BATS_TEST_TMPDIR/diagrams/src"
-	mkdir -p "$SRC"
-	d2="$BATS_TEST_TMPDIR/scratch.d2"
-	printf 'a -> b\n' >"$d2"
-	payload="$(jq -nc --arg p "$d2" '{cwd:"/work",tool_name:"Bash",tool_input:{command:("cat > "+$p+" <<EOF")}}')"
-	run extract_d2_path "$payload" "$SRC"
-	[ -z "$output" ]
+	run d2_source_adoptable "$SRC/flow-check.d2" "$SRC"
+	[ "$status" -ne 0 ]
+	run d2_source_adoptable "$SRC/flow-test.d2" "$SRC"
+	[ "$status" -ne 0 ]
+}
+
+@test "d2_source_adoptable: a '..' component cannot escape src" {
+	SRC="$BATS_TEST_TMPDIR/diagrams/src"
+	run d2_source_adoptable "$SRC/../scratch.d2" "$SRC"
+	[ "$status" -ne 0 ]
+}
+
+@test "d2_source_adoptable: no src dir keeps the legacy any-.d2 behavior" {
+	run d2_source_adoptable "$BATS_TEST_TMPDIR/scratch.d2"
+	[ "$status" -eq 0 ]
+	run d2_source_adoptable "/x/pic.png" "$BATS_TEST_TMPDIR"
+	[ "$status" -ne 0 ]
 }

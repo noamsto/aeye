@@ -171,19 +171,34 @@ run_app() { # $1 = .d2 path
 	[ "$output" -eq 1 ]
 }
 
-@test "a .d2 outside the source dir is not appended (#271)" {
+@test "a .d2 outside the source dir renders but is not appended (#271)" {
 	OUTSIDE="$BATS_TEST_TMPDIR/scratch.d2"
 	printf 'a -> b\n' >"$OUTSIDE"
 	run run_app "$OUTSIDE"
 	[ "$status" -eq 0 ]
+	# it still renders — only adoption is contained
+	run grep -c "render-diagram $OUTSIDE" "$RENDER_LOG"
+	[ "$output" -eq 2 ]
 	[ ! -f "$MANIFEST" ]
 	[ ! -s "$TOGGLE_LOG" ]
 }
 
-@test "a content-differing *-check.d2 copy leaves one entry for the real source (#271)" {
+@test "a .d2 escaping src through a '..' component renders but is not appended (#271)" {
+	ESCAPE="$DIAGRAMS/scratch.d2"
+	printf 'a -> b\n' >"$ESCAPE"
+	run run_app "$SRC/../scratch.d2"
+	[ "$status" -eq 0 ]
+	run grep -c "render-diagram $SRC/../scratch.d2" "$RENDER_LOG"
+	[ "$output" -eq 2 ]
+	[ ! -f "$MANIFEST" ]
+}
+
+@test "a content-differing *-check.d2 copy renders but leaves one entry for the real source (#271)" {
 	run_app "$DOTD2"
 	printf 'direction: right\na -> b: one\n' >"$SRC/flow-check.d2"
 	run_app "$SRC/flow-check.d2"
+	run grep -c "render-diagram $SRC/flow-check.d2" "$RENDER_LOG"
+	[ "$output" -eq 2 ]
 	run wc -l <"$MANIFEST"
 	[ "$output" -eq 1 ]
 	run jq -r '.name' "$MANIFEST"

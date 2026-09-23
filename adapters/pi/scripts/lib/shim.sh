@@ -65,9 +65,8 @@ extract_image_path() {
 # live in the state dir, outside the project, so containment would reject every
 # diagram. Consequence: `cat flow.d2` re-renders it too, which d2_render makes
 # cheaply by skipping a render whose png already exists. A path containing a space
-# is not matched. Every phase then filters through d2_source_adoptable: when
-# SRC_DIR is given the candidate must live under it, and a *-check.d2 / *-test.d2
-# scratch copy is never adopted (#271).
+# is not matched. Adoption is a separate concern, gated by d2_source_adoptable at
+# the caller's manifest write, so a scratch/outside source still renders (#271).
 extract_d2_path() {
 	local payload="$1" src_dir="${2:-}" cwd candidate cmd tok saw_var=0
 
@@ -91,7 +90,7 @@ extract_d2_path() {
 	candidate="$(jq -r '.tool_input.file_path // empty' <<<"$payload" 2>/dev/null)"
 	if [[ -n $candidate ]]; then
 		candidate="$(resolve "$candidate")"
-		if [[ -f $candidate ]] && d2_source_adoptable "$candidate" "$src_dir"; then
+		if [[ ${candidate,,} == *.d2 && -f $candidate ]]; then
 			printf '%s' "$candidate"
 			return 0
 		fi
@@ -105,7 +104,6 @@ extract_d2_path() {
 		[[ $tok == *'$'* ]] && saw_var=1
 		tok="$(resolve "$tok")"
 		[[ -f $tok ]] || continue
-		d2_source_adoptable "$tok" "$src_dir" || continue
 		printf '%s' "$tok"
 		return 0
 	done < <(grep -oiE $'[^[:space:]\'"<>|;&()]+\\.d2' <<<"$cmd")
@@ -120,7 +118,6 @@ extract_d2_path() {
 	printf -v now '%(%s)T' -1
 	for f in "$src_dir"/*.d2; do
 		[[ -f $f ]] || continue
-		d2_source_adoptable "$f" "$src_dir" || continue
 		mt="$(_mtime "$f")"
 		((mt >= now - 15 && mt > newest_mt)) || continue
 		newest="$f" newest_mt="$mt"

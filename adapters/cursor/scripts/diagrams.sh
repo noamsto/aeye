@@ -23,13 +23,12 @@ pane_file="$(resolve_pane_key "$session")"
 valid_pane_file "$pane_file" || exit 0
 
 # cursor_extract_touched_paths returns both images and .d2 paths in one call;
-# images.sh owns everything else, this hook only cares about the .d2s. Only a
-# canonical source (under $DIAGRAMS_DIR/src, not a *-check.d2 scratch copy) is
-# adopted, so a verification copy never files a second carousel entry (#271).
+# images.sh owns everything else, this hook only cares about the .d2s. Every
+# candidate renders; only a canonical source is adopted below (#271).
 candidates=()
 while IFS= read -r p; do
 	[[ -n $p ]] || continue
-	d2_source_adoptable "$p" "$DIAGRAMS_DIR/src" || continue
+	[[ ${p,,} == *.d2 ]] || continue
 	candidates+=("$p")
 done < <(cursor_extract_touched_paths "$payload")
 [[ ${#candidates[@]} -gt 0 ]] || exit 0
@@ -79,6 +78,12 @@ for candidate in "${candidates[@]}"; do
 		warn="$(basename "$candidate") contains markdown (|md / |markdown) block(s) that render BLANK in the carousel: resvg can't paint the HTML <foreignObject> that D2 emits for markdown. The diagram was NOT shown. Rewrite those node bodies as plain quoted labels (use \\n for line breaks) — this applies to title: too — then it renders and appears."
 		jq -nc --arg ctx "$warn" \
 			'{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}'
+		continue
+	fi
+
+	# A scratch or externally-sourced .d2 still rendered above, but only a
+	# canonical source under the diagrams src dir is adopted (#271).
+	if ! d2_source_adoptable "$candidate" "$DIAGRAMS_DIR/src"; then
 		continue
 	fi
 

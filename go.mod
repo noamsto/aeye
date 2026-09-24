@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/ultraviolet v0.0.0-20260812204455-68fa937c71be
 	github.com/charmbracelet/x/term v0.2.2
-	github.com/noamsto/mermaid2d2 v0.5.1-0.20260831110535-5a5fd450340d
+	github.com/noamsto/mermaid2d2 v0.6.0
 	github.com/noamsto/themestate v0.1.0
 	golang.org/x/image v0.46.0
 	oss.terrastruct.com/d2 v0.7.2

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/noamsto/aeye/compare/v1.2.0...v1.2.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* **diagrams:** contain adoption to the source dir ([#271](https://github.com/noamsto/aeye/issues/271)) ([#272](https://github.com/noamsto/aeye/issues/272)) ([d1809d7](https://github.com/noamsto/aeye/commit/d1809d75c744f742b0729c16a7600e06a6ceb5d0))
+
 ## [1.2.0](https://github.com/noamsto/aeye/compare/v1.1.0...v1.2.0) (2026-09-20)
 
 

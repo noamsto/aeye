@@ -51,10 +51,7 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 	if err != nil {
 		return ""
 	}
-	bin := os.Getenv("AEYE_RESVG")
-	if bin == "" {
-		bin = "resvg"
-	}
+	bin := resvgBin()
 	// One cached PNG per (svg, mtime); crop + width are the filename suffix so we
 	// can evict prior framings — /tmp then holds at most one vector scratch per
 	// diagram, not one per pan/zoom step.

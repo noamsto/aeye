@@ -62,12 +62,16 @@ github.com/mazznoer/csscolorparser v0.1.8 h1:i7w3wHW99d0q0KZv1ONkU/efXFAKcw1mgEg
 github.com/mazznoer/csscolorparser v0.1.8/go.mod h1:OQRVvgCyHDCAquR1YWfSwwaDcM0LhnSffGnlbOew/3I=
 github.com/muesli/cancelreader v0.2.2 h1:3I4Kt4BQjOR54NavqnDogx/MIoWBFa0StPA8ELUXHmA=
 github.com/muesli/cancelreader v0.2.2/go.mod h1:3XuTXfFS2VjM+HTLZY9Ak0l6eUKfijIfMUZ4EgX0QYo=
+github.com/noamsto/mermaid2d2 v0.5.1-0.20260831110535-5a5fd450340d h1:zKRtt8wPyOJF5NtqFvcJQdOol/pNLoGUmh4kv45rcqU=
+github.com/noamsto/mermaid2d2 v0.5.1-0.20260831110535-5a5fd450340d/go.mod h1:h3WPt4glbWzhRSj6JlbgLmk5CxhJnls/VUEqRV49MHc=
 github.com/noamsto/themestate v0.1.0 h1:KGhXINT50kJ1cgEwVC494m3jEs2jHiDBmMqFdss5z9U=
 github.com/noamsto/themestate v0.1.0/go.mod h1:GLYse6sC0tEb9Ryh6PEuUAOA8Aechw2VAtapGQLj8xs=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/rivo/uniseg v0.4.7 h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=
 github.com/rivo/uniseg v0.4.7/go.mod h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88=
+github.com/sammcj/mermaid-check v0.5.1 h1:mRavMryPdcYu2NqdE2Wi1Wo6WFBT109bG/j+Yaf8YKg=
+github.com/sammcj/mermaid-check v0.5.1/go.mod h1:zdYcoYCdyd+MTkkSOPDzEZkvhkn28OMH/KcGsFjmePQ=
 github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsTg=
 github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
 github.com/xo/terminfo v1.0.0 h1:2ZpYzqWzyyytjk3TP6aJVDhkMAkc99/1xKQdA3TDTBY=

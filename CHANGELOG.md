@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/noamsto/aeye/compare/v1.2.1...v1.3.0) (2026-09-24)
+
+
+### Features
+
+* **render:** add aeye render for standalone D2 and Mermaid diagrams ([#274](https://github.com/noamsto/aeye/issues/274)) ([3e5a38f](https://github.com/noamsto/aeye/commit/3e5a38f3204a011a1453c117864ca7943c62a668))
+
 ## [1.2.1](https://github.com/noamsto/aeye/compare/v1.2.0...v1.2.1) (2026-09-24)
 
 

@@ -98,9 +98,11 @@ while IFS= read -r line; do
 			append_image "$img" "$(jq -r '.name // "?"' <<<"$tu")" "$ts"
 			continue
 		fi
-		d2="$(extract_d2_path "$synth")"
+		d2="$(extract_d2_path "$synth" "$DIAGRAMS_DIR/src")"
 		if [[ -n $d2 ]]; then
 			png="$(d2_render "$d2" "$DIAGRAMS_DIR")" || continue
+			# Rendered, but only a canonical source enters the rebuilt carousel (#271).
+			d2_source_adoptable "$d2" "$DIAGRAMS_DIR/src" || continue
 			append_diagram "$png" "${png%.png}.svg" "$ts" "$(basename "$d2" .d2)"
 		fi
 	done < <(jq -c '.message.content[]? | select(.type=="tool_use")' <<<"$line" 2>/dev/null)

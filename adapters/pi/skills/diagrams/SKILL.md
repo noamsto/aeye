@@ -45,10 +45,10 @@ That pruning only fires if the write lands under the right name, so write **one
 names: an explicit `file_path`, else the first `.d2` token in the command,
 resolved against the *project* cwd. A call naming two `.d2` files renders the
 first only; a path made relative by an earlier `cd` resolves to nothing and
-renders nothing. Give scratch copies some other extension — every `.d2` a
-command names is adopted as a diagram under its own basename, so a `/tmp/a.d2`
-round-trip files the render under the name `a` and leaves the real name on the
-superseded image.
+renders nothing. Adoption is contained to this scratch dir and skips a
+`<name>-check.d2` / `<name>-test.d2` basename, so verify a render by copying the
+source to a `-check.d2` there — a `/tmp/a.d2` round-trip renders but files
+nothing.
 
 ## House style
 

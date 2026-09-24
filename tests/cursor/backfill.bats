@@ -16,7 +16,9 @@ setup() {
 
 	CONV_ID="fixture-conv-1"
 
-	WORKDIR="$BATS_TEST_TMPDIR/work"
+	# The workspace is the canonical diagrams source dir so a Write of a .d2
+	# lands under it (adoption is contained to src, #271).
+	WORKDIR="$AEYE_DIR/images/diagrams/src"
 	mkdir -p "$WORKDIR"
 	printf 'a -> b: hi\n' >"$WORKDIR/diagram.d2"
 	printf 'x' >"$WORKDIR/sample.png"

@@ -64,8 +64,9 @@ extract_image_path() {
 # No cwd-containment guard, unlike scan_response_image_path (#139): .d2 sources
 # live in the state dir, outside the project, so containment would reject every
 # diagram. Consequence: `cat flow.d2` re-renders it too, which d2_render makes
-# cheap by skipping a render whose png already exists. A path containing a space
-# is not matched.
+# cheaply by skipping a render whose png already exists. A path containing a space
+# is not matched. Adoption is a separate concern, gated by d2_source_adoptable at
+# the caller's manifest write, so a scratch/outside source still renders (#271).
 extract_d2_path() {
 	local payload="$1" src_dir="${2:-}" cwd candidate cmd tok saw_var=0
 

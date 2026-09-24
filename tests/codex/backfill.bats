@@ -12,7 +12,9 @@ setup() {
 	MANIFEST="$AEYE_DIR/images/4242-9.jsonl"
 	OWNER="$AEYE_DIR/images/4242-9.owner"
 
-	WORKDIR="$BATS_TEST_TMPDIR/work"
+	# The session cwd is the canonical diagrams source dir so a relative
+	# apply_patch target resolves under it (adoption is contained to src, #271).
+	WORKDIR="$AEYE_DIR/images/diagrams/src"
 	mkdir -p "$WORKDIR"
 	printf 'a -> b: hi\n' >"$WORKDIR/diagram.d2"
 	printf 'a -> b\n' >"$WORKDIR/legacy.d2"

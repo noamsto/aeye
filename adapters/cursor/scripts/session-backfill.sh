@@ -118,6 +118,8 @@ while IFS= read -r line; do
 		[[ -n $p ]] || continue
 		if [[ ${p,,} == *.d2 ]]; then
 			png="$(d2_render "$p" "$DIAGRAMS_DIR")" || continue
+			# Rendered, but only a canonical source enters the rebuilt carousel (#271).
+			d2_source_adoptable "$p" "$DIAGRAMS_DIR/src" || continue
 			append_diagram "$png" "${png%.png}.svg" "$ts" "$(basename "$p" .d2)"
 		else
 			append_image "$p" "$tool_name" "$ts"

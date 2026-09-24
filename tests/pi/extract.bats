@@ -83,3 +83,43 @@ setup() {
 	[ "$status" -eq 0 ]
 	[ "$output" = "$D2" ]
 }
+
+@test "extract_d2_path: extraction is independent of adoption (returns an outside path)" {
+	SRC="$BATS_TEST_TMPDIR/diagrams/src"
+	mkdir -p "$SRC"
+	D2="$BATS_TEST_TMPDIR/scratch.d2"
+	printf 'a -> b\n' >"$D2"
+	payload="$(jq -nc --arg p "$D2" '{tool_name:"write",tool_input:{file_path:$p},cwd:"/repo"}')"
+	run extract_d2_path "$payload" "$SRC"
+	[ "$status" -eq 0 ]
+	[ "$output" = "$D2" ]
+}
+
+@test "d2_source_adoptable: inside src accepted, outside src rejected" {
+	SRC="$BATS_TEST_TMPDIR/diagrams/src"
+	run d2_source_adoptable "$SRC/flow.d2" "$SRC"
+	[ "$status" -eq 0 ]
+	run d2_source_adoptable "$BATS_TEST_TMPDIR/scratch.d2" "$SRC"
+	[ "$status" -ne 0 ]
+}
+
+@test "d2_source_adoptable: *-check.d2 / *-test.d2 scratch names are rejected" {
+	SRC="$BATS_TEST_TMPDIR/diagrams/src"
+	run d2_source_adoptable "$SRC/flow-check.d2" "$SRC"
+	[ "$status" -ne 0 ]
+	run d2_source_adoptable "$SRC/flow-test.d2" "$SRC"
+	[ "$status" -ne 0 ]
+}
+
+@test "d2_source_adoptable: a '..' component cannot escape src" {
+	SRC="$BATS_TEST_TMPDIR/diagrams/src"
+	run d2_source_adoptable "$SRC/../scratch.d2" "$SRC"
+	[ "$status" -ne 0 ]
+}
+
+@test "d2_source_adoptable: no src dir keeps the legacy any-.d2 behavior" {
+	run d2_source_adoptable "$BATS_TEST_TMPDIR/scratch.d2"
+	[ "$status" -eq 0 ]
+	run d2_source_adoptable "/x/pic.png" "$BATS_TEST_TMPDIR"
+	[ "$status" -ne 0 ]
+}

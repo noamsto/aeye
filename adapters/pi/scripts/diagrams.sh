@@ -69,6 +69,13 @@ if [[ $was_missing -eq 1 ]] && grep -q '<foreignObject' "$svg"; then
 	exit 0
 fi
 
+# A scratch or externally-sourced .d2 still rendered above, but only a canonical
+# source under the diagrams src dir is adopted: skip the prune/append/toggle so
+# the carousel never gains a second entry for a verification copy (#271).
+if ! d2_source_adoptable "$candidate" "$DIAGRAMS_DIR/src"; then
+	exit 0
+fi
+
 # Serialize the owner self-heal, the prune read-modify-write, and the append
 # below against a concurrent images.sh append of the same manifest. Taken after
 # the (slow) d2_render above so rendering never holds the lock.

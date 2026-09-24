@@ -3,6 +3,7 @@ package main
 import (
 	_ "embed"
 	"encoding/json"
+	"os"
 
 	"github.com/alecthomas/kong"
 )
@@ -41,6 +42,12 @@ var cli struct {
 		In  string `arg:"" help:"Input .d2 file."`
 		Out string `arg:"" help:"Output .png file (a sibling .svg is written too)."`
 	} `cmd:"" name:"render-diagram" help:"Compile a .d2 to PNG: d2 -> fix-fonts -> contrast -> resvg."`
+
+	Render struct {
+		From string `enum:"d2,mermaid" default:"d2" help:"Source language: d2 or mermaid (converted to D2 first)."`
+		In   string `arg:"" help:"Input file, or - for stdin."`
+		Out  string `arg:"" help:"Output file: .svg for SVG, anything else for PNG."`
+	} `cmd:"" help:"Render one D2 or Mermaid diagram to SVG or PNG. Exits non-zero on a Mermaid chart type D2 can't express."`
 }
 
 func main() {
@@ -53,6 +60,8 @@ func main() {
 	switch ctx.Command() {
 	case "render-diagram <in> <out>":
 		ctx.FatalIfErrorf(runRenderDiagram(cli.RenderDiagram.In, cli.RenderDiagram.Out))
+	case "render <in> <out>":
+		ctx.FatalIfErrorf(runRender(cli.Render.From, cli.Render.In, cli.Render.Out, os.Stdin))
 	default: // "open" or "open <key>"
 		ctx.FatalIfErrorf(runGallery(cli.Open.Key))
 	}

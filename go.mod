@@ -9,6 +9,7 @@ require (
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/ultraviolet v0.0.0-20260812204455-68fa937c71be
 	github.com/charmbracelet/x/term v0.2.2
+	github.com/noamsto/mermaid2d2 v0.5.1-0.20260831110535-5a5fd450340d
 	github.com/noamsto/themestate v0.1.0
 	golang.org/x/image v0.46.0
 	oss.terrastruct.com/d2 v0.7.2
@@ -35,6 +36,7 @@ require (
 	github.com/mazznoer/csscolorparser v0.1.8 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/sammcj/mermaid-check v0.5.1 // indirect
 	github.com/xo/terminfo v1.0.0 // indirect
 	github.com/yuin/goldmark v1.8.5 // indirect
 	golang.org/x/exp v0.0.0-20260824195058-e88cd73687aa // indirect

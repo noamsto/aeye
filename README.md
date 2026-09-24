@@ -164,6 +164,22 @@ structure — group by group — when one is selected:
 | `]` / `[` | Drill into / out of the focused region |
 | `0` / `Esc` | Reset zoom and return to the whole diagram |
 
+### Rendering a diagram without the carousel
+
+`aeye render` runs the same D2 pipeline as a standalone renderer, with no
+browser involved. It takes a D2 or Mermaid diagram (Mermaid is converted
+through [mermaid2d2](https://github.com/noamsto/mermaid2d2)) and writes an SVG
+or, for any other extension, a PNG:
+
+```bash
+aeye render diagram.d2 diagram.png
+aeye render --from mermaid - flow.svg < flow.mmd
+```
+
+Mermaid chart types with no D2 equivalent (pie, gantt, journey, xychart,
+gitGraph) exit non-zero without writing the output, so a caller can fall back
+to another renderer.
+
 ## Terminal support
 
 Two things vary by host: **where** the viewer opens, and **how sharp** the images

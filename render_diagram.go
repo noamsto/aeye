@@ -48,6 +48,12 @@ func renderD2SVG(in string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	return compileD2SVG(string(src), in)
+}
+
+// compileD2SVG is renderD2SVG on source already in memory. inputPath anchors
+// the source's relative imports; "" resolves them against the working dir.
+func compileD2SVG(src, inputPath string) ([]byte, error) {
 	ruler, err := textmeasure.NewRuler()
 	if err != nil {
 		return nil, err
@@ -74,12 +80,12 @@ func renderD2SVG(in string) ([]byte, error) {
 	// Prepend the semantic role classes for this theme so a diagram can tag
 	// shapes/edges `class: warn` etc. without naming a color or a mode. d2 merges
 	// this with any classes block in the source.
-	source := classesBlock(paletteMode(themeID)) + string(src)
+	source := classesBlock(paletteMode(themeID)) + src
 	ctx := log.WithDefault(context.Background())
 	diagram, graph, err := d2lib.Compile(ctx, source, &d2lib.CompileOptions{
 		Ruler:          ruler,
 		LayoutResolver: layoutResolver,
-		InputPath:      in,
+		InputPath:      inputPath,
 	}, renderOpts)
 	if err != nil {
 		return nil, err
@@ -126,16 +132,20 @@ func runRenderDiagram(in, out string) error {
 		return fmt.Errorf("write %s: %w", svgPath, err)
 	}
 
-	resvg := os.Getenv("AEYE_RESVG")
-	if resvg == "" {
-		resvg = "resvg"
-	}
 	args := append(resvgFontArgs(), svgPath, out)
-	cmd := exec.Command(resvg, args...)
+	cmd := exec.Command(resvgBin(), args...)
 	if stderr, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("resvg: %w: %s", err, stderr)
 	}
 	return nil
+}
+
+// resvgBin is the resvg executable: AEYE_RESVG when set, else resvg on PATH.
+func resvgBin() string {
+	if bin := os.Getenv("AEYE_RESVG"); bin != "" {
+		return bin
+	}
+	return "resvg"
 }
 
 // resvgFontArgs pins resvg to the bundled font directory (AEYE_D2_FONT_DIR) so it

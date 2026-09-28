@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/noamsto/aeye/compare/v1.3.0...v1.4.0) (2026-09-28)
+
+
+### Features
+
+* **tmux:** open the carousel as a float in a crew grid window ([#278](https://github.com/noamsto/aeye/issues/278)) ([2fe276c](https://github.com/noamsto/aeye/commit/2fe276cdf9a64e57c15b8a8915a80a7b14910329))
+
 ## [1.3.0](https://github.com/noamsto/aeye/compare/v1.2.1...v1.3.0) (2026-09-24)
 
 

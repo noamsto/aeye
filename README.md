@@ -194,11 +194,12 @@ block-art fallback.
 | **wezterm** | split beside the agent (`wezterm cli split-pane`) | chafa\* |
 | **Alacritty / Warp / other** | — (use tmux) | chafa |
 
-Inside **tmux** the viewer always opens as a split, on any host — except in a
-tmux-og crew grid window (window option `@crew_grid=1`) on a tmux server whose
-`new-pane` supports floats, where it opens as a floating pane over the grid
-(right float ~50%x90%, bottom float ~90%x50%, grown on small windows to keep
-~80x24) so the grid layout is untouched. WezTerm speaks
+Inside **tmux** the viewer always opens as a split, on any host — except, per
+`AEYE_FLOAT` (below), in a tmux-og crew grid window (window option
+`@crew_grid=1`) on a tmux server whose `new-pane` supports floats, where it
+opens as a floating pane over the grid (right float ~50%x90%, bottom float
+~90%x50%, grown on small windows to keep ~80x24) so the grid layout is
+untouched. WezTerm speaks
 the kitty protocol but not its unicode placeholders ([wezterm#986](https://github.com/wezterm/wezterm/issues/986)),
 so it uses chafa today and would upgrade automatically if that lands.
 
@@ -217,6 +218,11 @@ and otherwise copies the image to the clipboard.
 (default) splits along the window's longer axis, `side` forces a left/right
 split, `bottom` forces a top/bottom split. In tmux, press `s` in the viewer to
 toggle it live.
+
+`AEYE_FLOAT` controls when tmux opens the viewer as a floating pane instead of
+a split: `grid` (default) floats only in a tmux-og crew grid window
+(`@crew_grid=1`); `always` floats in any tmux window, as long as the server's
+`new-pane` supports floats; `never` always splits.
 
 ### Enable kitty-pane mode (native drag-out inside tmux)
 

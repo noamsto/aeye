@@ -58,7 +58,7 @@ T
 	tmux_stub_setup
 	export GRID=1 NEWPANE_CAPS="$CAPS39"
 	printf '200 50\n' >"$WIN_DIMS"
-	run env -u AEYE_SPLIT bash "$APP"
+	run env -u AEYE_SPLIT -u AEYE_FLOAT bash "$APP"
 	[ "$status" -eq 0 ]
 	grep -qE '^new-pane -x 50% -y 90% -X 48% -Y 5% -B heavy -A .*-e AEYE_HOST_PANE=%9.*-t %9 -P -F #\{pane_id\}' "$TMUX_LOG"
 	grep -q 'set-option .*-t %77 @float_geom 50% 90% 48% 5%' "$TMUX_LOG"
@@ -72,7 +72,7 @@ T
 	tmux_stub_setup
 	export GRID=1 NEWPANE_CAPS="$CAPS39"
 	printf '90 50\n' >"$WIN_DIMS"
-	run env -u AEYE_SPLIT bash "$APP"
+	run env -u AEYE_SPLIT -u AEYE_FLOAT bash "$APP"
 	[ "$status" -eq 0 ]
 	grep -qE '^new-pane -x 90% -y 50% -X 5% -Y 48%' "$TMUX_LOG"
 	grep -q '@float_geom 90% 50% 5% 48%' "$TMUX_LOG"
@@ -83,7 +83,7 @@ T
 	tmux_stub_setup
 	export GRID=1 NEWPANE_CAPS="$CAPS37"
 	printf '200 50\n' >"$WIN_DIMS"
-	run env -u AEYE_SPLIT bash "$APP"
+	run env -u AEYE_SPLIT -u AEYE_FLOAT bash "$APP"
 	[ "$status" -eq 0 ]
 	line="$(grep '^new-pane' "$TMUX_LOG")"
 	[[ $line != *' -A '* && $line != *' -A' ]]
@@ -95,7 +95,7 @@ T
 	tmux_stub_setup
 	export GRID=1 NEWPANE_CAPS="$CAPS39"
 	printf '200 50\n' >"$WIN_DIMS"
-	run env -u AEYE_SPLIT bash "$APP" --ensure-open
+	run env -u AEYE_SPLIT -u AEYE_FLOAT bash "$APP" --ensure-open
 	[ "$status" -eq 0 ]
 	line="$(grep '^new-pane' "$TMUX_LOG")"
 	[[ $line != *' -d '* && $line != *' -d' ]]
@@ -106,7 +106,7 @@ T
 	tmux_stub_setup
 	export GRID=1 NEWPANE_CAPS="$CAPS37"
 	printf '200 50\n' >"$WIN_DIMS"
-	run env -u AEYE_SPLIT bash "$APP" --ensure-open
+	run env -u AEYE_SPLIT -u AEYE_FLOAT bash "$APP" --ensure-open
 	[ "$status" -eq 0 ]
 	line="$(grep '^new-pane' "$TMUX_LOG")"
 	[[ $line == *' -d '* ]]
@@ -117,7 +117,7 @@ T
 	tmux_stub_setup
 	export GRID='' NEWPANE_CAPS="$CAPS39"
 	printf '200 50\n' >"$WIN_DIMS"
-	run env -u AEYE_SPLIT bash "$APP"
+	run env -u AEYE_SPLIT -u AEYE_FLOAT bash "$APP"
 	[ "$status" -eq 0 ]
 	grep -q '^split-window -h ' "$TMUX_LOG"
 	run ! grep -q '^new-pane' "$TMUX_LOG"
@@ -129,7 +129,7 @@ T
 	export GRID=1 NEWPANE_RC=1
 	unset NEWPANE_CAPS
 	printf '200 50\n' >"$WIN_DIMS"
-	run env -u AEYE_SPLIT bash "$APP"
+	run env -u AEYE_SPLIT -u AEYE_FLOAT bash "$APP"
 	[ "$status" -eq 0 ]
 	grep -q '^split-window -h ' "$TMUX_LOG"
 	run ! grep -q '^new-pane' "$TMUX_LOG"
@@ -140,7 +140,7 @@ T
 	local_caps="${CAPS39//\[-e environment\] /}"
 	export GRID=1 NEWPANE_CAPS="$local_caps"
 	printf '200 50\n' >"$WIN_DIMS"
-	run env -u AEYE_SPLIT bash "$APP"
+	run env -u AEYE_SPLIT -u AEYE_FLOAT bash "$APP"
 	[ "$status" -eq 0 ]
 	grep -q '^split-window -h ' "$TMUX_LOG"
 	run ! grep -q '^new-pane' "$TMUX_LOG"
@@ -150,9 +150,60 @@ T
 	tmux_stub_setup
 	export GRID=1 NEWPANE_CAPS="$CAPS39" STUB_EXISTING=1
 	printf '200 50\n' >"$WIN_DIMS"
-	run env -u AEYE_SPLIT bash "$APP"
+	run env -u AEYE_SPLIT -u AEYE_FLOAT bash "$APP"
 	[ "$status" -eq 0 ]
 	grep -q '^kill-pane -t %50' "$TMUX_LOG"
+	run ! grep -q '^new-pane' "$TMUX_LOG"
+}
+
+@test "AEYE_FLOAT=always floats outside a crew grid window, no @crew_grid query" {
+	tmux_stub_setup
+	export GRID='' NEWPANE_CAPS="$CAPS39"
+	printf '200 50\n' >"$WIN_DIMS"
+	run env -u AEYE_SPLIT AEYE_FLOAT=always bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q '^new-pane' "$TMUX_LOG"
+	run ! grep -q '^split-window' "$TMUX_LOG"
+	run ! grep -q '@crew_grid' "$TMUX_LOG"
+}
+
+@test "AEYE_FLOAT=never always splits, no list-commands or @crew_grid query" {
+	tmux_stub_setup
+	export GRID=1 NEWPANE_CAPS="$CAPS39"
+	printf '200 50\n' >"$WIN_DIMS"
+	run env -u AEYE_SPLIT AEYE_FLOAT=never bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q '^split-window -h ' "$TMUX_LOG"
+	run ! grep -q '^new-pane' "$TMUX_LOG"
+	run ! grep -q '^list-commands' "$TMUX_LOG"
+}
+
+@test "AEYE_FLOAT=garbage behaves like the grid default" {
+	tmux_stub_setup
+	export GRID='' NEWPANE_CAPS="$CAPS39"
+	printf '200 50\n' >"$WIN_DIMS"
+	run env -u AEYE_SPLIT AEYE_FLOAT=garbage bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q '^split-window -h ' "$TMUX_LOG"
+	run ! grep -q '^new-pane' "$TMUX_LOG"
+
+	tmux_stub_setup
+	export GRID=1 NEWPANE_CAPS="$CAPS39"
+	printf '200 50\n' >"$WIN_DIMS"
+	run env -u AEYE_SPLIT AEYE_FLOAT=garbage bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q '^new-pane' "$TMUX_LOG"
+	run ! grep -q '^split-window' "$TMUX_LOG"
+}
+
+@test "AEYE_FLOAT=always still falls back to split-window on an old server" {
+	tmux_stub_setup
+	export GRID='' NEWPANE_RC=1
+	unset NEWPANE_CAPS
+	printf '200 50\n' >"$WIN_DIMS"
+	run env -u AEYE_SPLIT AEYE_FLOAT=always bash "$APP"
+	[ "$status" -eq 0 ]
+	grep -q '^split-window -h ' "$TMUX_LOG"
 	run ! grep -q '^new-pane' "$TMUX_LOG"
 }
 

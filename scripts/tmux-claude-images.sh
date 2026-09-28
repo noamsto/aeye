@@ -3,7 +3,8 @@
 #   - Inside tmux: toggle a split pane (runnable by Claude via a Bash call;
 #     also bound to prefix+I if the host tmux config provides that bind). In a
 #     `@crew_grid=1` window, toggle a floating pane instead, so tmux-grid-refit
-#     doesn't immediately re-tile it away.
+#     doesn't immediately re-tile it away. AEYE_FLOAT=grid|always|never overrides
+#     when the float is used (default grid).
 #   - In kitty with remote control: toggle a split window via `kitty @ launch`.
 #   - In wezterm: toggle a real split via `wezterm cli split-pane`.
 #   - In ghostty: toggle a separate window via `ghostty +new-window`
@@ -124,13 +125,23 @@ has_arg_flag() {
 }
 
 # float_caps -> prints the live server's `new-pane` flag line and succeeds
-# only in a `@crew_grid=1` window on a tmux new enough to float (bool -P, arg
-# -e/-F, which the split path already relies on). Queries the live server,
-# never `tmux -V`, since packaging can lag the running tmux.
+# only when a float is wanted (AEYE_FLOAT=grid, the default: a `@crew_grid=1`
+# window; always: any window; never: short-circuits before any tmux query) on
+# a tmux new enough to float (bool -P, arg -e/-F, which the split path already
+# relies on). Queries the live server, never `tmux -V`, since packaging can lag
+# the running tmux.
 float_caps() {
-	local grid
-	grid="$(tmux display-message -p -t "$PANE" '#{@crew_grid}' 2>/dev/null)" || true
-	[[ $grid == 1 ]] || return 1
+	case "${AEYE_FLOAT:-grid}" in
+	never)
+		return 1
+		;;
+	always) ;;
+	*)
+		local grid
+		grid="$(tmux display-message -p -t "$PANE" '#{@crew_grid}' 2>/dev/null)" || true
+		[[ $grid == 1 ]] || return 1
+		;;
+	esac
 	local caps
 	caps="$(tmux list-commands new-pane 2>/dev/null)" || return 1
 	[[ $caps == new-pane* ]] || return 1

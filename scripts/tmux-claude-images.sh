@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Open the Claude image carousel for the invoking session.
 #   - Inside tmux: toggle a split pane (runnable by Claude via a Bash call;
-#     also bound to prefix+I if the host tmux config provides that bind).
+#     also bound to prefix+I if the host tmux config provides that bind). In a
+#     `@crew_grid=1` window, toggle a floating pane instead, so tmux-grid-refit
+#     doesn't immediately re-tile it away. AEYE_FLOAT=grid|always|never overrides
+#     when the float is used (default grid).
 #   - In kitty with remote control: toggle a split window via `kitty @ launch`.
 #   - In wezterm: toggle a real split via `wezterm cli split-pane`.
 #   - In ghostty: toggle a separate window via `ghostty +new-window`
@@ -106,6 +109,71 @@ resolve_target() {
 	fi
 }
 
+# has_flag CAPS LETTER -> true if LETTER is a boolean flag in CAPS (the letters
+# packed into the first "[-...]" cluster of a `list-commands` line).
+has_flag() {
+	local caps=$1 letter=$2
+	[[ $caps =~ \[-([A-Za-z]+)\] ]] || return 1
+	[[ ${BASH_REMATCH[1]} == *"$letter"* ]]
+}
+
+# has_arg_flag CAPS LETTER -> true if LETTER takes an argument in CAPS (its
+# own "[-letter " cluster, e.g. "[-e environment]").
+has_arg_flag() {
+	local caps=$1 letter=$2
+	[[ $caps == *"[-$letter "* ]]
+}
+
+# float_caps -> prints the live server's `new-pane` flag line and succeeds
+# only when AEYE_FLOAT wants a float here and that server can float with the
+# -P/-e/-F the viewer relies on. Asks the running server, never `tmux -V`: a
+# resident server can predate the binary on PATH.
+float_caps() {
+	case "${AEYE_FLOAT:-grid}" in
+	never)
+		return 1
+		;;
+	always) ;;
+	*)
+		local grid
+		grid="$(tmux display-message -p -t "$PANE" '#{@crew_grid}' 2>/dev/null)" || true
+		[[ $grid == 1 ]] || return 1
+		;;
+	esac
+	local caps
+	caps="$(tmux list-commands new-pane 2>/dev/null)" || return 1
+	[[ $caps == new-pane* ]] || return 1
+	has_flag "$caps" P || return 1
+	has_arg_flag "$caps" e || return 1
+	has_arg_flag "$caps" F || return 1
+	printf '%s\n' "$caps"
+}
+
+# float_geom AXIS W H -> "width% height% x% y%" for a floating pane along
+# AXIS, sized so the viewer gets at least ~80x24 cells regardless of the host
+# window's size, and anchored to the right/bottom edge (98% - share). W/H
+# unreadable or non-positive fall back to the 50%-share default.
+float_geom() {
+	local axis=$1 w=${2:-} h=${3:-} share
+	if [[ $axis == bottom ]]; then
+		share=50
+		if [[ $h =~ ^[0-9]+$ ]] && ((h > 0)); then
+			share=$(((24 * 100 + h - 1) / h))
+			((share < 50)) && share=50
+			((share > 90)) && share=90
+		fi
+		printf '90%% %s%% 5%% %s%%\n' "$share" "$((98 - share))"
+	else
+		share=50
+		if [[ $w =~ ^[0-9]+$ ]] && ((w > 0)); then
+			share=$(((80 * 100 + w - 1) / w))
+			((share < 50)) && share=50
+			((share > 90)) && share=90
+		fi
+		printf '%s%% 90%% %s%% 5%%\n' "$share" "$((98 - share))"
+	fi
+}
+
 launch_tmux() {
 	local existing
 	# -s scans the whole session, not just the active window: the viewer lives in
@@ -117,12 +185,6 @@ launch_tmux() {
 		tmux kill-pane -t "$existing"
 		return
 	fi
-	# Anchor the split to Claude's pane (-t) so it lands in Claude's window even
-	# if the user has switched away. -d on an automatic ensure-open so it never
-	# yanks their focus; on a manual toggle the user pressed the key, so move
-	# focus to the viewer.
-	local detach=()
-	[[ -n $ENSURE_OPEN ]] && detach=(-d)
 	# Pass viewer env via tmux -e, NOT a shell `env` prefix: the split runs the
 	# command through the pane's shell, and a shell that wraps `env` (e.g. fish with
 	# the grc plugin) would colourise the viewer's stdout and destroy its
@@ -141,12 +203,45 @@ launch_tmux() {
 	printf -v cmd '%q %q' "$VIEWER_BIN" "$KEY"
 	# Split along the host window's longer axis (overridable via AEYE_SPLIT); record
 	# the choice as a pane option so the viewer's `s` toggle knows the current state.
-	local w h axis flag
+	local w h axis
 	read -r w h < <(tmux display-message -p -t "$PANE" '#{window_width} #{window_height}' 2>/dev/null) || true
 	axis="$(resolve_axis "$w" "$h")"
-	[[ $axis == bottom ]] && flag=-v || flag=-h
-	local viewer
-	viewer="$(tmux split-window "$flag" "${detach[@]}" ${env_args[@]+"${env_args[@]}"} -t "$PANE" -P -F '#{pane_id}' "$cmd")"
+	local viewer caps
+	# Anchor the viewer to Claude's pane (-t) so it lands in Claude's window even
+	# if the user has switched away.
+	# A `@crew_grid=1` window is re-tiled by tmux-grid-refit on every layout
+	# change, which would immediately swallow a plain split pane — float the
+	# viewer instead so the grid's own layout is left alone.
+	if caps="$(float_caps)"; then
+		local fw fh fx fy float detach=() prev=""
+		read -r fw fh fx fy <<<"$(float_geom "$axis" "$w" "$h")"
+		float=(-x "$fw" -y "$fh" -X "$fx" -Y "$fy")
+		has_arg_flag "$caps" B && float+=(-B heavy)
+		# -A keeps the float above a zoomed pane (z-order), where a plain new pane
+		# would otherwise be hidden behind it.
+		has_flag "$caps" A && float+=(-A)
+		if [[ -n $ENSURE_OPEN ]]; then
+			if has_flag "$caps" d; then
+				detach=(-d)
+			else
+				# Newer new-pane has no -d and focuses the float; hand focus back after.
+				prev="$(tmux list-panes -t "$PANE" -F '#{pane_active} #{pane_id}' 2>/dev/null |
+					awk '$1 == 1 {print $2; exit}')" || true
+			fi
+		fi
+		viewer="$(tmux new-pane "${float[@]}" "${detach[@]}" ${env_args[@]+"${env_args[@]}"} -t "$PANE" -P -F '#{pane_id}' "$cmd")"
+		# tmux-og's tmux-float-refit resizes floats from @float_geom on client resize.
+		tmux set-option -p -t "$viewer" @float_geom "$fw $fh $fx $fy"
+		tmux set-option -p -t "$viewer" remain-on-exit off
+		[[ -n $prev ]] && tmux select-pane -t "$prev"
+	else
+		local flag detach=()
+		[[ $axis == bottom ]] && flag=-v || flag=-h
+		# -d on an automatic ensure-open so it never yanks their focus; on a manual
+		# toggle the user pressed the key, so move focus to the viewer.
+		[[ -n $ENSURE_OPEN ]] && detach=(-d)
+		viewer="$(tmux split-window "$flag" "${detach[@]}" ${env_args[@]+"${env_args[@]}"} -t "$PANE" -P -F '#{pane_id}' "$cmd")"
+	fi
 	tmux set-option -p -t "$viewer" @claude_img_src "$KEY"
 	tmux set-option -p -t "$viewer" @claude_img_axis "$axis"
 }
@@ -523,6 +618,10 @@ main() {
 	fi
 	if [[ ${1:-} == --resolve-axis ]]; then # test seam: resolve axis from given dims
 		resolve_axis "${2:-}" "${3:-}"
+		return
+	fi
+	if [[ ${1:-} == --float-geom ]]; then # test seam: float geometry for axis+dims
+		float_geom "${2:-}" "${3:-}" "${4:-}"
 		return
 	fi
 	resolve_target

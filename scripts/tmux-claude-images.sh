@@ -125,11 +125,9 @@ has_arg_flag() {
 }
 
 # float_caps -> prints the live server's `new-pane` flag line and succeeds
-# only when a float is wanted (AEYE_FLOAT=grid, the default: a `@crew_grid=1`
-# window; always: any window; never: short-circuits before any tmux query) on
-# a tmux new enough to float (bool -P, arg -e/-F, which the split path already
-# relies on). Queries the live server, never `tmux -V`, since packaging can lag
-# the running tmux.
+# only when AEYE_FLOAT wants a float here and that server can float with the
+# -P/-e/-F the viewer relies on. Asks the running server, never `tmux -V`: a
+# resident server can predate the binary on PATH.
 float_caps() {
 	case "${AEYE_FLOAT:-grid}" in
 	never)
@@ -226,6 +224,7 @@ launch_tmux() {
 			if has_flag "$caps" d; then
 				detach=(-d)
 			else
+				# Newer new-pane has no -d and focuses the float; hand focus back after.
 				prev="$(tmux list-panes -t "$PANE" -F '#{pane_active} #{pane_id}' 2>/dev/null |
 					awk '$1 == 1 {print $2; exit}')" || true
 			fi

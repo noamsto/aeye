@@ -18,6 +18,25 @@ func TestHostPane(t *testing.T) {
 	}
 }
 
+func TestParseSelfPane(t *testing.T) {
+	cases := []struct {
+		out          string
+		wantID       string
+		wantFloating bool
+	}{
+		{"%5 1\n", "%5", true},
+		{"%5 0\n", "%5", false},
+		{"%5 \n", "%5", false}, // server without floats expands the format to empty
+		{"%5\n", "%5", false},
+	}
+	for _, c := range cases {
+		id, floating := parseSelfPane(c.out)
+		if id != c.wantID || floating != c.wantFloating {
+			t.Errorf("parseSelfPane(%q) = (%q,%v); want (%q,%v)", c.out, id, floating, c.wantID, c.wantFloating)
+		}
+	}
+}
+
 func TestFlipAxis(t *testing.T) {
 	cases := []struct{ cur, wantNext, wantFlag string }{
 		{"side", "bottom", "-v"},

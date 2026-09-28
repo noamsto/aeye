@@ -44,11 +44,24 @@ func hostPane(key string) string {
 	return ""
 }
 
+// parseSelfPane splits a `display-message -p "#{pane_id} #{pane_floating_flag}"`
+// result into the pane id and whether it's floating. A server too old to know
+// about floats expands the flag to empty, which parses as not floating.
+func parseSelfPane(out string) (id string, floating bool) {
+	fields := strings.Fields(out)
+	if len(fields) == 0 {
+		return "", false
+	}
+	return fields[0], len(fields) > 1 && fields[1] == "1"
+}
+
 // toggleSplitAxis flips the carousel between a side (left|right) and bottom
 // (top/bottom) split of its tmux host. tmux-only: move-pane re-splits the host
 // in place, so the viewer process survives and repaints on the resize it
 // receives. A no-op off-tmux — there is no host pane there, and the other
-// backends have no in-place axis flip in v1.
+// backends have no in-place axis flip in v1. Also a no-op when the viewer's
+// own pane is floating: move-pane would re-tile it into the host's layout
+// (e.g. a tmux-og crew grid window), which is exactly what the float avoided.
 func (m *galleryModel) toggleSplitAxis() {
 	if os.Getenv("TMUX") == "" {
 		return
@@ -58,11 +71,14 @@ func (m *galleryModel) toggleSplitAxis() {
 		return
 	}
 	next, flag := flipAxis(m.splitAxis)
-	out, err := exec.Command("tmux", "display-message", "-p", "#{pane_id}").Output()
+	out, err := exec.Command("tmux", "display-message", "-p", "#{pane_id} #{pane_floating_flag}").Output()
 	if err != nil {
 		return
 	}
-	self := strings.TrimSpace(string(out))
+	self, floating := parseSelfPane(string(out))
+	if floating {
+		return
+	}
 	if err := exec.Command("tmux", "move-pane", flag, "-s", self, "-t", host).Run(); err != nil {
 		return
 	}

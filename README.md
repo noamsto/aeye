@@ -145,7 +145,7 @@ session reads/writes/screenshots images.
 | `y` | Copy the selected image to the clipboard |
 | `d` | Drag the selected image out — in kitty just drag it with the mouse; `d` opens a `ripdrag`/`dragon` window elsewhere, else copies to the clipboard |
 | `x` | Delete the selected image — marks it for deletion with a 5s undo window; press `u` to undo, or it's removed from disk when the countdown ends |
-| `s` | Toggle the carousel between a side and bottom split (tmux only) |
+| `s` | Toggle the carousel between a side and bottom split (tmux only; no-op when the carousel is a floating pane) |
 | `r` | Reload the manifest |
 | `q` / `Ctrl-C` | Quit |
 
@@ -194,7 +194,11 @@ block-art fallback.
 | **wezterm** | split beside the agent (`wezterm cli split-pane`) | chafa\* |
 | **Alacritty / Warp / other** | — (use tmux) | chafa |
 
-Inside **tmux** the viewer always opens as a split, on any host. WezTerm speaks
+Inside **tmux** the viewer always opens as a split, on any host — except in a
+tmux-og crew grid window (window option `@crew_grid=1`) on a tmux server whose
+`new-pane` supports floats, where it opens as a floating pane over the grid
+(right float ~50%x90%, bottom float ~90%x50%, grown on small windows to keep
+~80x24) so the grid layout is untouched. WezTerm speaks
 the kitty protocol but not its unicode placeholders ([wezterm#986](https://github.com/wezterm/wezterm/issues/986)),
 so it uses chafa today and would upgrade automatically if that lands.
 

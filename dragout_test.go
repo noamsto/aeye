@@ -14,7 +14,7 @@ func fakeBins(t *testing.T, names ...string) {
 	t.Helper()
 	dir := t.TempDir()
 	for _, n := range names {
-		if err := os.WriteFile(filepath.Join(dir, n), []byte("#!/bin/sh\n"), 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("#!/bin/sh\n"), 0o755); err != nil { // test fixture in a temp dir
 			t.Fatal(err)
 		}
 	}

@@ -148,12 +148,12 @@ func newVisibilityModel(t *testing.T) (galleryModel, func() []byte) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("AEYE_DIR", dir)
-	if err := os.MkdirAll(filepath.Join(dir, "images"), 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
+	if err := os.MkdirAll(filepath.Join(dir, "images"), 0o755); err != nil { // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	const pane = "7"
 	entry := fmt.Sprintf("{\"type\":\"image\",\"path\":%q}\n", writeTestPNG(t))
-	if err := os.WriteFile(manifestPath(pane), []byte(entry), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+	if err := os.WriteFile(manifestPath(pane), []byte(entry), 0o644); err != nil { // test fixture in a temp dir
 		t.Fatal(err)
 	}
 
@@ -161,7 +161,7 @@ func newVisibilityModel(t *testing.T) (galleryModel, func() []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { r.Close() }) //nolint:errcheck,gosec // test cleanup
+	t.Cleanup(func() { r.Close() }) //nolint:errcheck // test cleanup
 	got := make(chan []byte, 1)
 	go func() { b, _ := io.ReadAll(r); got <- b }()
 
@@ -181,7 +181,7 @@ func newVisibilityModel(t *testing.T) (galleryModel, func() []byte) {
 	if len(m.images) != 1 {
 		t.Fatalf("fixture manifest did not load: %d images", len(m.images))
 	}
-	return m, func() []byte { w.Close(); return <-got } //nolint:errcheck,gosec // test: closes the pipe writer to signal EOF
+	return m, func() []byte { w.Close(); return <-got } //nolint:errcheck // test: closes the pipe writer to signal EOF
 }
 
 func stubPaneVisible(t *testing.T, visible bool) {

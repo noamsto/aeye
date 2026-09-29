@@ -9,7 +9,7 @@ import (
 
 func resetTrace() {
 	if traceFile != nil {
-		traceFile.Close() //nolint:errcheck,gosec // test cleanup
+		traceFile.Close() //nolint:errcheck // test cleanup
 	}
 	traceEnabled = false
 	traceFile = nil
@@ -35,8 +35,8 @@ func TestTraceWritesToExplicitPath(t *testing.T) {
 		t.Fatal("tracing must be enabled for an explicit path")
 	}
 	tracef("hello %d", 42)
-	traceFile.Sync()            //nolint:errcheck,gosec // test trace flush
-	b, err := os.ReadFile(path) //nolint:gosec // test fixture path
+	traceFile.Sync()            //nolint:errcheck // test trace flush
+	b, err := os.ReadFile(path) // test fixture path
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func TestTraceDefaultPathFromPane(t *testing.T) {
 	t.Setenv("CLAUDE_STATUS_DIR", dir)
 	t.Setenv("AEYE_DEBUG", "1")
 	// The state dir must exist for O_CREATE to succeed.
-	if err := os.MkdirAll(filepath.Dir(manifestPath("2")), 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
+	if err := os.MkdirAll(filepath.Dir(manifestPath("2")), 0o755); err != nil { // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	resetTrace()
@@ -73,10 +73,10 @@ func TestTraceTruncatesOnInit(t *testing.T) {
 	resetTrace()
 	traceInit("x")
 	tracef("first-run-line")
-	traceFile.Sync() //nolint:errcheck,gosec // test trace flush
+	traceFile.Sync() //nolint:errcheck // test trace flush
 	resetTrace()
 	traceInit("x")            // reopening truncates
-	b, _ := os.ReadFile(path) //nolint:gosec // test fixture path
+	b, _ := os.ReadFile(path) // test fixture path
 	if strings.Contains(string(b), "first-run-line") {
 		t.Errorf("expected truncation on re-init, got: %q", b)
 	}

@@ -17,19 +17,19 @@ func newUnsizedModel(t *testing.T) galleryModel {
 	t.Helper()
 	dir := t.TempDir()
 	img := filepath.Join(dir, "fixture.png")
-	f, err := os.Create(img) //nolint:gosec // test fixture path
+	f, err := os.Create(img) // test fixture path
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := png.Encode(f, image.NewRGBA(image.Rect(0, 0, 40, 30))); err != nil {
 		t.Fatal(err)
 	}
-	f.Close() //nolint:errcheck,gosec // test cleanup
+	f.Close() //nolint:errcheck // test cleanup
 	tty, err := os.CreateTemp(dir, "tty")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { tty.Close() }) //nolint:errcheck,gosec // closing /dev/tty on exit; nothing to recover
+	t.Cleanup(func() { tty.Close() }) //nolint:errcheck // closing /dev/tty on exit; nothing to recover
 	m := galleryModel{
 		pane:    "test",
 		images:  []imageEntry{{Path: img}},

@@ -29,7 +29,7 @@ func TestKittyNeighbor(t *testing.T) {
 	dir := t.TempDir()
 	log := filepath.Join(dir, "args")
 	stub := "#!" + shell + "\necho \"$*\" >>\"" + log + "\"\n"
-	if err := os.WriteFile(filepath.Join(dir, "kitty"), []byte(stub), 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
+	if err := os.WriteFile(filepath.Join(dir, "kitty"), []byte(stub), 0o755); err != nil { // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -44,7 +44,7 @@ func TestKittyNeighbor(t *testing.T) {
 	// With KITTY_LISTEN_ON → calls `kitty @ action neighboring_window <dir>`.
 	t.Setenv("KITTY_LISTEN_ON", "unix:/tmp/kitty-test")
 	kittyNeighbor("right")
-	out, err := os.ReadFile(log) //nolint:gosec // test fixture path
+	out, err := os.ReadFile(log) // test fixture path
 	if err != nil {
 		t.Fatalf("kitty stub not invoked: %v", err)
 	}

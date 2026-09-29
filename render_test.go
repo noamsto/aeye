@@ -15,7 +15,7 @@ func TestRenderMermaidToSVG(t *testing.T) {
 	if err := runRender("mermaid", "-", out, src); err != nil {
 		t.Fatalf("runRender: %v", err)
 	}
-	svg, err := os.ReadFile(out) //nolint:gosec // test fixture path
+	svg, err := os.ReadFile(out) // test fixture path
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,14 +49,14 @@ func TestRenderD2FileToPNG(t *testing.T) {
 	}
 	dir := t.TempDir()
 	in := filepath.Join(dir, "d.d2")
-	if err := os.WriteFile(in, []byte("a -> b\n"), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+	if err := os.WriteFile(in, []byte("a -> b\n"), 0o644); err != nil { // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "d.png")
 	if err := runRender("d2", in, out, nil); err != nil {
 		t.Fatalf("runRender: %v", err)
 	}
-	png, err := os.ReadFile(out) //nolint:gosec // test fixture path
+	png, err := os.ReadFile(out) // test fixture path
 	if err != nil {
 		t.Fatal(err)
 	}

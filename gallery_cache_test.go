@@ -19,7 +19,7 @@ func writeTestImage(t *testing.T, path string, w, h int) {
 			img.Set(x, y, color.RGBA{R: 200, G: 100, B: 50, A: 255})
 		}
 	}
-	f, err := os.Create(path) //nolint:gosec // test fixture path
+	f, err := os.Create(path) // test fixture path
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func writeTestImage(t *testing.T, path string, w, h int) {
 
 func decodesAsPNG(t *testing.T, path string) bool {
 	t.Helper()
-	f, err := os.Open(path) //nolint:gosec // test fixture path
+	f, err := os.Open(path) // test fixture path
 	if err != nil {
 		t.Fatal(err)
 	}

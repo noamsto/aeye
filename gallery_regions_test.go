@@ -96,13 +96,13 @@ func TestParseRegionsLiveD2(t *testing.T) {
 			dir := t.TempDir()
 			src := filepath.Join(dir, "in.d2")
 			out := filepath.Join(dir, "out.svg")
-			if err := os.WriteFile(src, []byte(diagram), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+			if err := os.WriteFile(src, []byte(diagram), 0o644); err != nil { // test fixture in a temp dir
 				t.Fatal(err)
 			}
-			if err := exec.Command(d2, append(args, src, out)...).Run(); err != nil { //nolint:gosec // args built by the tool, not shell-interpreted
+			if err := exec.Command(d2, append(args, src, out)...).Run(); err != nil { // args built by the tool, not shell-interpreted
 				t.Fatalf("d2 render failed: %v", err)
 			}
-			data, err := os.ReadFile(out) //nolint:gosec // test fixture path
+			data, err := os.ReadFile(out) // test fixture path
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -124,14 +124,14 @@ func TestCachedSymbolsMtimeMiss(t *testing.T) {
 
 	cachedSymbols(src, 20, 10, crop, func() string { return src })
 
-	f, err := os.OpenFile(src, os.O_APPEND|os.O_WRONLY, 0o644) //nolint:gosec // test fixture file
+	f, err := os.OpenFile(src, os.O_APPEND|os.O_WRONLY, 0o644) // test fixture file
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.Write([]byte{0}); err != nil {
 		t.Fatal(err)
 	}
-	f.Close() //nolint:errcheck,gosec // test cleanup
+	f.Close() //nolint:errcheck // test cleanup
 
 	cachedSymbols(src, 20, 10, crop, func() string { return src })
 

@@ -546,7 +546,7 @@ func writeHalfToneImage(t *testing.T, path string, w, h int) image.Image {
 			}
 		}
 	}
-	f, err := os.Create(path) //nolint:gosec // test fixture path
+	f, err := os.Create(path) // test fixture path
 	if err != nil {
 		t.Fatal(err)
 	}

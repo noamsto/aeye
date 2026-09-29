@@ -352,14 +352,14 @@ func TestParseManifestDedupes(t *testing.T) {
 func TestLoadManifestDropsUndecodableFiles(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("AEYE_DIR", dir)
-	if err := os.MkdirAll(filepath.Join(dir, "images"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "images"), 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	live := filepath.Join(dir, "live.png")
 	writeTestImage(t, live, 4, 4)
 	// A 3-byte "PNG" stub: exists on disk but doesn't decode (a failed render).
 	stub := filepath.Join(dir, "stub.png")
-	if err := os.WriteFile(stub, []byte("PNG"), 0o644); err != nil {
+	if err := os.WriteFile(stub, []byte("PNG"), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	manifest := filepath.Join(dir, "images", "p1.jsonl")
@@ -367,7 +367,7 @@ func TestLoadManifestDropsUndecodableFiles(t *testing.T) {
 {"type":"image","path":"` + stub + `","source":"d2","mtime":2}
 {"type":"image","path":"` + filepath.Join(dir, "gone.png") + `","source":"Write","mtime":3}
 `
-	if err := os.WriteFile(manifest, []byte(lines), 0o644); err != nil {
+	if err := os.WriteFile(manifest, []byte(lines), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	got := loadManifest("p1", "dark")
@@ -375,7 +375,7 @@ func TestLoadManifestDropsUndecodableFiles(t *testing.T) {
 		t.Fatalf("loadManifest = %+v, want only the decodable file %q", got, live)
 	}
 
-	log, err := os.ReadFile(filepath.Join(dir, "images", "dropped.log"))
+	log, err := os.ReadFile(filepath.Join(dir, "images", "dropped.log")) //nolint:gosec // test fixture path
 	if err != nil {
 		t.Fatalf("dropped.log not written: %v", err)
 	}
@@ -391,7 +391,7 @@ func TestLoadManifestSuppressesCapturedD2ThemeVariant(t *testing.T) {
 	t.Setenv("AEYE_DIR", dir)
 	imagesDir := filepath.Join(dir, "images")
 	diagramsDir := filepath.Join(imagesDir, "diagrams")
-	if err := os.MkdirAll(diagramsDir, 0o755); err != nil {
+	if err := os.MkdirAll(diagramsDir, 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 
@@ -407,7 +407,7 @@ func TestLoadManifestSuppressesCapturedD2ThemeVariant(t *testing.T) {
 {"type":"image","path":"` + light + `","source":"view_image","mtime":2}
 {"type":"image","path":"` + ordinary + `","source":"view_image","mtime":3}
 `
-	if err := os.WriteFile(manifest, []byte(lines), 0o644); err != nil {
+	if err := os.WriteFile(manifest, []byte(lines), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 
@@ -452,7 +452,7 @@ func TestSettleMsgReTransmits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { r.Close() })
+	t.Cleanup(func() { r.Close() }) //nolint:errcheck,gosec // test cleanup
 	got := make(chan []byte, 1)
 	go func() { b, _ := io.ReadAll(r); got <- b }()
 
@@ -467,7 +467,7 @@ func TestSettleMsgReTransmits(t *testing.T) {
 	m.l = computeLayout(m.width, m.height)
 
 	m.Update(settleMsg{})
-	w.Close()
+	w.Close() //nolint:errcheck,gosec // test: closes the pipe writer to signal EOF
 
 	// The store (a=T) under this pane's own preview id is transmitView's core
 	// write; its absence means the settle handler skipped the re-store. A global
@@ -486,11 +486,11 @@ func TestSettleMsgReTransmits(t *testing.T) {
 func writeTestPNG(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "x.png")
-	f, err := os.Create(path)
+	f, err := os.Create(path) //nolint:gosec // test fixture path
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // test cleanup
 	if err := png.Encode(f, image.NewRGBA(image.Rect(0, 0, 4, 4))); err != nil {
 		t.Fatal(err)
 	}
@@ -512,7 +512,7 @@ func newTransmitRecorder(t *testing.T) *transmitRecorder {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { r.Close(); w.Close() })
+	t.Cleanup(func() { r.Close(); w.Close() }) //nolint:errcheck,gosec // test cleanup
 	return &transmitRecorder{w: w, r: r}
 }
 
@@ -547,7 +547,7 @@ func newTransmitModel(t *testing.T, rec *transmitRecorder, n int) *galleryModel 
 		width:   100,
 		height:  40,
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		m.images = append(m.images, imageEntry{Path: writeTestPNG(t), Mtime: int64(i + 1)})
 	}
 	m.l = computeLayout(m.width, m.height)
@@ -613,6 +613,9 @@ func TestTransmitViewRestoresWhenContentChangesAtSameLength(t *testing.T) {
 	m.transmitView()
 	base := rec.Len()
 
+	if len(m.images) < 3 {
+		t.Fatalf("model has %d images, want >= 3", len(m.images))
+	}
 	m.images = append(m.images[:2], m.images[3:]...) // delete at cursor
 	m.images = append(m.images, imageEntry{Path: writeTestPNG(t), Mtime: 99})
 	m.transmitView()
@@ -844,7 +847,7 @@ func TestIsPending(t *testing.T) {
 func TestPendingSurvivesThemeSwitch(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("AEYE_DIR", dir)
-	if err := os.MkdirAll(filepath.Join(dir, "images"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "images"), 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 
@@ -855,14 +858,14 @@ func TestPendingSurvivesThemeSwitch(t *testing.T) {
 	darkSVG := filepath.Join(dir, "h-dark.svg")
 	lightSVG := filepath.Join(dir, "h-light.svg")
 	for _, p := range []string{darkSVG, lightSVG} {
-		if err := os.WriteFile(p, []byte("<svg/>"), 0o644); err != nil {
+		if err := os.WriteFile(p, []byte("<svg/>"), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 			t.Fatal(err)
 		}
 	}
 
 	manifest := filepath.Join(dir, "images", "p1.jsonl")
 	line := `{"type":"image","path":"` + darkPNG + `","vector":"` + darkSVG + `","source":"d2","name":"diagram","mtime":1}` + "\n"
-	if err := os.WriteFile(manifest, []byte(line), 0o644); err != nil {
+	if err := os.WriteFile(manifest, []byte(line), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 

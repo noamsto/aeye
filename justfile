@@ -75,6 +75,12 @@ seed key="demo":
 test:
     go test ./...
 
+# Static-analysis gate: golangci-lint, nilaway, race-enabled tests
+lint:
+    golangci-lint run
+    nilaway -include-pkgs=github.com/noamsto/aeye ./...
+    go test -race ./...
+
 # Bats integration tests (adapter, toggle, diagrams, hooks)
 test-bats:
     bats --recursive tests/

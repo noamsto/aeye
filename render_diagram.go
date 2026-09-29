@@ -44,7 +44,7 @@ func d2ThemeID() (int64, error) {
 }
 
 func renderD2SVG(in string) ([]byte, error) {
-	src, err := os.ReadFile(in)
+	src, err := os.ReadFile(in) //nolint:gosec // path is the user's own image/manifest file
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func compileD2SVG(src, inputPath string) ([]byte, error) {
 	renderOpts := &d2svg.RenderOpts{
 		Pad:     go2.Pointer(int64(d2svg.DEFAULT_PADDING)),
 		ThemeID: &themeID,
-		Sketch:  go2.Pointer(os.Getenv("AEYE_D2_SKETCH") != "0"), // on unless =0
+		Sketch:  new(os.Getenv("AEYE_D2_SKETCH") != "0"), // on unless =0
 	}
 	// Leave Layout nil so d2 picks it up from the source's
 	// `vars: { d2-config: { layout-engine: ... } }` (it only honors that when
@@ -128,12 +128,12 @@ func runRenderDiagram(in, out string) error {
 	svg = fixFonts(svg)
 
 	svgPath := out[:len(out)-len(filepath.Ext(out))] + ".svg" // out has no ext -> out+".svg"
-	if err := os.WriteFile(svgPath, svg, 0o644); err != nil {
+	if err := os.WriteFile(svgPath, svg, 0o644); err != nil { //nolint:gosec // rendered diagram is a user-readable output file
 		return fmt.Errorf("write %s: %w", svgPath, err)
 	}
 
 	args := append(resvgFontArgs(), svgPath, out)
-	cmd := exec.Command(resvgBin(), args...)
+	cmd := exec.Command(resvgBin(), args...) //nolint:gosec // args built by the tool, not shell-interpreted
 	if stderr, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("resvg: %w: %s", err, stderr)
 	}

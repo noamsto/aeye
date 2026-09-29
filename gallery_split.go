@@ -79,11 +79,11 @@ func (m *galleryModel) toggleSplitAxis() {
 	if floating {
 		return
 	}
-	if err := exec.Command("tmux", "move-pane", flag, "-s", self, "-t", host).Run(); err != nil {
+	if err := exec.Command("tmux", "move-pane", flag, "-s", self, "-t", host).Run(); err != nil { //nolint:gosec // args built by the tool, not shell-interpreted
 		return
 	}
 	m.splitAxis = next
-	if err := exec.Command("tmux", "set-option", "-p", "-t", self, "@claude_img_axis", next).Run(); err != nil {
+	if err := exec.Command("tmux", "set-option", "-p", "-t", self, "@claude_img_axis", next).Run(); err != nil { //nolint:gosec // args built by the tool, not shell-interpreted
 		tracef("set-option @claude_img_axis=%s failed: %v", next, err)
 	}
 }

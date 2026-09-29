@@ -44,7 +44,7 @@ func parseManifest(data []byte) []imageEntry {
 	}
 	var out []imageEntry
 	seen := map[key]bool{}
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -163,8 +163,8 @@ func isD2RenderArtifact(path, diagramsDir string) bool {
 	stem := strings.TrimSuffix(rel, ext)
 	var hash string
 	for _, suffix := range []string{"-light", "-dark"} {
-		if strings.HasSuffix(stem, suffix) {
-			hash = strings.TrimSuffix(stem, suffix)
+		if before, ok := strings.CutSuffix(stem, suffix); ok {
+			hash = before
 			break
 		}
 	}
@@ -203,8 +203,8 @@ func withTheme(path, mode string) string {
 	ext := filepath.Ext(path)
 	stem := strings.TrimSuffix(path, ext)
 	for _, t := range []string{"light", "dark"} {
-		if strings.HasSuffix(stem, "-"+t) {
-			return strings.TrimSuffix(stem, "-"+t) + "-" + mode + ext
+		if before, ok := strings.CutSuffix(stem, "-"+t); ok {
+			return before + "-" + mode + ext
 		}
 	}
 	return path
@@ -259,11 +259,11 @@ type decodeResult struct {
 // until a later reload sees the completed file. Results are memoized per file
 // version so the extra cost is paid once, not every poll.
 func decodeErr(path string) error {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // path is the user's own image/manifest file
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // read-only file or already-failing path; close error is not actionable
 	fi, err := f.Stat()
 	if err != nil {
 		return err
@@ -303,12 +303,12 @@ func logDropped(pane, path string, reason error) {
 	}
 	dropped.seen[path] = true
 	logPath := filepath.Join(filepath.Dir(manifestPath(pane)), "dropped.log")
-	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644) //nolint:gosec // diagnostic log, user-readable is fine
 	if err != nil {
 		return
 	}
-	defer f.Close()
-	fmt.Fprintf(f, "%s\t%s\t%s\n", time.Now().Format(time.RFC3339), path, reason)
+	defer f.Close()                                                               //nolint:errcheck // best-effort diagnostic log
+	fmt.Fprintf(f, "%s\t%s\t%s\n", time.Now().Format(time.RFC3339), path, reason) //nolint:errcheck // best-effort diagnostic log write
 }
 
 type gridBackend int
@@ -457,9 +457,9 @@ var rowColDiacritics = []rune{
 // w and h are clamped to len(rowColDiacritics) by the caller (geometry).
 func placeholderBlock(id, w, h int) string {
 	var b strings.Builder
-	for r := 0; r < h; r++ {
+	for r := range h {
 		fmt.Fprintf(&b, "\x1b[38;2;%d;%d;%dm", (id>>16)&0xff, (id>>8)&0xff, id&0xff)
-		for c := 0; c < w; c++ {
+		for c := range w {
 			b.WriteString(placeholderRune)
 			b.WriteRune(rowColDiacritics[r])
 			b.WriteRune(rowColDiacritics[c])
@@ -482,7 +482,7 @@ func symbolsArgs(path string, w, h int) []string {
 }
 
 var runChafa = func(args []string) ([]byte, error) {
-	return exec.Command("chafa", args...).Output()
+	return exec.Command("chafa", args...).Output() //nolint:gosec // args built by the tool, not shell-interpreted
 }
 
 var (

@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -20,12 +21,7 @@ func parseSixelDA(resp string) bool {
 	if i < 0 || j < 0 || j < i {
 		return false
 	}
-	for _, p := range strings.Split(resp[i+1:j], ";") {
-		if p == "4" {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(strings.Split(resp[i+1:j], ";"), "4")
 }
 
 // probeSixel asks the terminal whether it can render sixel by writing a Primary
@@ -42,12 +38,12 @@ func probeSixel() bool {
 	if err != nil {
 		return false
 	}
-	defer tty.Close()
+	defer tty.Close() //nolint:errcheck // closing /dev/tty on exit; nothing to recover
 	old, err := term.MakeRaw(tty.Fd())
 	if err != nil {
 		return false
 	}
-	defer term.Restore(tty.Fd(), old)
+	defer term.Restore(tty.Fd(), old) //nolint:errcheck // best-effort terminal restore in defer
 
 	if _, err := tty.WriteString("\x1b[c"); err != nil {
 		return false
@@ -116,7 +112,7 @@ func rasterArgs(format, pngPath string, cols, rows int) []string {
 // wraps output in cursor hide/show (ESC [?25l … ESC [?25h); strip them so they don't
 // fight the TUI's cursor management (same as symbolsBlock).
 func renderRaster(format, pngPath string, cols, rows int) string {
-	out, err := exec.Command("chafa", rasterArgs(format, pngPath, cols, rows)...).Output()
+	out, err := exec.Command("chafa", rasterArgs(format, pngPath, cols, rows)...).Output() //nolint:gosec // args built by the tool, not shell-interpreted
 	if err != nil {
 		return ""
 	}
@@ -134,14 +130,14 @@ func paintRasterAt(w io.Writer, r rect, payload string) {
 	if payload == "" {
 		return
 	}
-	fmt.Fprintf(w, "\x1b7\x1b[%d;%dH%s\x1b8", r.y+1, r.x+1, payload)
+	fmt.Fprintf(w, "\x1b7\x1b[%d;%dH%s\x1b8", r.y+1, r.x+1, payload) //nolint:errcheck // best-effort tty escape-sequence write
 }
 
 // paintPreview paints the selected image into the preview rect, honoring the
 // current zoom/crop (mirrors transmitView's source selection).
 func (m *galleryModel) paintPreview() {
 	r := m.previewRect()
-	if r.w == 0 || r.h == 0 {
+	if r.w == 0 || r.h == 0 || len(m.images) == 0 {
 		return
 	}
 	var src string
@@ -156,6 +152,9 @@ func (m *galleryModel) paintPreview() {
 // paintStrip paints each visible filmstrip thumbnail into the inner area of its
 // cell rect (inset by 1 to clear the lipgloss border, which is drawn as text).
 func (m *galleryModel) paintStrip() {
+	if len(m.images) == 0 {
+		return
+	}
 	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
 	for i, cell := range m.filmstripCellRects() {
 		inner := rect{x: cell.x + 1, y: cell.y + 1, w: m.l.stripW, h: m.l.stripH}

@@ -85,7 +85,7 @@ func TestWriteRawDumpsTightlyPackedPixels(t *testing.T) {
 	if got := writeRaw(out, img); got != out {
 		t.Fatalf("writeRaw = %q, want %q", got, out)
 	}
-	b, err := os.ReadFile(out)
+	b, err := os.ReadFile(out) //nolint:gosec // test fixture path
 	if err != nil {
 		t.Fatal(err)
 	}

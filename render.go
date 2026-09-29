@@ -25,7 +25,7 @@ func runRender(from, in, out string, stdin io.Reader) error {
 	if in == "-" {
 		src, err = io.ReadAll(stdin)
 	} else {
-		src, err = os.ReadFile(in)
+		src, err = os.ReadFile(in) //nolint:gosec // path is the user's own image/manifest file
 		inputPath = in
 	}
 	if err != nil {
@@ -44,9 +44,9 @@ func runRender(from, in, out string, stdin io.Reader) error {
 	}
 
 	if strings.EqualFold(filepath.Ext(out), ".svg") {
-		return os.WriteFile(out, svg, 0o644)
+		return os.WriteFile(out, svg, 0o644) //nolint:gosec // rendered diagram is a user-readable output file
 	}
-	cmd := exec.Command(resvgBin(), append(resvgFontArgs(), "-", out)...)
+	cmd := exec.Command(resvgBin(), append(resvgFontArgs(), "-", out)...) //nolint:gosec // args built by the tool, not shell-interpreted
 	cmd.Stdin = bytes.NewReader(fixFonts(svg))
 	if stderr, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("resvg: %w: %s", err, stderr)

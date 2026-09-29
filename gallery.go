@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -100,10 +101,10 @@ func paneImageIDBase(pane string) int {
 
 func paneImageIDBaseOn(host, pane string) int {
 	h := fnv.New32a()
-	h.Write([]byte(host))
-	h.Write([]byte{0})
-	h.Write([]byte(pane))
-	return int(h.Sum32()%uint32(idBlocks)) * (maxCellDim + 1)
+	h.Write([]byte(host))                                     //nolint:gosec // hash.Hash.Write never returns an error
+	h.Write([]byte{0})                                        //nolint:gosec // hash.Hash.Write never returns an error
+	h.Write([]byte(pane))                                     //nolint:gosec // hash.Hash.Write never returns an error
+	return int(h.Sum32()%uint32(idBlocks)) * (maxCellDim + 1) //nolint:gosec // idBlocks is a small positive constant; no overflow
 }
 
 func (m *galleryModel) previewID() int    { return paneImageIDBase(m.pane) }
@@ -114,7 +115,7 @@ func (m *galleryModel) stripID(s int) int { return paneImageIDBase(m.pane) + 1 +
 // longer shows) without touching a sibling carousel's images on the shared store.
 func (m *galleryModel) clearStored() {
 	for _, id := range m.storedIDs {
-		fmt.Fprint(m.tty, deleteImage(id))
+		fmt.Fprint(m.tty, deleteImage(id)) //nolint:errcheck // best-effort tty escape-sequence write
 	}
 	m.storedIDs = m.storedIDs[:0]
 }
@@ -125,7 +126,7 @@ func (m *galleryModel) clearStored() {
 func clearPaneImages(w io.Writer, pane string) {
 	base := paneImageIDBase(pane)
 	for id := base; id <= base+maxCellDim; id++ {
-		fmt.Fprint(w, deleteImage(id))
+		fmt.Fprint(w, deleteImage(id)) //nolint:errcheck // best-effort tty escape-sequence write
 	}
 }
 
@@ -233,7 +234,7 @@ func (m galleryModel) Init() tea.Cmd {
 		// Register as a drag source up front so a plain mouse drag exports the
 		// image — no key to press. The terminal reports each gesture via OSC 72.
 		cmds = append(cmds, func() tea.Msg {
-			m.tty.WriteString(dragArmSeq())
+			m.tty.WriteString(dragArmSeq()) //nolint:errcheck,gosec // best-effort tty escape-sequence write
 			return nil
 		})
 	}
@@ -305,10 +306,13 @@ type transmitSig struct {
 // computeTransmitSig signs the current store set. Callers guarantee a non-empty
 // image list (transmitView's early return covers the rest).
 func (m *galleryModel) computeTransmitSig() transmitSig {
+	if len(m.images) == 0 {
+		return transmitSig{}
+	}
 	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
 	h := fnv.New64a()
 	hashEntry := func(e imageEntry) {
-		fmt.Fprintf(h, "%s|%x|", e.Path, e.Mtime)
+		fmt.Fprintf(h, "%s|%x|", e.Path, e.Mtime) //nolint:errcheck // hash.Hash.Write never returns an error
 	}
 	hashEntry(m.images[m.cursor])
 	for s := 0; s < m.l.stripCols; s++ {
@@ -445,13 +449,7 @@ func (m *galleryModel) reload() {
 		}
 	}
 	if m.pending != nil {
-		found := false
-		for _, e := range m.images {
-			if m.isPending(e) {
-				found = true
-				break
-			}
-		}
+		found := slices.ContainsFunc(m.images, m.isPending)
 		if !found {
 			m.pending = nil
 		}
@@ -502,7 +500,7 @@ func (m *galleryModel) commitPending() {
 		return
 	}
 	for _, f := range m.pending.files {
-		os.Remove(f)
+		os.Remove(f) //nolint:errcheck,gosec // best-effort removal of temp files
 	}
 	m.pending = nil
 }
@@ -728,7 +726,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		src := writePNGEnc(m.zoomScratchPath(),
 			fitToBox(msg.raster, m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx()),
 			m.images[m.cursor].Path, fastPNG.Encode)
-		fmt.Fprint(m.tty, transmitVirtual(m.previewID(), src, m.l.previewW, m.l.previewH))
+		fmt.Fprint(m.tty, transmitVirtual(m.previewID(), src, m.l.previewW, m.l.previewH)) //nolint:errcheck // best-effort tty escape-sequence write
 		return m, nil
 	case deleteCommitMsg:
 		if msg.gen != m.delGen || m.pending == nil {
@@ -837,7 +835,7 @@ func (m galleryModel) openSelected(mode string) {
 	if mode == "dir" {
 		target = filepath.Dir(target)
 	}
-	_ = exec.Command(openTool(runtime.GOOS), target).Start()
+	_ = exec.Command(openTool(runtime.GOOS), target).Start() //nolint:gosec // target is a local image path; args are not shell-interpreted
 }
 
 // openTool is the OS "open this path with its default app" launcher: macOS ships
@@ -915,12 +913,12 @@ func (m *galleryModel) handleDragEvent(payload string) {
 				m.ensureDecoded()
 			}
 			m.dragInFlight = true
-			m.tty.WriteString(dragOfferSeq())
-			m.tty.WriteString(dragDataSeq(fileURI(m.images[m.cursor].Path)))
+			m.tty.WriteString(dragOfferSeq())                                //nolint:errcheck,gosec // best-effort tty escape-sequence write
+			m.tty.WriteString(dragDataSeq(fileURI(m.images[m.cursor].Path))) //nolint:errcheck,gosec // best-effort tty escape-sequence write
 			for _, f := range dragIconFrames(m.curImg) {
-				m.tty.WriteString(f)
+				m.tty.WriteString(f) //nolint:errcheck,gosec // best-effort tty escape-sequence write
 			}
-			m.tty.WriteString(dragInitiateSeq())
+			m.tty.WriteString(dragInitiateSeq()) //nolint:errcheck,gosec // best-effort tty escape-sequence write
 			m.status = "Dragging out…"
 		}
 	case isDragFinished(payload):
@@ -1142,7 +1140,7 @@ func truncateToWidth(s string, w int) string {
 
 // thmColor reads a tmux @thm_* color option, falling back per theme.
 func (m galleryModel) thmColor(opt, dark, light string) imgcolor.Color {
-	out, err := exec.Command("tmux", "show", "-gv", opt).Output()
+	out, err := exec.Command("tmux", "show", "-gv", opt).Output() //nolint:gosec // args built by the tool, not shell-interpreted
 	if err == nil {
 		if v := strings.TrimSpace(string(out)); v != "" {
 			return lipgloss.Color(v)
@@ -1280,7 +1278,7 @@ func tmuxRelayTermName() (string, bool) {
 	if pane == "" {
 		return "", false
 	}
-	out, err := exec.Command("tmux", relayListClientsArgs(pane)...).Output()
+	out, err := exec.Command("tmux", relayListClientsArgs(pane)...).Output() //nolint:gosec // fixed tmux binary; args built by the tool, not shell-interpreted
 	if err != nil {
 		return "", false
 	}
@@ -1310,7 +1308,7 @@ func parseRelayTermName(out string) (string, bool) {
 	}
 	var term string
 	n := 0
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -1339,7 +1337,7 @@ func tmuxPaneSize() (int, int) {
 		return 0, 0
 	}
 	var w, h int
-	fmt.Sscanf(strings.TrimSpace(string(out)), "%d %d", &w, &h)
+	fmt.Sscanf(strings.TrimSpace(string(out)), "%d %d", &w, &h) //nolint:errcheck,gosec // zero w/h on parse failure is the intended fallback
 	return w, h
 }
 
@@ -1359,7 +1357,7 @@ func tmuxPaneVisible() bool {
 	// -t is load-bearing: an untargeted display-message evaluates window_active
 	// against the session's current window, where it is always 1 — which hides
 	// the very transition this exists to catch.
-	out, err := exec.Command("tmux", "display-message", "-p", "-t", os.Getenv("TMUX_PANE"),
+	out, err := exec.Command("tmux", "display-message", "-p", "-t", os.Getenv("TMUX_PANE"), //nolint:gosec // fixed tmux binary; args built by the tool, not shell-interpreted
 		"#{window_active} #{session_attached} #{window_zoomed_flag} #{pane_active}").Output()
 	if err != nil {
 		return true
@@ -1414,7 +1412,7 @@ func kittyNeighbor(dir string) {
 	if os.Getenv("KITTY_LISTEN_ON") == "" {
 		return
 	}
-	_ = exec.Command("kitty", "@", "action", "neighboring_window", dir).Run()
+	_ = exec.Command("kitty", "@", "action", "neighboring_window", dir).Run() //nolint:gosec // args built by the tool, not shell-interpreted
 }
 
 // digitKey maps "1".."9" to 1..9, else 0.

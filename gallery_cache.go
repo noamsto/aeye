@@ -1,7 +1,7 @@
 package main
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // sha1 only names cache files; not a security use
 	"encoding/hex"
 	"fmt"
 	"image"
@@ -43,17 +43,17 @@ func cachedPNG(srcPath string, cols, rows int) string {
 	}
 	tw, th := cols*cellPxW, rows*cellPxH
 	key := fmt.Sprintf("%s|%d|%d|%dx%d", srcPath, fi.ModTime().UnixNano(), fi.Size(), tw, th)
-	sum := sha1.Sum([]byte(key))
+	sum := sha1.Sum([]byte(key)) //nolint:gosec // sha1 only names cache files; not a security use
 	out := filepath.Join(imgCacheDir, hex.EncodeToString(sum[:])+".png")
 	if _, err := os.Stat(out); err == nil {
 		return out
 	}
 
-	f, err := os.Open(srcPath)
+	f, err := os.Open(srcPath) //nolint:gosec // path is the user's own image file
 	if err != nil {
 		return srcPath
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // read-only file; close error is irrelevant
 	src, _, err := image.Decode(f)
 	if err != nil {
 		return srcPath
@@ -114,7 +114,7 @@ func writePNG(out string, img image.Image, fallback string) string {
 
 // writePNGEnc is writePNG with a caller-chosen encoder (default vs fast).
 func writePNGEnc(out string, img image.Image, fallback string, encode func(io.Writer, image.Image) error) string {
-	if err := os.MkdirAll(imgCacheDir, 0o755); err != nil {
+	if err := os.MkdirAll(imgCacheDir, 0o755); err != nil { //nolint:gosec // cache dir holds user-viewable images, not secrets
 		return fallback
 	}
 	tmp, err := os.CreateTemp(imgCacheDir, "tmp-*.png")
@@ -122,13 +122,16 @@ func writePNGEnc(out string, img image.Image, fallback string, encode func(io.Wr
 		return fallback
 	}
 	if err := encode(tmp, img); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
+		tmp.Close()           //nolint:errcheck,gosec // already failing; the write error wins
+		os.Remove(tmp.Name()) //nolint:errcheck,gosec // best-effort temp cleanup
 		return fallback
 	}
-	tmp.Close()
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name()) //nolint:errcheck,gosec // best-effort temp cleanup
+		return fallback
+	}
 	if err := os.Rename(tmp.Name(), out); err != nil {
-		os.Remove(tmp.Name())
+		os.Remove(tmp.Name()) //nolint:errcheck,gosec // best-effort temp cleanup
 		return fallback
 	}
 	return out
@@ -145,7 +148,7 @@ func writeRaw(out string, img *image.RGBA) string {
 	if img.Stride != img.Bounds().Dx()*4 {
 		return "" // a sub-image view; not tightly packed, so not safe to dump
 	}
-	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil { //nolint:gosec // cache dir holds user-viewable images, not secrets
 		return ""
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(out), "raw-*")
@@ -153,13 +156,16 @@ func writeRaw(out string, img *image.RGBA) string {
 		return ""
 	}
 	if _, err := tmp.Write(img.Pix); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
+		tmp.Close()           //nolint:errcheck,gosec // already failing; the write error wins
+		os.Remove(tmp.Name()) //nolint:errcheck,gosec // best-effort temp cleanup
 		return ""
 	}
-	tmp.Close()
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name()) //nolint:errcheck,gosec // best-effort temp cleanup
+		return ""
+	}
 	if err := os.Rename(tmp.Name(), out); err != nil {
-		os.Remove(tmp.Name())
+		os.Remove(tmp.Name()) //nolint:errcheck,gosec // best-effort temp cleanup
 		return ""
 	}
 	return out

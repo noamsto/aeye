@@ -14,16 +14,16 @@ import (
 func writeTestImage(t *testing.T, path string, w, h int) {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
+	for y := range h {
+		for x := range w {
 			img.Set(x, y, color.RGBA{R: 200, G: 100, B: 50, A: 255})
 		}
 	}
-	f, err := os.Create(path)
+	f, err := os.Create(path) //nolint:gosec // test fixture path
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // read-only test file
 	if filepath.Ext(path) == ".jpeg" {
 		if err := jpeg.Encode(f, img, nil); err != nil {
 			t.Fatal(err)
@@ -37,11 +37,11 @@ func writeTestImage(t *testing.T, path string, w, h int) {
 
 func decodesAsPNG(t *testing.T, path string) bool {
 	t.Helper()
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // test fixture path
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // test cleanup
 	_, format, err := image.Decode(f)
 	if err != nil {
 		t.Fatal(err)

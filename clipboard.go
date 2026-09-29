@@ -18,18 +18,18 @@ import (
 func copyImageToClipboard(path string) error {
 	if runtime.GOOS == "darwin" {
 		name, args := macClipboardCmd(path, mimeForPath(path))
-		return exec.Command(name, args...).Run()
+		return exec.Command(name, args...).Run() //nolint:gosec // args are built by the tool, not shell-interpreted
 	}
 	name, args := clipboardTool(mimeForPath(path))
 	if name == "" {
 		return errors.New("no clipboard tool found (install wl-clipboard or xclip)")
 	}
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // path is the user's own image file
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	cmd := exec.Command(name, args...)
+	defer f.Close()                    //nolint:errcheck // read-only file; close error is irrelevant
+	cmd := exec.Command(name, args...) //nolint:gosec // args are built by the tool, not shell-interpreted
 	cmd.Stdin = f
 	return cmd.Run()
 }

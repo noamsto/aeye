@@ -46,7 +46,7 @@ func renderThemed(t *testing.T, src, theme string) string {
 	t.Setenv("AEYE_D2_SKETCH", "0")
 	t.Setenv("AEYE_D2_THEME", theme)
 	p := filepath.Join(t.TempDir(), "d.d2")
-	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(src), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	svg, err := renderD2SVG(p)

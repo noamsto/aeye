@@ -26,7 +26,7 @@ func stubAeye(t *testing.T, dir, name, ver, callLog string) string {
 	t.Helper()
 	p := filepath.Join(dir, name)
 	script := "#!/bin/sh\necho ran >> " + callLog + "\necho " + ver + "\n"
-	if err := os.WriteFile(p, []byte(script), 0o755); err != nil {
+	if err := os.WriteFile(p, []byte(script), 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	return p

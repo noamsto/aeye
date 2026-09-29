@@ -62,7 +62,7 @@ func TestD2ThemeID(t *testing.T) {
 	state := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", state)
 	writeTheme := func(theme string) {
-		if err := os.WriteFile(filepath.Join(state, "theme-state.json"),
+		if err := os.WriteFile(filepath.Join(state, "theme-state.json"), //nolint:gosec // test fixture in a temp dir
 			[]byte(`{"theme":"`+theme+`"}`), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -99,7 +99,7 @@ func TestD2ThemeID(t *testing.T) {
 
 func TestRenderD2SVG(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "d.d2")
-	if err := os.WriteFile(src, []byte("a -> b -> c\n"), 0o644); err != nil {
+	if err := os.WriteFile(src, []byte("a -> b -> c\n"), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	svg, err := renderD2SVG(src)
@@ -121,7 +121,7 @@ func TestRenderD2SVGHonorsInFileLayout(t *testing.T) {
 	graph := "a -> b\na -> c\nb -> d\nc -> d\na -> d\n"
 	write := func(name, content string) string {
 		p := filepath.Join(dir, name)
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 			t.Fatal(err)
 		}
 		return p

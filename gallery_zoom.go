@@ -185,7 +185,7 @@ func (m *galleryModel) usesBoxFitZoom() bool {
 // rest framing, instead scales uniformly about its center with aspect preserved,
 // as before — see usesBoxFitZoom.
 func (m *galleryModel) zoomBy(factor float64) {
-	if m.usesBoxFitZoom() {
+	if m.curImg != nil && m.usesBoxFitZoom() {
 		b := m.curImg.Bounds()
 		frac := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
 		mag := zoomMagnification(m.crop, frac) * factor
@@ -255,12 +255,12 @@ func (m *galleryModel) ensureDecoded() {
 	}
 	m.resetZoom()
 	m.regions, m.regionPath, m.regionIdx = nil, nil, -1
-	f, err := os.Open(p)
+	f, err := os.Open(p) //nolint:gosec // path is the user's own image/manifest file
 	if err != nil {
 		m.curImg = nil
 		return
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // read-only file or already-failing path; close error is not actionable
 	img, _, err := image.Decode(f)
 	if err != nil {
 		m.curImg = nil
@@ -333,6 +333,9 @@ func (m *galleryModel) cropRaster(src image.Image, cols, rows int) *image.RGBA {
 // selected path when nothing is decoded or the crop is full (so the unzoomed
 // path is byte-for-byte the pre-zoom behavior).
 func (m *galleryModel) renderZoom(cols, rows int) string {
+	if len(m.images) == 0 {
+		return ""
+	}
 	return m.renderCropOf(m.curImg, cols, rows, m.images[m.cursor].Path)
 }
 
@@ -342,6 +345,9 @@ func (m *galleryModel) renderZoom(cols, rows int) string {
 // the dominant per-pan cost. Falls back to storing the original file when there is
 // nothing to crop (unzoomed) or the raw write fails.
 func (m *galleryModel) storePreviewCrop() string {
+	if len(m.images) == 0 {
+		return ""
+	}
 	orig := m.images[m.cursor].Path
 	dst := m.cropRaster(m.curImg, m.l.previewW, m.l.previewH)
 	if dst == nil {
@@ -365,7 +371,7 @@ func (m *galleryModel) transmitPreviewOnly() {
 	if m.backend != backendKitty || m.tty == nil || len(m.images) == 0 {
 		return
 	}
-	fmt.Fprint(m.tty, m.storePreviewCrop())
+	fmt.Fprint(m.tty, m.storePreviewCrop()) //nolint:errcheck // best-effort tty escape-sequence write
 }
 
 // panFrameGap is the minimum spacing between preview re-stores while dragging. A

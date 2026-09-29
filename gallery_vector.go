@@ -1,7 +1,7 @@
 package main
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // sha1 only names cache files; not a security use
 	"fmt"
 	"image"
 	"os"
@@ -55,7 +55,7 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 	// One cached PNG per (svg, mtime); crop + width are the filename suffix so we
 	// can evict prior framings — /tmp then holds at most one vector scratch per
 	// diagram, not one per pan/zoom step.
-	stem := fmt.Sprintf("aeye-vec-%x", sha1.Sum([]byte(fmt.Sprintf("%s|%d", vector, fi.ModTime().UnixNano()))))
+	stem := fmt.Sprintf("aeye-vec-%x", sha1.Sum([]byte(fmt.Sprintf("%s|%d", vector, fi.ModTime().UnixNano())))) //nolint:gosec // sha1 only names cache files; not a security use
 	out := filepath.Join(os.TempDir(), fmt.Sprintf("%s-%.4f_%.4f_%.4f_%.4f-%d.png",
 		stem, crop.x0, crop.y0, crop.x1, crop.y1, targetW))
 	if _, err := os.Stat(out); err == nil {
@@ -67,11 +67,11 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 	// Evict stale framings for this svg before rendering the new one.
 	olds, _ := filepath.Glob(filepath.Join(os.TempDir(), stem+"-*.png"))
 	for _, o := range olds {
-		os.Remove(o)
+		os.Remove(o) //nolint:errcheck,gosec // best-effort temp cleanup
 	}
 	src := vector
 	if !crop.isFull() {
-		data, err := os.ReadFile(vector)
+		data, err := os.ReadFile(vector) //nolint:gosec // path is the user's own image/manifest file
 		if err != nil {
 			return ""
 		}
@@ -81,16 +81,16 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 			// overwriting the other's viewBox, or unlinking it before resvg opens it).
 			tmp := filepath.Join(os.TempDir(), fmt.Sprintf("%s-%.4f_%.4f_%.4f_%.4f-crop.svg",
 				stem, crop.x0, crop.y0, crop.x1, crop.y1))
-			if err := os.WriteFile(tmp, cropped, 0o644); err != nil {
+			if err := os.WriteFile(tmp, cropped, 0o644); err != nil { //nolint:gosec // scratch SVG in tmp for the local rasterizer
 				return ""
 			}
-			defer os.Remove(tmp)
+			defer os.Remove(tmp) //nolint:errcheck // best-effort temp cleanup
 			src = tmp
 		}
 	}
 	args := append(resvgFontArgs(), "--width", strconv.Itoa(targetW), src, out)
-	if err := exec.Command(bin, args...).Run(); err != nil {
-		os.Remove(out)
+	if err := exec.Command(bin, args...).Run(); err != nil { //nolint:gosec // args built by the tool, not shell-interpreted
+		os.Remove(out) //nolint:errcheck,gosec // best-effort temp cleanup
 		return ""
 	}
 	return out
@@ -113,11 +113,11 @@ func renderVectorCmd(vector string, crop cropFrac, targetW int) tea.Cmd {
 		if out == "" {
 			return nil
 		}
-		f, err := os.Open(out)
+		f, err := os.Open(out) //nolint:gosec // path is the user's own image/manifest file
 		if err != nil {
 			return nil
 		}
-		defer f.Close()
+		defer f.Close() //nolint:errcheck // read-only file or already-failing path; close error is not actionable
 		img, _, err := image.Decode(f)
 		if err != nil {
 			return nil

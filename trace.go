@@ -36,14 +36,14 @@ func traceInit(pane string) {
 	default:
 		path = v
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644) //nolint:gosec // debug trace file
 	if err != nil {
 		return
 	}
 	traceFile = f
 	traceStart = time.Now()
 	traceEnabled = true
-	fmt.Fprintf(f, "=== aeye trace %s pid=%d version=%s ===\n",
+	fmt.Fprintf(f, "=== aeye trace %s pid=%d version=%s ===\n", //nolint:errcheck // best-effort diagnostic/log write
 		traceStart.Format(time.RFC3339), os.Getpid(), version())
 }
 
@@ -57,5 +57,5 @@ func tracef(format string, args ...any) {
 	traceMu.Lock()
 	defer traceMu.Unlock()
 	ms := time.Since(traceStart).Milliseconds()
-	fmt.Fprintf(traceFile, "[+%6dms] "+format+"\n", append([]any{ms}, args...)...)
+	fmt.Fprintf(traceFile, "[+%6dms] "+format+"\n", append([]any{ms}, args...)...) //nolint:errcheck // best-effort diagnostic/log write
 }

@@ -138,6 +138,9 @@ func (m *galleryModel) imageFracAt(sx, sy int) (fx, fy float64, ok bool) {
 // would fill the box exactly, so dividing the crop's own aspect by it yields the
 // shortfall on whichever axis letterboxes. Caller must have m.curImg.
 func (m *galleryModel) displayRatio() float64 {
+	if m.curImg == nil {
+		return 1
+	}
 	b := m.curImg.Bounds()
 	fill := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
 	return (m.crop.w() / m.crop.h()) / fill

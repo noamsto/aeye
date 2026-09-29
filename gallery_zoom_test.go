@@ -82,7 +82,7 @@ func TestZoomByShrinksCentered(t *testing.T) {
 
 func TestZoomByClampsAtMax(t *testing.T) {
 	m := &galleryModel{crop: fullCrop()}
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		m.zoomBy(1.25)
 	}
 	if !approx(m.crop.w(), 1.0/zoomMax) || !approx(m.crop.h(), 1.0/zoomMax) {
@@ -92,7 +92,7 @@ func TestZoomByClampsAtMax(t *testing.T) {
 
 func TestZoomOutFloorsToFull(t *testing.T) {
 	m := &galleryModel{crop: cropFrac{0.4, 0.4, 0.6, 0.6}}
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		m.zoomBy(1 / 1.25)
 	}
 	if !m.crop.isFull() {
@@ -113,6 +113,9 @@ func wideModel() *galleryModel {
 // boxMag is the on-screen magnification of the current crop once letterboxed into
 // the preview box.
 func (m *galleryModel) boxMag() float64 {
+	if m.curImg == nil {
+		return 0
+	}
 	b := m.curImg.Bounds()
 	bw := float64(m.l.previewW * m.cellWpx())
 	bh := float64(m.l.previewH * m.cellHpx())
@@ -151,6 +154,9 @@ func TestZoomMagnificationSurvivesAxisFlippingResize(t *testing.T) {
 	// Resize the box so height becomes box-bound instead (frac crosses 1),
 	// without touching the crop itself — mirrors a live terminal resize.
 	m.l.previewW, m.l.previewH = 1000, 10
+	if m.curImg == nil {
+		t.Fatal("no decoded image")
+	}
 	b := m.curImg.Bounds()
 	frac := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
 	if got := zoomMagnification(m.crop, frac); !approx(got, 1.25) {
@@ -161,6 +167,9 @@ func TestZoomMagnificationSurvivesAxisFlippingResize(t *testing.T) {
 // renderedSize is the on-screen pixel size the current crop renders at once
 // letterboxed into the preview box, mirroring cropRaster's own fit-to-box scale.
 func (m *galleryModel) renderedSize() (w, h float64) {
+	if m.curImg == nil {
+		return 0, 0
+	}
 	b := m.curImg.Bounds()
 	scale := m.boxMag()
 	return m.crop.w() * float64(b.Dx()) * scale, m.crop.h() * float64(b.Dy()) * scale
@@ -171,7 +180,7 @@ func TestZoomInGrowsIntoLetterboxThenPacksWide(t *testing.T) {
 	boxH := float64(m.l.previewH * m.cellHpx())
 	lastH := -1.0
 	packed := false
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		m.zoomBy(1.25)
 		_, h := m.renderedSize()
 		if approx(m.crop.h(), 1.0) {
@@ -210,7 +219,7 @@ func TestZoomInGrowsIntoLetterboxThenPacksTall(t *testing.T) {
 	boxW := float64(m.l.previewW * m.cellWpx())
 	lastW := -1.0
 	packed := false
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		m.zoomBy(1.25)
 		w, _ := m.renderedSize()
 		if approx(m.crop.w(), 1.0) {
@@ -240,7 +249,7 @@ func TestZoomInGrowsIntoLetterboxThenPacksTall(t *testing.T) {
 // zoomFloor while the secondary axis alone got floored.
 func TestZoomInPastPackClampsPrimaryAxisAtZoomFloor(t *testing.T) {
 	m := wideModel()
-	for i := 0; i < 30; i++ {
+	for range 30 {
 		m.zoomBy(1.25)
 	}
 	if mag := 1 / m.crop.w(); mag > zoomMax+1e-9 {
@@ -254,14 +263,14 @@ func TestZoomInPastPackClampsPrimaryAxisAtZoomFloor(t *testing.T) {
 // retracing gradually.
 func TestZoomOutFromDeepPackRetracesGradually(t *testing.T) {
 	m := wideModel()
-	for i := 0; i < 7; i++ {
+	for range 7 {
 		m.zoomBy(1.25) // past the ~4.5x pack threshold
 	}
 	m.zoomBy(1 / 1.25)
 	if m.crop.isFull() {
 		t.Errorf("one zoom-out step from a packed crop must not jump straight to full, got %+v", m.crop)
 	}
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		m.zoomBy(1 / 1.25)
 	}
 	if !m.crop.isFull() {
@@ -318,7 +327,7 @@ func TestZoomInClampsLongSideAtMax(t *testing.T) {
 func TestZoomOutFromFillRetracesToFull(t *testing.T) {
 	m := wideModel()
 	m.crop = m.baseFillCrop() // packed box-aspect fill; the deepest step zoom-in reaches
-	for i := 0; i < 50; i++ {
+	for range 50 {
 		m.zoomBy(1 / 1.25)
 	}
 	if !m.crop.isFull() {
@@ -330,11 +339,11 @@ func TestZoomOutFromFillRetracesToFull(t *testing.T) {
 // original crop, mirroring the box-fit model in both directions.
 func TestZoomOutRetracesZoomIn(t *testing.T) {
 	m := wideModel()
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		m.zoomBy(1.25)
 	}
 	mid := m.crop
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		m.zoomBy(1 / 1.25)
 	}
 	if !m.crop.isFull() {
@@ -528,8 +537,8 @@ func TestRenderZoomCropReturnsScratch(t *testing.T) {
 func writeHalfToneImage(t *testing.T, path string, w, h int) image.Image {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
+	for y := range h {
+		for x := range w {
 			if x < w/2 {
 				img.Set(x, y, color.RGBA{R: 255, A: 255})
 			} else {
@@ -537,11 +546,11 @@ func writeHalfToneImage(t *testing.T, path string, w, h int) image.Image {
 			}
 		}
 	}
-	f, err := os.Create(path)
+	f, err := os.Create(path) //nolint:gosec // test fixture path
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck // test cleanup
 	if err := png.Encode(f, img); err != nil {
 		t.Fatal(err)
 	}
@@ -579,13 +588,13 @@ func TestRenderViewSymbolsZoomPreview(t *testing.T) {
 	}
 
 	wantPreview := symbolsBlock(m.renderZoom(m.l.previewW, m.l.previewH), m.l.previewW, m.l.previewH)
-	previewLine := strings.Split(wantPreview, "\n")[0]
+	previewLine, _, _ := strings.Cut(wantPreview, "\n")
 	if !viewContainsLine(zoomed, previewLine) {
 		t.Error("zoomed view must render the cropped preview block-art")
 	}
 
 	wantStrip := symbolsBlock(src, m.l.stripW, m.l.stripH)
-	stripLine := strings.Split(wantStrip, "\n")[0]
+	stripLine, _, _ := strings.Cut(wantStrip, "\n")
 	if !viewContainsLine(zoomed, stripLine) {
 		t.Error("filmstrip must still render the uncropped source image")
 	}
@@ -599,7 +608,7 @@ func viewContainsLine(view, line string) bool {
 	if trimmed == "" {
 		return false
 	}
-	for _, l := range strings.Split(view, "\n") {
+	for l := range strings.SplitSeq(view, "\n") {
 		if strings.Contains(l, trimmed) {
 			return true
 		}

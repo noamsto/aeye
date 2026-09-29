@@ -72,6 +72,9 @@ func TestFilmstripCellRectsPartialWindow(t *testing.T) {
 func TestFilmstripHit(t *testing.T) {
 	m := mouseModel(120, 40, 0, 50)
 	rects := m.filmstripCellRects()
+	if len(rects) < 3 {
+		t.Fatalf("filmstrip rects = %d, want >= 3", len(rects))
+	}
 	mid := rects[2]
 	idx, ok := m.filmstripHit(mid.x+1, mid.y+1)
 	if !ok || idx != 2 { // cursor 0 → stripStart 0 → cell 2 is image 2
@@ -156,7 +159,7 @@ func TestZoomAtZoomOutToFull(t *testing.T) {
 	m.crop = cropFrac{0.25, 0.25, 0.75, 0.75} // zoomed-in starting state
 	pr := m.previewRect()
 	sx, sy := pr.x+pr.w/2, pr.y+pr.h/2
-	for i := 0; i < 11; i++ {
+	for range 11 {
 		m.zoomAt(sx, sy, 1/1.25)
 	}
 	if !m.crop.isFull() {
@@ -210,6 +213,9 @@ func TestHandleMouseFilmstripClick(t *testing.T) {
 	m := mouseModel(120, 40, 0, 50)
 	m.ready = true
 	rects := m.filmstripCellRects()
+	if len(rects) < 4 {
+		t.Fatalf("filmstrip rects = %d, want >= 4", len(rects))
+	}
 	cell3 := rects[3]
 	m2, _ := m.handleMouse(tea.MouseClickMsg{X: cell3.x + 1, Y: cell3.y + 1, Button: tea.MouseLeft})
 	if m2.cursor != 3 {
@@ -231,7 +237,11 @@ func TestHandleMouseWheelZoom(t *testing.T) {
 func TestHandleMouseWheelFilmstrip(t *testing.T) {
 	m := mouseModel(120, 40, 5, 50)
 	m.ready = true
-	y := m.filmstripCellRects()[0].y
+	rects := m.filmstripCellRects()
+	if len(rects) == 0 {
+		t.Fatal("no filmstrip rects")
+	}
+	y := rects[0].y
 	down, _ := m.handleMouse(tea.MouseWheelMsg{X: 1, Y: y, Button: tea.MouseWheelDown})
 	if down.cursor != 6 {
 		t.Errorf("wheel down over filmstrip: cursor = %d, want 6", down.cursor)

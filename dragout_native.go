@@ -37,12 +37,12 @@ func probeDragProtocol() bool {
 	if err != nil {
 		return false
 	}
-	defer tty.Close()
+	defer tty.Close() //nolint:errcheck // closing /dev/tty on exit; nothing to recover
 	old, err := term.MakeRaw(tty.Fd())
 	if err != nil {
 		return false
 	}
-	defer term.Restore(tty.Fd(), old)
+	defer term.Restore(tty.Fd(), old) //nolint:errcheck // best-effort terminal restore in defer
 
 	if _, err := tty.WriteString("\x1b]72;t=q\x1b\\\x1b[c"); err != nil {
 		return false
@@ -184,11 +184,11 @@ func isDragError(payload string) bool {
 // oscInt reads an integer field like "x=" from an OSC 72 payload, up to the next
 // delimiter. Case-sensitive, so "x=" never matches "X=".
 func oscInt(payload, key string) (int, bool) {
-	i := strings.Index(payload, key)
-	if i < 0 {
+	_, after, ok := strings.Cut(payload, key)
+	if !ok {
 		return 0, false
 	}
-	rest := payload[i+len(key):]
+	rest := after
 	end := strings.IndexAny(rest, ":;\x1b\\")
 	if end < 0 {
 		end = len(rest)

@@ -124,14 +124,14 @@ func TestCachedSymbolsMtimeMiss(t *testing.T) {
 
 	cachedSymbols(src, 20, 10, crop, func() string { return src })
 
-	f, err := os.OpenFile(src, os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(src, os.O_APPEND|os.O_WRONLY, 0o644) //nolint:gosec // test fixture file
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.Write([]byte{0}); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	f.Close() //nolint:errcheck,gosec // test cleanup
 
 	cachedSymbols(src, 20, 10, crop, func() string { return src })
 
@@ -144,7 +144,7 @@ func TestRenderViewSymbolsCache(t *testing.T) {
 	calls := stubRunChafa(t)
 	dir := t.TempDir()
 	const n = 5
-	for i := 0; i < n; i++ {
+	for i := range n {
 		p := filepath.Join(dir, fmt.Sprintf("img%d.png", i))
 		writeTestImage(t, p, 20, 20)
 	}
@@ -156,7 +156,7 @@ func TestRenderViewSymbolsCache(t *testing.T) {
 		cursor:  2,
 		crop:    fullCrop(),
 	}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		m.images = append(m.images, imageEntry{Path: filepath.Join(dir, fmt.Sprintf("img%d.png", i))})
 	}
 	m.l = computeLayout(m.width, m.height)

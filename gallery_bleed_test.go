@@ -20,12 +20,12 @@ func TestDecodeErrTruncatedFile(t *testing.T) {
 
 	// Keep the signature + IHDR (DecodeConfig would still accept this) but drop
 	// the IDAT/IEND so a full decode fails.
-	full, err := os.ReadFile(good)
+	full, err := os.ReadFile(good) //nolint:gosec // test fixture path
 	if err != nil {
 		t.Fatal(err)
 	}
 	trunc := filepath.Join(dir, "trunc.png")
-	if err := os.WriteFile(trunc, full[:40], 0o644); err != nil {
+	if err := os.WriteFile(trunc, full[:40], 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	if decodeErr(trunc) == nil {
@@ -41,25 +41,25 @@ func TestLoadManifestRefusesForeignOwner(t *testing.T) {
 	t.Setenv("AEYE_DIR", dir)
 	t.Setenv("AEYE_OWNER", "session-A")
 	imagesDir := filepath.Join(dir, "images")
-	if err := os.MkdirAll(imagesDir, 0o755); err != nil {
+	if err := os.MkdirAll(imagesDir, 0o755); err != nil { //nolint:gosec // test fixture dir
 		t.Fatal(err)
 	}
 	img := filepath.Join(dir, "shot.png")
 	writeTestImage(t, img, 8, 8)
 	manifest := filepath.Join(imagesDir, "p9.jsonl")
-	if err := os.WriteFile(manifest, []byte(`{"type":"image","path":"`+img+`","source":"Read","mtime":1}`+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(manifest, []byte(`{"type":"image","path":"`+img+`","source":"Read","mtime":1}`+"\n"), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	owner := filepath.Join(imagesDir, "p9.owner")
 
-	if err := os.WriteFile(owner, []byte("session-B"), 0o644); err != nil {
+	if err := os.WriteFile(owner, []byte("session-B"), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	if got := loadManifest("p9", "dark"); got != nil {
 		t.Errorf("foreign-owned manifest should yield no images, got %d", len(got))
 	}
 
-	if err := os.WriteFile(owner, []byte("session-A"), 0o644); err != nil {
+	if err := os.WriteFile(owner, []byte("session-A"), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	if got := loadManifest("p9", "dark"); len(got) != 1 {
@@ -84,16 +84,16 @@ func TestLoadManifestTracesOwnerDecision(t *testing.T) {
 	t.Setenv("AEYE_DIR", dir)
 	t.Setenv("AEYE_OWNER", "session-A")
 	imagesDir := filepath.Join(dir, "images")
-	if err := os.MkdirAll(imagesDir, 0o755); err != nil {
+	if err := os.MkdirAll(imagesDir, 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	img := filepath.Join(dir, "shot.png")
 	writeTestImage(t, img, 8, 8)
-	if err := os.WriteFile(filepath.Join(imagesDir, "p9.jsonl"),
+	if err := os.WriteFile(filepath.Join(imagesDir, "p9.jsonl"), //nolint:gosec // test fixture in a temp dir
 		[]byte(`{"type":"image","path":"`+img+`","source":"Read","mtime":1}`+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(imagesDir, "p9.owner"), []byte("session-B"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(imagesDir, "p9.owner"), []byte("session-B"), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 
@@ -104,9 +104,9 @@ func TestLoadManifestTracesOwnerDecision(t *testing.T) {
 	traceInit("p9")
 
 	loadManifest("p9", "dark")
-	traceFile.Sync()
+	traceFile.Sync() //nolint:errcheck,gosec // test trace flush
 
-	b, err := os.ReadFile(tracePath)
+	b, err := os.ReadFile(tracePath) //nolint:gosec // test fixture path
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -96,13 +96,13 @@ func TestParseRegionsLiveD2(t *testing.T) {
 			dir := t.TempDir()
 			src := filepath.Join(dir, "in.d2")
 			out := filepath.Join(dir, "out.svg")
-			if err := os.WriteFile(src, []byte(diagram), 0o644); err != nil {
+			if err := os.WriteFile(src, []byte(diagram), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 				t.Fatal(err)
 			}
-			if err := exec.Command(d2, append(args, src, out)...).Run(); err != nil {
+			if err := exec.Command(d2, append(args, src, out)...).Run(); err != nil { //nolint:gosec // args built by the tool, not shell-interpreted
 				t.Fatalf("d2 render failed: %v", err)
 			}
-			data, err := os.ReadFile(out)
+			data, err := os.ReadFile(out) //nolint:gosec // test fixture path
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -332,7 +332,7 @@ func TestZoomInFromFocusedBlockKeepsMagnifying(t *testing.T) {
 			t.Fatalf("step %d did not magnify: w %v -> %v", i, before, m.crop.w())
 		}
 	}
-	if got, want := framed.w()/m.crop.w(), math.Pow(1.25, 3); !approx(got, want) {
+	if got, want := framed.w()/m.crop.w(), 1.25*1.25*1.25; !approx(got, want) {
 		t.Errorf("three steps from the framed block = %vx, want %vx", got, want)
 	}
 }

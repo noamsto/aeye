@@ -68,7 +68,7 @@
             # and a stub can't show it: tmux, script (util-linux), and ncurses for
             # the xterm-kitty terminfo entry it synthesizes — a bare CI runner has
             # none, and tmux refuses to attach a client whose TERM it can't find.
-            ++ [pkgs.go pkgs.gopls pkgs.gotools pkgs.golangci-lint pkgs.chafa pkgs.bats pkgs.goreleaser pkgs.gh pkgs.d2 pkgs.resvg pkgs.source-sans pkgs.source-code-pro pkgs.just pkgs.tmux pkgs.util-linux pkgs.ncurses];
+            ++ [pkgs.go pkgs.gopls pkgs.gotools pkgs.golangci-lint pkgs.nilaway pkgs.chafa pkgs.bats pkgs.goreleaser pkgs.gh pkgs.d2 pkgs.resvg pkgs.source-sans pkgs.source-code-pro pkgs.just pkgs.tmux pkgs.util-linux pkgs.ncurses];
         };
 
         # `nix develop .#verify` — the real terminal hosts for manually checking the
@@ -128,6 +128,27 @@
             text = builtins.readFile ./adapters/claude-code/plugin/scripts/diagrams.sh;
           };
         };
+
+        # Static-analysis gate: golangci-lint (.golangci.yml), nilaway over this
+        # module, and the race detector. Reuses the default package's vendored deps
+        # so it runs in the network-less sandbox that blocks the pre-commit lint hooks.
+        checks.go-gate = self'.packages.default.overrideAttrs (old: {
+          pname = "aeye-go-gate";
+          nativeBuildInputs = old.nativeBuildInputs ++ [pkgs.golangci-lint pkgs.nilaway];
+          postConfigure = ''
+            export HOME=$TMPDIR
+            export GOLANGCI_LINT_CACHE=$TMPDIR/golangci-lint-cache
+          '';
+          checkPhase = ''
+            runHook preCheck
+            golangci-lint run
+            nilaway -include-pkgs=github.com/noamsto/aeye ./...
+            go test -race ./...
+            runHook postCheck
+          '';
+          installPhase = "touch $out";
+          postInstall = "";
+        });
 
         apps.default = {
           type = "app";

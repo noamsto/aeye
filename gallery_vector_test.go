@@ -50,7 +50,7 @@ func TestCropViewBoxNoViewBox(t *testing.T) {
 func TestRenderVectorMissingResvg(t *testing.T) {
 	// A real svg file so we exercise the resvg-lookup path, not the stat bail.
 	svg := filepath.Join(t.TempDir(), "x.svg")
-	if err := os.WriteFile(svg, []byte(`<svg viewBox="0 0 10 10"></svg>`), 0o644); err != nil {
+	if err := os.WriteFile(svg, []byte(`<svg viewBox="0 0 10 10"></svg>`), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
 	t.Setenv("AEYE_RESVG", "/definitely/not/resvg")

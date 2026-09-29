@@ -23,6 +23,9 @@ func TestResolveThemeVariantsOnlyD2(t *testing.T) {
 		{Path: "/d/shot-dark.png", Source: "screenshot"}, // non-d2: untouched even if suffix-like
 	}
 	out := resolveThemeVariants(in, "light")
+	if len(out) < 2 {
+		t.Fatalf("resolved %d entries, want 2", len(out))
+	}
 	if out[0].Path != "/d/a-light.png" || out[0].Vector != "/d/a-light.svg" {
 		t.Errorf("d2 entry not resolved: %+v", out[0])
 	}

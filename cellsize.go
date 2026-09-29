@@ -13,16 +13,16 @@ import (
 // form ESC [ 6 ; <height> ; <width> t — note height first.
 func parseCellPxReply(s string) (w, h int, ok bool) {
 	const prefix = "\x1b[6;"
-	i := strings.Index(s, prefix)
-	if i < 0 {
+	_, after, ok := strings.Cut(s, prefix)
+	if !ok {
 		return 0, 0, false
 	}
-	rest := s[i+len(prefix):]
-	end := strings.IndexByte(rest, 't')
-	if end < 0 {
+	rest := after
+	before0, _, ok0 := strings.Cut(rest, "t")
+	if !ok0 {
 		return 0, 0, false
 	}
-	parts := strings.Split(rest[:end], ";")
+	parts := strings.Split(before0, ";")
 	if len(parts) != 2 {
 		return 0, 0, false
 	}
@@ -43,12 +43,12 @@ func queryCellPx() (int, int) {
 	if err != nil {
 		return cellPxW, cellPxH
 	}
-	defer tty.Close()
+	defer tty.Close() //nolint:errcheck // closing /dev/tty on exit; nothing to recover
 	old, err := term.MakeRaw(tty.Fd())
 	if err != nil {
 		return cellPxW, cellPxH
 	}
-	defer term.Restore(tty.Fd(), old)
+	defer term.Restore(tty.Fd(), old) //nolint:errcheck // best-effort terminal restore in defer
 
 	if _, err := tty.WriteString("\x1b[16t"); err != nil {
 		return cellPxW, cellPxH

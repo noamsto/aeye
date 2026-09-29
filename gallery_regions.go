@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -202,12 +203,7 @@ func parseRegions(data []byte) []region {
 // isObjectPath rejects junk classes; a d2 object path is dot-separated non-empty
 // segments. (Connections/diagram-id are filtered separately by the caller.)
 func isObjectPath(p string) bool {
-	for _, seg := range strings.Split(p, ".") {
-		if seg == "" {
-			return false
-		}
-	}
-	return true
+	return !slices.Contains(strings.Split(p, "."), "")
 }
 
 var (
@@ -253,6 +249,9 @@ func newRegionTree(rs []region) *regionTree {
 // childrenOf returns the regions directly under the given drill path (nil/empty
 // = root level), in spatial reading order.
 func (t *regionTree) childrenOf(path []string) []region {
+	if t == nil {
+		return nil
+	}
 	return t.byParent[strings.Join(path, ".")]
 }
 
@@ -440,7 +439,7 @@ func (m *galleryModel) ensureRegions() {
 	if v == "" {
 		return
 	}
-	data, err := os.ReadFile(v)
+	data, err := os.ReadFile(v) //nolint:gosec // path is the user's own image/manifest file
 	if err != nil {
 		return
 	}

@@ -29,6 +29,6 @@ func runDragHelper(path string) string {
 	if name == "" {
 		return ""
 	}
-	_ = exec.Command(name, append(args, path)...).Start()
+	_ = exec.Command(name, append(args, path)...).Start() //nolint:gosec // helper name is chosen by the tool; args are not shell-interpreted
 	return name
 }

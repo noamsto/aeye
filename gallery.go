@@ -172,6 +172,7 @@ type galleryModel struct {
 	visible         bool                 // pane reachable by the image store at the last tick (see paneVisible)
 	pinned          bool                 // follow the newest image until the user first navigates
 	crop            cropFrac             // visible sub-rectangle of the source (fullCrop = fit)
+	mini            minimapState         // selected thumb's viewport overlay (see syncMinimap)
 	crops           map[string]savedCrop // per-image crops remembered across selection changes (see ensureDecoded)
 	curStamp        imageStamp           // identity of curImgPath when selected; validates a remembered crop
 	curImg          image.Image          // decoded working copy of the selection; nil while its decode is pending
@@ -430,8 +431,20 @@ func (m *galleryModel) transmitView() {
 			break
 		}
 		sid := m.stripID(s)
-		sapc := transmitVirtual(sid, cachedPNG(m.images[idx].Path, m.l.stripW, m.l.stripH), m.l.stripW, m.l.stripH)
+		var sapc string
+		var got minimapStamp
+		if idx == m.cursor {
+			sapc, got = m.selectedThumbStore(m.minimapWant())
+		} else {
+			sapc = transmitVirtual(sid, cachedPNG(m.images[idx].Path, m.l.stripW, m.l.stripH), m.l.stripW, m.l.stripH)
+		}
 		sn, serr := fmt.Fprint(m.tty, sapc)
+		if idx == m.cursor {
+			m.mini.stored = got
+			if serr != nil {
+				m.mini.stored = minimapStamp{}
+			}
+		}
 		m.storedIDs = append(m.storedIDs, sid)
 		stripCells++
 		stripBytes += len(sapc)
@@ -921,6 +934,7 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 			tracef("decode failed: %s", msg.path)
 			m.curImg, m.curSize = nil, image.Point{}
 			m.resetZoom()
+			m.syncMinimap()
 			return m, nil
 		}
 		// curSize takes the decoded size, so a re-capture at the same path with

@@ -158,6 +158,8 @@ pan is remembered for the session — `0`/`Esc` or zooming out to fit clears it,
 and an image whose file changed (modification time or pixel dimensions), or a
 diagram after a light/dark theme switch (its render is a different file), opens
 at fit.
+While zoomed, the selected filmstrip thumbnail marks the visible region with an
+outlined rectangle (kitty-protocol terminals).
 
 #### Diagrams (D2)
 

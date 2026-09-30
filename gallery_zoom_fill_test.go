@@ -72,7 +72,7 @@ func TestZoomFillsBoxOnExtremeAspect(t *testing.T) {
 						requested := 1.0
 						for i := range 40 {
 							in.step(&m)
-							requested *= 1.25
+							requested *= zoomStep
 							if requested < fillMag {
 								continue
 							}
@@ -126,6 +126,21 @@ func TestZoomDeepestIsFillViewOnExtremeAspect(t *testing.T) {
 	}
 }
 
+func TestZoomInAtCeilingAfterResizeDoesNotZoomOut(t *testing.T) {
+	m, frac := extremeAspectModel(t)
+	for range 40 {
+		pressZoom(&m, 'z')
+	}
+	before := zoomMagnification(m.crop, frac)
+	m.width, m.height = 70, 50
+	m.l = computeLayout(70, 50)
+	pressZoom(&m, 'z')
+	frac = boxAspectFrac(300, 1800, m.l.previewW*10, m.l.previewH*20)
+	if got := zoomMagnification(m.crop, frac); got < before-1e-9 {
+		t.Fatalf("zoom-in after resize dropped magnification %.6f -> %.6f", before, got)
+	}
+}
+
 func TestZoomOutFromFillCeilingRetraces(t *testing.T) {
 	m, frac := extremeAspectModel(t)
 	for range 40 {
@@ -133,8 +148,8 @@ func TestZoomOutFromFillCeilingRetraces(t *testing.T) {
 	}
 	before := zoomMagnification(m.crop, frac)
 	pressZoom(&m, 'Z')
-	if got := before / zoomMagnification(m.crop, frac); math.Abs(got-1.25) > 1e-9 {
-		t.Fatalf("first zoom-out divided magnification by %.6f, want 1.25", got)
+	if got := before / zoomMagnification(m.crop, frac); math.Abs(got-zoomStep) > 1e-9 {
+		t.Fatalf("first zoom-out divided magnification by %.6f, want %.2f", got, zoomStep)
 	}
 	for range 60 {
 		pressZoom(&m, 'Z')

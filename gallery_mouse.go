@@ -201,9 +201,9 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 			break
 		}
 		if m.previewRect().contains(e.X, e.Y) {
-			factor := 1.25
+			factor := zoomStep
 			if dir > 0 {
-				factor = 1 / 1.25
+				factor = 1 / zoomStep
 			}
 			m.zoomAt(e.X, e.Y, factor)
 			m.transmitPreviewOnly()

@@ -32,9 +32,9 @@ func imageSize(path string) image.Point {
 // cropRaster renders a crop (w x h source fractions) at min(1, boxW/(w*srcX),
 // boxH/(h*srcY)), so a copy scaled by s loses nothing iff s is at least that.
 // Every non-region crop keeps its longer side >= 1/zoomMax (zoomFloor bounds
-// wheel and scaleCropAbout; toggleFill and baseFillCrop always keep one axis at
-// 1; zoomBy's box-fit ceiling may pass zoomMax only up to the fill point, where
-// the longer side is 1), hence the bound is the larger of the two per-axis
+// scaleCropAbout; zoomBy's box-fit ceiling, for z/Z and the wheel, may pass
+// zoomMax only up to the fill point, where the longer side is 1; toggleFill and
+// baseFillCrop always keep one axis at 1), hence the bound is the larger of the two per-axis
 // ratios times zoomMax, not the smaller: a thin strip is limited by its long
 // axis. Region mode can zoom deeper but is d2-on-kitty only, and resvg
 // re-renders that.

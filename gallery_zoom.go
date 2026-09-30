@@ -42,6 +42,9 @@ func clampF(v, lo, hi float64) float64 {
 
 const zoomMax = 8.0
 
+// zoomStep is the per-press and per-notch zoom factor.
+const zoomStep = 1.25
+
 func (m *galleryModel) resetZoom() { m.crop = fullCrop() }
 
 // recenterScaled returns a crop of the given width/height centered at (cx,cy),
@@ -187,10 +190,14 @@ func (m *galleryModel) usesBoxFitZoom() bool {
 func (m *galleryModel) zoomBy(factor float64) {
 	if m.curSize != (image.Point{}) && m.usesBoxFitZoom() {
 		frac := boxAspectFrac(m.curSize.X, m.curSize.Y, m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
-		mag := zoomMagnification(m.crop, frac) * factor
-		if maxMag := max(1/m.zoomFloor(), max(frac, 1/frac)); mag > maxMag {
-			mag = maxMag
+		maxMag := max(1/m.zoomFloor(), frac, 1/frac)
+		cur := zoomMagnification(m.crop, frac)
+		// A resize can lower the ceiling below the current view; zooming in
+		// must not snap back out to it.
+		if factor > 1 && cur >= maxMag {
+			return
 		}
+		mag := min(cur*factor, maxMag)
 		if mag <= 1 {
 			m.crop = fullCrop()
 			return

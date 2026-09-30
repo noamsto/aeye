@@ -688,10 +688,10 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectIndex(m.cursor - 1)
 			}
 		case "z", "+", "=":
-			m.zoomBy(1.25)
+			m.zoomBy(zoomStep)
 			m.transmitPreviewOnly()
 		case "Z", "-", "_":
-			m.zoomBy(1 / 1.25)
+			m.zoomBy(1 / zoomStep)
 			m.transmitPreviewOnly()
 		case "f":
 			if m.regionIdx >= 0 {

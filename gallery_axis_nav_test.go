@@ -8,9 +8,7 @@ import (
 
 // TestAxisFallbackNavigation pins the per-axis contract for the zoomed pan keys:
 // a key pans on an axis whose crop has slack, and switches images on an axis
-// whose crop already spans the whole image. The expected outcome is hardcoded
-// per shape from the task contract — never recomputed from the pan predicate —
-// so a wrong threshold cannot move the oracle with the implementation.
+// whose crop already spans the whole image.
 func TestAxisFallbackNavigation(t *testing.T) {
 	type keyCase struct {
 		msg      tea.KeyPressMsg

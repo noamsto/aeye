@@ -661,8 +661,8 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		// While zoomed, hjkl and the arrows pan on an axis with slack; on an axis
 		// whose crop already spans the whole image they switch images, as when not
-		// zoomed. The switch goes through selectIndex, so it saves the current crop
-		// and restores the target's remembered one (n/p/g/G share that path).
+		// zoomed. The switch goes through selectIndex, so the crop is saved and the
+		// target's remembered one restored.
 		case "right", "l":
 			if m.crop.pansX() {
 				m.panBy(0.1, 0)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -84,17 +85,25 @@ func TestExplicitResetForgetsCrop(t *testing.T) {
 			}
 		})
 	}
-	t.Run("reset after a restore", func(t *testing.T) {
-		m := land(t, newDecodeModel(t, sizeA, sizeB))
-		m = sendAll(t, m, keyZoom, keyZoom, key2, key1)
-		if m.crop.isFull() {
-			t.Fatal("setup: crop was not restored")
-		}
-		m = sendAll(t, m, keyUnzoom, key2, key1)
-		if !m.crop.isFull() {
-			t.Errorf("A reopened at %+v, want fit", m.crop)
-		}
-	})
+	for _, tc := range []struct {
+		name  string
+		reset tea.Msg
+	}{
+		{"reset after a restore with 0", keyUnzoom},
+		{"reset after a restore with esc", keyEsc},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := land(t, newDecodeModel(t, sizeA, sizeB))
+			m = sendAll(t, m, keyZoom, keyZoom, key2, key1)
+			if m.crop.isFull() {
+				t.Fatal("setup: crop was not restored")
+			}
+			m = sendAll(t, m, tc.reset, key2, key1)
+			if !m.crop.isFull() {
+				t.Errorf("A reopened at %+v, want fit", m.crop)
+			}
+		})
+	}
 }
 
 func TestRestoreDuringDecodeWindowAppliesOnLand(t *testing.T) {
@@ -159,5 +168,40 @@ func TestPruneCropsEvictsDroppedImages(t *testing.T) {
 	m.pruneCrops()
 	if _, ok := m.crops["a"]; !ok || len(m.crops) != 1 {
 		t.Errorf("crops = %v, want only a", m.crops)
+	}
+}
+
+func TestReloadEvictsCropOfDroppedImage(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AEYE_DIR", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "images"), 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	a, b := filepath.Join(dir, "a.png"), filepath.Join(dir, "b.png")
+	writeTestImage(t, a, 4, 4)
+	writeTestImage(t, b, 4, 4)
+	manifest := manifestPath("p1")
+	line := func(p string) string { return `{"type":"image","path":"` + p + `","mtime":1}` + "\n" }
+	if err := os.WriteFile(manifest, []byte(line(a)+line(b)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &galleryModel{pane: "p1"}
+	m.reload()
+	if len(m.images) != 2 {
+		t.Fatalf("setup: reload = %+v, want a and b", m.images)
+	}
+	c := savedCrop{crop: cropFrac{0, 0, 0.5, 0.5}}
+	m.crops = map[string]savedCrop{a: c, b: c}
+
+	if err := os.WriteFile(manifest, []byte(line(b)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m.reload()
+	if _, ok := m.crops[a]; ok {
+		t.Errorf("crops = %v, want a evicted", m.crops)
+	}
+	if _, ok := m.crops[b]; !ok {
+		t.Errorf("crops = %v, want b kept", m.crops)
 	}
 }

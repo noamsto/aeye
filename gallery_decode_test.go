@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
@@ -198,15 +197,7 @@ func encode16BitPNG(t *testing.T, w, h int, seed uint16) []byte {
 // many reads rather than one buffered chunk.
 func encodeNoisePNG(t *testing.T, w, h int) []byte {
 	t.Helper()
-	img := image.NewNRGBA64(image.Rect(0, 0, w, h))
-	v := uint64(0x9e3779b97f4a7c15)
-	for i := 0; i < len(img.Pix); i += 8 {
-		v ^= v << 13
-		v ^= v >> 7
-		v ^= v << 17
-		binary.BigEndian.PutUint64(img.Pix[i:], v)
-	}
-	return encodePNG(t, img)
+	return encodePNG(t, noiseNRGBA64(w, h, 1))
 }
 
 func encodePNG(t *testing.T, img image.Image) []byte {

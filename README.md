@@ -134,7 +134,7 @@ session reads/writes/screenshots images.
 
 | Key | Action |
 |---|---|
-| `←` `→` `↑` `↓` / `h` `l` `k` `j` | Move selection (**pan** when zoomed in or fill-framed) |
+| `←` `→` `↑` `↓` / `h` `l` `k` `j` | Move selection — while zoomed in or fill-framed, pan on an axis with overflow; keys on an axis with nothing to pan switch images |
 | `n` / `p` | Page the filmstrip |
 | `g` / `G` (or `Home` / `End`) | First / last image |
 | `1`–`9` | Jump to the Nth image |
@@ -149,12 +149,15 @@ session reads/writes/screenshots images.
 | `r` | Reload the manifest |
 | `q` / `Ctrl-C` | Quit |
 
-When zoomed in or fill-framed (`f`), the arrows/`hjkl` pan the preview instead
-of moving the selection — use `n`/`p`/`g`/`G` (or `0`/`Esc`) to change image
-while the crop is not full. Each image's zoom and pan is remembered for the
-session — `0`/`Esc` or zooming out to fit clears it, and an image whose file
-changed (modification time or pixel dimensions), or a diagram after a
-light/dark theme switch (its render is a different file), opens at fit.
+When zoomed in or fill-framed (`f`), the arrows/`hjkl` pan the preview on an
+axis that has overflow. An axis whose crop already spans the whole image — a
+thin, tall diagram or a short, wide one — has nothing to pan there, so that
+axis's keys fall back to switching images, exactly like `n`/`p` (the current
+crop is saved and the target's remembered one restored). Each image's zoom and
+pan is remembered for the session — `0`/`Esc` or zooming out to fit clears it,
+and an image whose file changed (modification time or pixel dimensions), or a
+diagram after a light/dark theme switch (its render is a different file), opens
+at fit.
 
 #### Diagrams (D2)
 

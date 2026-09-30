@@ -12,7 +12,6 @@ import (
 var (
 	key1    = tea.KeyPressMsg{Text: "1", Code: '1'}
 	key2    = tea.KeyPressMsg{Text: "2", Code: '2'}
-	keyL    = tea.KeyPressMsg{Text: "l", Code: 'l'}
 	keyJ    = tea.KeyPressMsg{Text: "j", Code: 'j'}
 	keyOut  = tea.KeyPressMsg{Text: "Z", Code: 'Z'}
 	keyEsc  = tea.KeyPressMsg{Code: tea.KeyEscape}
@@ -29,7 +28,10 @@ func sendAll(t *testing.T, m galleryModel, msgs ...tea.Msg) galleryModel {
 
 func TestCropRememberedPerImage(t *testing.T) {
 	m := land(t, newDecodeModel(t, sizeA, sizeB))
-	m = sendAll(t, m, keyZoom, keyZoom, keyL, keyJ)
+	// Pan vertically only: after this zoom the crop still spans the full width,
+	// so l/h switch images instead of panning (TestAxisFallbackNavigation). j
+	// still leaves a non-centered crop for the memory assertion.
+	m = sendAll(t, m, keyZoom, keyZoom, keyJ)
 	cropA := m.crop
 	if cropA.isFull() {
 		t.Fatal("setup: A is not zoomed")

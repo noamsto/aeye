@@ -659,32 +659,33 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 			dir, _ := neighborForKey(msg.String())
 			kittyNeighbor(dir)
 			return m, nil
-		// When zoomed, hjkl and the arrows pan; otherwise they navigate the
-		// filmstrip. To move to another image while zoomed, use n/p/g/G (the target
-		// opens at its remembered crop, or fit) or 0/esc first.
+		// While zoomed, hjkl and the arrows pan on an axis with slack; on an axis
+		// whose crop already spans the whole image they switch images, as when not
+		// zoomed. The switch goes through selectIndex, so the crop is saved and the
+		// target's remembered one restored.
 		case "right", "l":
-			if !m.crop.isFull() {
+			if m.crop.pansX() {
 				m.panBy(0.1, 0)
 				m.transmitPreviewOnly()
 			} else {
 				m.selectIndex(m.cursor + 1)
 			}
 		case "left", "h":
-			if !m.crop.isFull() {
+			if m.crop.pansX() {
 				m.panBy(-0.1, 0)
 				m.transmitPreviewOnly()
 			} else {
 				m.selectIndex(m.cursor - 1)
 			}
 		case "down", "j":
-			if !m.crop.isFull() {
+			if m.crop.pansY() {
 				m.panBy(0, 0.1)
 				m.transmitPreviewOnly()
 			} else {
 				m.selectIndex(m.cursor + 1)
 			}
 		case "up", "k":
-			if !m.crop.isFull() {
+			if m.crop.pansY() {
 				m.panBy(0, -0.1)
 				m.transmitPreviewOnly()
 			} else {
@@ -1206,7 +1207,7 @@ func (m galleryModel) renderView() string {
 	// they apply to plain images and diagrams alike; the region keys ride on the
 	// preview's top border instead (see above).
 	hintStyle := lipgloss.NewStyle().Foreground(hintFg)
-	navKeys := "h/l move · n/p page · g/G ends · z/Z zoom · f fill · hjkl pan · 0 reset"
+	navKeys := "h/l move · n/p page · g/G ends · z/Z zoom · f fill · hjkl pan/switch · 0 reset"
 	second := m.actionRow()
 	legend := lipgloss.JoinVertical(lipgloss.Left,
 		center(hintStyle.Render(truncateToWidth(navKeys, m.width))),

@@ -26,9 +26,18 @@ func (c cropFrac) h() float64  { return c.y1 - c.y0 }
 func (c cropFrac) cx() float64 { return (c.x0 + c.x1) / 2 }
 func (c cropFrac) cy() float64 { return (c.y0 + c.y1) / 2 }
 
+// pansX reports whether the crop has horizontal slack — the source image is
+// wider than the visible crop, so the horizontal pan keys have somewhere to go.
+// A full-width crop has none, and its keys switch images instead.
+func (c cropFrac) pansX() bool { return c.w() < 0.999 }
+
+// pansY is the vertical counterpart of pansX.
+func (c cropFrac) pansY() bool { return c.h() < 0.999 }
+
 // isFull reports whether the crop covers (essentially) the whole image, i.e.
-// nothing is zoomed. The epsilon absorbs float drift from repeated zoom-out.
-func (c cropFrac) isFull() bool { return c.w() >= 0.999 && c.h() >= 0.999 }
+// nothing is zoomed on either axis. The epsilon absorbs float drift from
+// repeated zoom-out.
+func (c cropFrac) isFull() bool { return !c.pansX() && !c.pansY() }
 
 // clampF clamps a float64 to [lo, hi].
 func clampF(v, lo, hi float64) float64 {

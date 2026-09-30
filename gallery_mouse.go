@@ -1,6 +1,8 @@
 package main
 
 import (
+	"image"
+
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -116,10 +118,10 @@ func unletterbox(bx, by, ratio float64) (u, v float64, ok bool) {
 // imageFracAt maps a screen cell in the preview to a point in source-image
 // fractions, inverting the fit-to-box placement the renderer and kitty perform
 // together. ok is false when the cell falls on the letterbox margin rather than
-// on the image, or when there is nothing decoded to map against.
+// on the image, or when the image size is unknown so there is nothing to map against.
 func (m *galleryModel) imageFracAt(sx, sy int) (fx, fy float64, ok bool) {
 	pr := m.previewRect()
-	if m.curImg == nil || pr.w == 0 || pr.h == 0 || !pr.contains(sx, sy) {
+	if m.curSize == (image.Point{}) || pr.w == 0 || pr.h == 0 || !pr.contains(sx, sy) {
 		return 0, 0, false
 	}
 	u, v, ok := unletterbox(
@@ -136,13 +138,12 @@ func (m *galleryModel) imageFracAt(sx, sy int) (fx, fy float64, ok bool) {
 // displayRatio is the displayed image's aspect relative to the preview box's:
 // >1 means wider than the box. boxAspectFrac gives the crop-fraction aspect that
 // would fill the box exactly, so dividing the crop's own aspect by it yields the
-// shortfall on whichever axis letterboxes. Caller must have m.curImg.
+// shortfall on whichever axis letterboxes. Caller must have m.curSize.
 func (m *galleryModel) displayRatio() float64 {
-	if m.curImg == nil {
+	if m.curSize == (image.Point{}) {
 		return 1
 	}
-	b := m.curImg.Bounds()
-	fill := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
+	fill := boxAspectFrac(m.curSize.X, m.curSize.Y, m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
 	return (m.crop.w() / m.crop.h()) / fill
 }
 
@@ -152,7 +153,7 @@ func (m *galleryModel) displayRatio() float64 {
 // in region mode — steps back one level. A miss outside region mode is inert, so it never disturbs a
 // wheel-zoom. Reports whether anything changed.
 func (m *galleryModel) regionClick(sx, sy int) bool {
-	if m.curVector() == "" || m.curImg == nil {
+	if m.curVector() == "" || m.curSize == (image.Point{}) {
 		return false
 	}
 	m.ensureRegions()

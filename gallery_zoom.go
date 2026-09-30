@@ -55,13 +55,12 @@ func recenterScaled(cx, cy, w, h float64) cropFrac {
 // baseFillCrop is the largest crop — centered on the current view — whose pixel
 // aspect matches the preview box, so it fills the box with no letterbox. For a
 // wide image that's a full-height vertical slice; for a tall image, a full-width
-// horizontal band. Returns fullCrop when nothing is decoded.
+// horizontal band. Returns fullCrop when the image size is unknown.
 func (m *galleryModel) baseFillCrop() cropFrac {
-	if m.curImg == nil {
+	if m.curSize == (image.Point{}) {
 		return fullCrop()
 	}
-	b := m.curImg.Bounds()
-	frac := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
+	frac := boxAspectFrac(m.curSize.X, m.curSize.Y, m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
 	w, h := 1.0, 1.0
 	if frac <= 1 {
 		w = frac
@@ -99,11 +98,10 @@ func (m *galleryModel) zoomFloor() float64 {
 // aspect matches the box's. False for the letterboxed rest view of a non-square
 // image; toggleFill uses this to decide whether to switch to fullCrop or baseFillCrop.
 func (m *galleryModel) cropFillsBox() bool {
-	if m.curImg == nil {
+	if m.curSize == (image.Point{}) {
 		return true
 	}
-	b := m.curImg.Bounds()
-	want := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
+	want := boxAspectFrac(m.curSize.X, m.curSize.Y, m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
 	return math.Abs(m.crop.w()/m.crop.h()-want) < want*1e-3
 }
 
@@ -161,7 +159,7 @@ func cropAtMagnification(mag, cx, cy, frac float64) cropFrac {
 // identifiable once neither side is pinned at 1. Never while a region frame is
 // focused, which zooms relative to its own framing instead (see zoomFloor).
 func (m *galleryModel) usesBoxFitZoom() bool {
-	if m.curImg == nil {
+	if m.curSize == (image.Point{}) {
 		return false
 	}
 	if _, ok := m.focusedFrame(); ok {
@@ -185,9 +183,8 @@ func (m *galleryModel) usesBoxFitZoom() bool {
 // rest framing, instead scales uniformly about its center with aspect preserved,
 // as before — see usesBoxFitZoom.
 func (m *galleryModel) zoomBy(factor float64) {
-	if m.curImg != nil && m.usesBoxFitZoom() {
-		b := m.curImg.Bounds()
-		frac := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
+	if m.curSize != (image.Point{}) && m.usesBoxFitZoom() {
+		frac := boxAspectFrac(m.curSize.X, m.curSize.Y, m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
 		mag := zoomMagnification(m.crop, frac) * factor
 		if maxMag := 1 / m.zoomFloor(); mag > maxMag {
 			mag = maxMag
@@ -219,7 +216,7 @@ func (m *galleryModel) zoomBy(factor float64) {
 // is a framing rewrite. When the image already matches the preview box,
 // baseFillCrop equals fullCrop, so the call is a no-op.
 func (m *galleryModel) toggleFill() {
-	if m.curImg == nil {
+	if m.curSize == (image.Point{}) {
 		return
 	}
 	if m.cropFillsBox() && !m.crop.isFull() {
@@ -239,14 +236,19 @@ func (m *galleryModel) panBy(dx, dy float64) {
 	m.crop = cropFrac{x0, y0, x0 + w, y0 + h}
 }
 
-// ensureDecoded decodes the currently-selected image into m.curImg, but only
-// when the selected path changed since the last decode. A changed selection
-// resets the crop to fit; an unchanged selection (e.g. an auto-refresh tick that
-// appended a different image elsewhere) preserves the crop and the decode.
+// ensureDecoded records the currently-selected image — its path and source size
+// — and requests its decode, but only when the selected path changed since the
+// last call; the pixels arrive later as a decodedMsg. A changed selection resets
+// the crop to fit and drops the previous working copy before the new decode
+// allocates; an unchanged selection (e.g. an auto-refresh tick that appended a
+// different image elsewhere) preserves the crop and the pixels. curImgPath is
+// set even when the header is unreadable, so a broken file is not retried on
+// every call.
 func (m *galleryModel) ensureDecoded() {
 	if len(m.images) == 0 {
-		m.curImg, m.curImgPath = nil, ""
+		m.curImg, m.curImgPath, m.curSize = nil, "", image.Point{}
 		m.regions, m.regionPath, m.regionIdx = nil, nil, -1
+		m.requestDecode()
 		return
 	}
 	p := m.images[m.cursor].Path
@@ -255,19 +257,10 @@ func (m *galleryModel) ensureDecoded() {
 	}
 	m.resetZoom()
 	m.regions, m.regionPath, m.regionIdx = nil, nil, -1
-	f, err := os.Open(p) //nolint:gosec // path is the user's own image/manifest file
-	if err != nil {
-		m.curImg = nil
-		return
-	}
-	defer f.Close() //nolint:errcheck // read-only file or already-failing path; close error is not actionable
-	img, _, err := image.Decode(f)
-	if err != nil {
-		m.curImg = nil
-		return
-	}
-	m.curImg = img
+	m.curImg = nil
 	m.curImgPath = p
+	m.curSize = imageSize(p)
+	m.requestDecode()
 }
 
 // cropPixels maps a normalized crop to a pixel rectangle inside b, offset by
@@ -369,6 +362,13 @@ func (m *galleryModel) storePreviewCrop() string {
 // blank); skipping the delete avoids the blank-frame flicker on zoom/pan.
 func (m *galleryModel) transmitPreviewOnly() {
 	if m.backend != backendKitty || m.tty == nil || len(m.images) == 0 {
+		return
+	}
+	// Pixels pending: the only frame this could produce is the unzoomed original,
+	// which transmitView already stored (and storing the file itself makes kitty
+	// decode it at full size). A full crop still re-stores: on a d2 entry a sharp
+	// zoomed vector frame may be up and must be replaced on zoom-out.
+	if m.curImg == nil && !m.crop.isFull() {
 		return
 	}
 	fmt.Fprint(m.tty, m.storePreviewCrop()) //nolint:errcheck // best-effort tty escape-sequence write

@@ -11,7 +11,7 @@ import (
 )
 
 // newUnsizedModel builds a model in the state a freshly-spawned pane is in
-// before its first (real) WindowSizeMsg: curImg eagerly decoded, but layout
+// before its first (real) WindowSizeMsg: selection sized eagerly, but layout
 // still zero (previewW == previewH == 0) and ready == false.
 func newUnsizedModel(t *testing.T) galleryModel {
 	t.Helper()
@@ -37,9 +37,9 @@ func newUnsizedModel(t *testing.T) galleryModel {
 		tty:     tty,
 		crop:    fullCrop(),
 	}
-	m.ensureDecoded() // mirrors runGallery: curImg is non-nil before first size
-	if m.curImg == nil {
-		t.Fatal("curImg not decoded")
+	m.ensureDecoded() // mirrors runGallery: curSize is known before first size
+	if m.curSize != image.Pt(40, 30) {
+		t.Fatalf("curSize = %v, want 40x30", m.curSize)
 	}
 	return m
 }

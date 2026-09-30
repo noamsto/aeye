@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"hash/fnv"
 	"image"
@@ -171,8 +172,17 @@ type galleryModel struct {
 	visible         bool        // pane reachable by the image store at the last tick (see paneVisible)
 	pinned          bool        // follow the newest image until the user first navigates
 	crop            cropFrac    // visible sub-rectangle of the source (fullCrop = fit)
-	curImg          image.Image // decoded source of the current selection
-	curImgPath      string      // path curImg was decoded from
+	curImg          image.Image // decoded working copy of the selection; nil while its decode is pending
+	curImgPath      string      // path the selection state (curSize, decode request) belongs to
+	curSize         image.Point // source pixel size of curImgPath; zero when its header is unreadable
+	curScale        float64     // scale curImg was built at (workingScale); below 1 the copy is capped
+	// decodeGen is bumped by every decode request (selection change, or a resize
+	// that outgrew curScale); kicks and results carrying an older one are dropped,
+	// mirroring vecGen/rasterGen. decodeArmedGen is the last gen given a kick, so
+	// each request is scheduled once. decodeCancel aborts the running decode.
+	decodeGen      uint64
+	decodeArmedGen uint64
+	decodeCancel   context.CancelFunc
 	// Terminal cell size in pixels, measured once at startup (CSI 16 t), with the
 	// cellPxW/cellPxH estimates as fallback. Load-bearing for crop geometry: the
 	// estimates assume a 1:2 cell, so a real 10x22 cell skews every crop shaped
@@ -570,7 +580,11 @@ func (m *galleryModel) isPending(e imageEntry) bool {
 func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	next, cmd := m.handle(msg)
 	if nm, ok := next.(galleryModel); ok {
+		// Decode requests are raised in helpers that return no Cmd; arming here
+		// schedules each one wherever it came from.
+		cmd = tea.Batch(cmd, nm.armDecode())
 		nm.tick.publish(nm)
+		next = nm
 	}
 	return next, cmd
 }
@@ -602,6 +616,13 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 		firstReady := !m.ready
 		m.width, m.height = w, h
 		m.l = computeLayout(w, h)
+		if m.curImg != nil {
+			// A capped copy can't serve the bigger box losslessly: re-decode, and
+			// keep rendering the current copy until the sharper one lands.
+			if bw, bh := m.previewBoxPx(); workingScale(m.curSize, bw, bh) > m.curScale {
+				m.requestDecode()
+			}
+		}
 		m.ready = true
 		tracef("size applied w=%d h=%d firstReady=%v previewW=%d previewH=%d", w, h, firstReady, m.l.previewW, m.l.previewH)
 		m.transmitView()
@@ -876,6 +897,42 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.paintRaster()
 		}
 		return m, nil
+	case decodeKickMsg:
+		if msg.gen != m.decodeGen {
+			return m, nil
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		m.decodeCancel = cancel
+		w, h := m.previewBoxPx()
+		return m, decodeCmd(ctx, msg.gen, m.curImgPath, w, h)
+	case decodedMsg:
+		// Only the latest request for the current selection lands.
+		if msg.gen != m.decodeGen || msg.path != m.curImgPath {
+			return m, nil
+		}
+		m.cancelDecode()
+		if msg.img == nil {
+			// Undecodable: fall back to the no-zoom geometry of an unknown size. The
+			// crop was never visibly applied, since no pixels existed.
+			tracef("decode failed: %s", msg.path)
+			m.curImg, m.curSize = nil, image.Point{}
+			m.resetZoom()
+			return m, nil
+		}
+		// curSize takes the decoded size, so a re-capture at the same path with
+		// new dimensions can't leave geometry and pixels disagreeing.
+		m.curImg, m.curSize, m.curScale = msg.img, msg.src, msg.scale
+		if bw, bh := m.previewBoxPx(); workingScale(msg.src, bw, bh) > msg.scale {
+			m.requestDecode() // the box grew while this decode ran
+		}
+		// Full crop: transmitView already stored the right frame from cachedPNG.
+		// d2 on kitty: every crop change scheduled a sharp resvg render of it; a
+		// bitmap re-store could overwrite that with a blurrier frame.
+		if m.crop.isFull() || (m.curVector() != "" && m.backend == backendKitty) {
+			return m, nil
+		}
+		m.transmitPreviewOnly()
+		return m, m.schedulePaint()
 	}
 	return m, nil
 }
@@ -964,12 +1021,11 @@ func (m *galleryModel) handleDragEvent(payload string) {
 			return
 		}
 		if m.tty != nil && len(m.images) > 0 {
-			if m.curImg == nil {
-				m.ensureDecoded()
-			}
 			m.dragInFlight = true
 			m.tty.WriteString(dragOfferSeq())                                //nolint:errcheck,gosec // best-effort tty escape-sequence write
 			m.tty.WriteString(dragDataSeq(fileURI(m.images[m.cursor].Path))) //nolint:errcheck,gosec // best-effort tty escape-sequence write
+			// While the selection is still decoding curImg is nil and dragIconFrames
+			// omits the icon, so the terminal shows its default.
 			for _, f := range dragIconFrames(m.curImg) {
 				m.tty.WriteString(f) //nolint:errcheck,gosec // best-effort tty escape-sequence write
 			}
@@ -1061,7 +1117,13 @@ func (m galleryModel) renderView() string {
 	case backendRaster:
 		preview = blankBlock(m.l.previewW, m.l.previewH)
 	default:
-		preview = cachedSymbols(m.images[m.cursor].Path, m.l.previewW, m.l.previewH, m.crop, func() string {
+		// Until pixels land renderZoom serves the unzoomed original; caching that
+		// under the zoomed crop would keep showing it after the decode.
+		crop := m.crop
+		if m.curImg == nil {
+			crop = fullCrop()
+		}
+		preview = cachedSymbols(m.images[m.cursor].Path, m.l.previewW, m.l.previewH, crop, func() string {
 			return m.renderZoom(m.l.previewW, m.l.previewH)
 		})
 	}
@@ -1259,8 +1321,9 @@ func runGallery(pane string) error {
 		bridged:    bridgedPolicy(relayed),
 		tick:       &tickSnapshot{},
 	}
-	// Decode the initial selection now so zoom works on the first keystroke
-	// (otherwise curImg is nil until the first refresh tick).
+	// Record the initial selection and its size now, so zoom geometry works on the
+	// first keystroke. Its pixels decode once the first WindowSizeMsg sizes the
+	// box the working copy is capped against (input is gated on ready until then).
 	m.ensureDecoded()
 	// Resolve theme colors once (each is a tmux subprocess; don't do it per frame).
 	m.selColor = m.thmColor("@thm_mauve", "#cba6f7", "#8839ef")

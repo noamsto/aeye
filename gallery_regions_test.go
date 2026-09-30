@@ -311,6 +311,7 @@ func blockModel() *galleryModel {
 		regions:   newRegionTree(rs),
 		regionIdx: -1,
 		curImg:    image.NewRGBA(image.Rect(0, 0, 1600, 900)),
+		curSize:   image.Pt(1600, 900),
 		l:         layout{previewW: 100, previewH: 40},
 		cellW:     10,
 		cellH:     22,

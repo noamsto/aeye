@@ -11,9 +11,7 @@ import (
 
 // displayedSpan is how much of the preview box, per axis, the zoomed view covers
 // once kitty fits the crop into the box preserving aspect: 1 on the box-binding
-// axis, the letterbox shortfall on the other. Computed from the source size and
-// box pixels alone, so it checks the crop against what the terminal shows rather
-// than against zoomBy's own aspect predicate.
+// axis, the letterbox shortfall on the other.
 func displayedSpan(crop cropFrac, src image.Point, boxW, boxH int) (spanX, spanY float64) {
 	cw, ch := crop.w()*float64(src.X), crop.h()*float64(src.Y)
 	scale := min(float64(boxW)/cw, float64(boxH)/ch)

@@ -228,6 +228,9 @@ func newMinimapModel(t *testing.T, rec *transmitRecorder) *galleryModel {
 	t.Helper()
 	t.Setenv("TMUX", "")
 	m := newTransmitModel(t, rec, 3)
+	if len(m.images) < 2 {
+		t.Fatalf("newMinimapModel needs at least 2 images, got %d", len(m.images))
+	}
 	p := writeSizedPNG(t, 400, 100)
 	m.images[1] = imageEntry{Path: p, Mtime: 20}
 	m.cursor, m.crop = 1, fullCrop()
@@ -263,6 +266,9 @@ func onlyStore(t *testing.T, buf []byte, id int) kittyStore {
 func assertPlain(t *testing.T, s kittyStore, m *galleryModel) {
 	t.Helper()
 	assertKey(t, s, "f", 100)
+	if m.cursor >= len(m.images) {
+		t.Fatalf("assertPlain: cursor %d out of range (%d images)", m.cursor, len(m.images))
+	}
 	if want := cachedPNG(m.images[m.cursor].Path, m.l.stripW, m.l.stripH); s.path != want {
 		t.Errorf("plain store path = %s, want %s", s.path, want)
 	}
@@ -534,6 +540,9 @@ func TestMinimapBrokenBaseNotRetried(t *testing.T) {
 	bad := filepath.Join(t.TempDir(), "bad.png")
 	if err := os.WriteFile(bad, []byte("not a png"), 0o600); err != nil {
 		t.Fatal(err)
+	}
+	if len(m.images) < 2 {
+		t.Fatalf("TestMinimapBrokenBaseNotRetried: need at least 2 images, got %d", len(m.images))
 	}
 	m.images[1].Path, m.curImgPath = bad, bad
 	m.transmitView()

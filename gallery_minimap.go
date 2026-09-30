@@ -130,6 +130,9 @@ type minimapState struct {
 
 // minimapWant is the stamp the selected slot should hold now. It does no pixel work.
 func (m *galleryModel) minimapWant() minimapStamp {
+	if m.cursor >= len(m.images) {
+		return minimapStamp{}
+	}
 	e := m.images[m.cursor]
 	w := minimapStamp{
 		id:    m.stripID(m.cursor - stripStart(m.cursor, m.l.stripCols, len(m.images))),

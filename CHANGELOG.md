@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/noamsto/aeye/compare/v1.4.2...v1.5.0) (2026-09-30)
+
+
+### Features
+
+* remember zoom and pan per image ([#295](https://github.com/noamsto/aeye/issues/295)) ([c5b7d5e](https://github.com/noamsto/aeye/commit/c5b7d5ead3ea77f444762dfa93b84437641fa7ef))
+
 ## [1.4.2](https://github.com/noamsto/aeye/compare/v1.4.1...v1.4.2) (2026-09-30)
 
 

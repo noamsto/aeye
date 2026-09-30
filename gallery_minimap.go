@@ -1,12 +1,15 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"math"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/image/draw"
 )
 
 // minimapMinSide is the smallest viewport rectangle side in px: an outer black and
@@ -90,4 +93,132 @@ func (m *galleryModel) minimapRawPath() string {
 
 func (m *galleryModel) minimapPNGPath() string {
 	return filepath.Join(os.TempDir(), "aeye-minimap-"+strings.TrimPrefix(m.pane, "%")+".png")
+}
+
+// minimapStamp names what the selected filmstrip slot holds, or should hold. Two
+// equal stamps mean the same pixels, so syncMinimap skips the re-store.
+type minimapStamp struct {
+	id      int
+	path    string
+	mtime   int64
+	overlay bool            // false = the plain thumb
+	fit     image.Point     // raster size; zero unless overlay
+	rect    image.Rectangle // viewport rectangle in that raster; zero unless overlay
+}
+
+// minimapBaseKey identifies the scaled thumb an overlay is drawn on. A comparable
+// struct rather than a string so the per-frame check allocates nothing.
+type minimapBaseKey struct {
+	path  string
+	mtime int64
+	fit   image.Point
+}
+
+func (s minimapStamp) baseKey() minimapBaseKey {
+	return minimapBaseKey{path: s.path, mtime: s.mtime, fit: s.fit}
+}
+
+// minimapState is the selected thumb's viewport-overlay bookkeeping. base and
+// frame are reused across pan frames so a steady-state overlay allocates no pixels.
+type minimapState struct {
+	stored    minimapStamp // what the selected slot holds now; zero = unknown
+	baseKey   minimapBaseKey
+	base      *image.RGBA    // selected thumb scaled to fit, no outline
+	frame     *image.RGBA    // base plus the outline; same bounds as base
+	failedKey minimapBaseKey // base that could not be built; not retried until the key changes
+}
+
+// minimapWant is the stamp the selected slot should hold now. It does no pixel work.
+func (m *galleryModel) minimapWant() minimapStamp {
+	e := m.images[m.cursor]
+	w := minimapStamp{
+		id:    m.stripID(m.cursor - stripStart(m.cursor, m.l.stripCols, len(m.images))),
+		path:  e.Path,
+		mtime: e.Mtime,
+	}
+	if m.crop.isFull() || m.curSize == (image.Point{}) {
+		return w
+	}
+	fit := minimapFit(m.curSize, m.minimapBox())
+	if fit == (image.Point{}) {
+		return w
+	}
+	o := w
+	o.overlay, o.fit = true, fit
+	if o.baseKey() == m.mini.failedKey {
+		return w
+	}
+	o.rect = minimapRect(fit, m.crop)
+	return o
+}
+
+// selectedThumbStore is the APC that puts w into the selected slot, and the stamp
+// the slot then holds (plain when the overlay could not be produced).
+func (m *galleryModel) selectedThumbStore(w minimapStamp) (string, minimapStamp) {
+	if w.overlay {
+		if apc := m.overlayStore(w); apc != "" {
+			return apc, w
+		}
+		w.overlay, w.fit, w.rect = false, image.Point{}, image.Rectangle{}
+	}
+	return transmitVirtual(w.id, cachedPNG(w.path, m.l.stripW, m.l.stripH), m.l.stripW, m.l.stripH), w
+}
+
+// overlayStore renders w's viewport rectangle onto the scaled thumb and returns
+// its store, or "" when no raster could be built or written.
+func (m *galleryModel) overlayStore(w minimapStamp) string {
+	if key := w.baseKey(); key != m.mini.baseKey {
+		base := m.minimapBase(w)
+		if base == nil {
+			m.mini.failedKey = key
+			return ""
+		}
+		m.mini.base, m.mini.baseKey = base, key
+	}
+	if m.mini.frame == nil || m.mini.frame.Rect != m.mini.base.Rect {
+		m.mini.frame = image.NewRGBA(m.mini.base.Rect)
+	}
+	copy(m.mini.frame.Pix, m.mini.base.Pix)
+	drawViewport(m.mini.frame, w.rect)
+	if !preferEncodedFrame(m.bridged) {
+		if out := writeRaw(m.minimapRawPath(), m.mini.frame); out != "" {
+			return transmitVirtualRaw(w.id, out, w.fit.X, w.fit.Y, m.l.stripW, m.l.stripH)
+		}
+	}
+	if out := writePNGEnc(m.minimapPNGPath(), m.mini.frame, "", fastPNG.Encode); out != "" {
+		return transmitVirtual(w.id, out, m.l.stripW, m.l.stripH)
+	}
+	return ""
+}
+
+// minimapBase is the cached strip thumb scaled to w.fit, or nil when it can't be read.
+func (m *galleryModel) minimapBase(w minimapStamp) *image.RGBA {
+	f, err := os.Open(cachedPNG(w.path, m.l.stripW, m.l.stripH)) //nolint:gosec // cache file or the user's own image
+	if err != nil {
+		return nil
+	}
+	defer f.Close() //nolint:errcheck // read-only file; close error is irrelevant
+	src, _, err := image.Decode(f)
+	if err != nil {
+		return nil
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, w.fit.X, w.fit.Y))
+	draw.ApproxBiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Src, nil)
+	return dst
+}
+
+// syncMinimap re-stores the selected thumb when its overlay no longer matches the
+// crop. Re-storing in place (a=T, no delete) keeps the thumb visible, like the preview.
+func (m *galleryModel) syncMinimap() {
+	if m.backend != backendKitty || m.tty == nil || len(m.images) == 0 {
+		return
+	}
+	w := m.minimapWant()
+	if w == m.mini.stored {
+		return
+	}
+	apc, got := m.selectedThumbStore(w)
+	if _, err := fmt.Fprint(m.tty, apc); err == nil {
+		m.mini.stored = got
+	}
 }

@@ -241,7 +241,7 @@ func newDecodeModel(t *testing.T, sizes ...image.Point) galleryModel {
 		}
 		m.images = append(m.images, imageEntry{Path: p})
 	}
-	for _, p := range []string{m.zoomRawPath(), m.zoomScratchPath()} {
+	for _, p := range []string{m.zoomRawPath(), m.zoomScratchPath(), m.minimapRawPath(), m.minimapPNGPath()} {
 		os.Remove(p)                       //nolint:errcheck,gosec // stale scratch from an earlier run
 		t.Cleanup(func() { os.Remove(p) }) //nolint:errcheck,gosec // test cleanup
 	}
@@ -318,7 +318,8 @@ func TestSwitchDefersDecode(t *testing.T) {
 }
 
 // A zoom/pan pressed before the pixels exist applies to the geometry at once,
-// stores nothing while pending, and is painted when the decode lands.
+// stores no preview while pending (the filmstrip minimap needs only the thumb, so
+// it does follow), and is painted when the decode lands.
 func TestZoomDuringDecodeWindowApplies(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -336,6 +337,7 @@ func TestZoomDuringDecodeWindowApplies(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("TMUX", "") // storesFor reads unwrapped APCs
 			m := land(t, newDecodeModel(t, sizeA, sizeB))
 			m, _ = send(t, m, keyNext)
 			before := ttyLen(t, m)
@@ -350,16 +352,21 @@ func TestZoomDuringDecodeWindowApplies(t *testing.T) {
 			if len(crops) > 1 && crops[0] == crops[len(crops)-1] {
 				t.Fatal("pan during the decode window did not move the crop")
 			}
-			if got := ttyLen(t, m); got != before {
-				t.Fatalf("stored %d bytes while pixels were pending", got-before)
+			written, err := os.ReadFile(m.tty.Name())
+			if err != nil {
+				t.Fatal(err)
 			}
+			if got := storesFor(t, written[int(before):], m.previewID()); len(got) != 0 {
+				t.Fatalf("stored the preview %d times while pixels were pending", len(got))
+			}
+			pending := ttyLen(t, m)
 			crop := m.crop
 
 			m = land(t, m)
 			if m.curImg == nil {
 				t.Fatal("decode did not land")
 			}
-			if ttyLen(t, m) == before {
+			if ttyLen(t, m) == pending {
 				t.Error("landing did not re-store the zoomed preview")
 			}
 			if _, err := os.Stat(m.zoomRawPath()); err != nil {

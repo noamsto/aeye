@@ -48,7 +48,7 @@ func BenchmarkPanFrame(b *testing.B) {
 	frac := boxAspectFrac(benchSrcW, benchSrcH, benchBoxW, benchBoxH)
 	m.crop = cropAtMagnification(2, .5, .5, frac)
 
-	for _, s := range []string{m.zoomRawPath(), m.zoomScratchPath()} {
+	for _, s := range []string{m.zoomRawPath(), m.zoomScratchPath(), m.minimapRawPath(), m.minimapPNGPath()} {
 		os.Remove(s)                       //nolint:errcheck,gosec // stale scratch from an earlier run
 		b.Cleanup(func() { os.Remove(s) }) //nolint:errcheck,gosec // benchmark cleanup
 	}

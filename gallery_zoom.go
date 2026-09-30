@@ -445,6 +445,7 @@ func (m *galleryModel) transmitPreviewOnly() {
 	if m.backend != backendKitty || m.tty == nil || len(m.images) == 0 {
 		return
 	}
+	m.syncMinimap()
 	// Pixels pending: the only frame this could produce is the unzoomed original,
 	// which transmitView already stored (and storing the file itself makes kitty
 	// decode it at full size). A full crop still re-stores: on a d2 entry a sharp

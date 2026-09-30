@@ -49,8 +49,8 @@ func workingDims(src image.Point, s float64) image.Rectangle {
 	return image.Rect(0, 0, max(1, int(float64(src.X)*s)), max(1, int(float64(src.Y)*s)))
 }
 
-// Fill on an extreme aspect is the case a min()-based cap would break: the crop
-// is a thin band whose source-pixel width must survive the working copy.
+// Fill on an extreme aspect crops a thin band whose source-pixel width must
+// survive the working copy.
 func TestFillKeepsSourcePixelRatioOnExtremeAspect(t *testing.T) {
 	src := image.Pt(1440, 14000)
 	m := &galleryModel{

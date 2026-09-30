@@ -580,8 +580,8 @@ func (m *galleryModel) isPending(e imageEntry) bool {
 func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	next, cmd := m.handle(msg)
 	if nm, ok := next.(galleryModel); ok {
-		// Decode requests come from selectIndex/reload, which return no Cmd and
-		// have many callers; arming here schedules each request wherever it came from.
+		// Decode requests are raised in helpers that return no Cmd; arming here
+		// schedules each one wherever it came from.
 		cmd = tea.Batch(cmd, nm.armDecode())
 		nm.tick.publish(nm)
 		next = nm
@@ -906,8 +906,7 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 		w, h := m.previewBoxPx()
 		return m, decodeCmd(ctx, msg.gen, m.curImgPath, w, h)
 	case decodedMsg:
-		// Only the latest request for the current selection lands; anything else
-		// (superseded selection, A→B→A, a resize re-request) is garbage.
+		// Only the latest request for the current selection lands.
 		if msg.gen != m.decodeGen || msg.path != m.curImgPath {
 			return m, nil
 		}

@@ -106,8 +106,8 @@ type minimapStamp struct {
 	rect    image.Rectangle // viewport rectangle in that raster; zero unless overlay
 }
 
-// minimapBaseKey identifies the scaled thumb an overlay is drawn on. A comparable
-// struct rather than a string so the per-frame check allocates nothing.
+// minimapBaseKey identifies the scaled thumb an overlay is drawn on. Comparable,
+// so the per-frame check allocates nothing.
 type minimapBaseKey struct {
 	path  string
 	mtime int64

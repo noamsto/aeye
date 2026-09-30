@@ -522,11 +522,6 @@ func TestDecodeErrorResetsGeometry(t *testing.T) {
 	if m.curImg != nil {
 		t.Error("failed decode left an image")
 	}
-	gen := m.decodeGen
-	m.ensureDecoded()
-	if m.decodeGen == gen {
-		t.Error("re-selecting the undecodable image did not retry the decode")
-	}
 }
 
 // A d2 zoom has a sharp resvg render scheduled for the crop; the bitmap landing

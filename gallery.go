@@ -914,11 +914,9 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cancelDecode()
 		if msg.img == nil {
 			// Undecodable: fall back to the no-zoom geometry of an unknown size. The
-			// crop was never visibly applied, since no pixels existed. Clearing
-			// curImgPath lets the next ensureDecoded retry, healing a file that was
-			// caught mid-write.
+			// crop was never visibly applied, since no pixels existed.
 			tracef("decode failed: %s", msg.path)
-			m.curImg, m.curSize, m.curImgPath = nil, image.Point{}, ""
+			m.curImg, m.curSize = nil, image.Point{}
 			m.resetZoom()
 			return m, nil
 		}

@@ -914,8 +914,11 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.cancelDecode()
 		if msg.img == nil {
 			// Undecodable: fall back to the no-zoom geometry of an unknown size. The
-			// crop was never visibly applied, since no pixels existed.
-			m.curImg, m.curSize = nil, image.Point{}
+			// crop was never visibly applied, since no pixels existed. Clearing
+			// curImgPath lets the next ensureDecoded retry, healing a file that was
+			// caught mid-write.
+			tracef("decode failed: %s", msg.path)
+			m.curImg, m.curSize, m.curImgPath = nil, image.Point{}, ""
 			m.resetZoom()
 			return m, nil
 		}
@@ -1024,6 +1027,8 @@ func (m *galleryModel) handleDragEvent(payload string) {
 			m.dragInFlight = true
 			m.tty.WriteString(dragOfferSeq())                                //nolint:errcheck,gosec // best-effort tty escape-sequence write
 			m.tty.WriteString(dragDataSeq(fileURI(m.images[m.cursor].Path))) //nolint:errcheck,gosec // best-effort tty escape-sequence write
+			// While the selection is still decoding curImg is nil and dragIconFrames
+			// omits the icon, so the terminal shows its default.
 			for _, f := range dragIconFrames(m.curImg) {
 				m.tty.WriteString(f) //nolint:errcheck,gosec // best-effort tty escape-sequence write
 			}

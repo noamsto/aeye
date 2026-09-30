@@ -241,9 +241,8 @@ func (m *galleryModel) panBy(dx, dy float64) {
 // last call; the pixels arrive later as a decodedMsg. A changed selection resets
 // the crop to fit and drops the previous working copy before the new decode
 // allocates; an unchanged selection (e.g. an auto-refresh tick that appended a
-// different image elsewhere) preserves the crop and the pixels. curImgPath is
-// set even when the header is unreadable, so a broken file is not retried on
-// every call.
+// different image elsewhere) preserves the crop and the pixels. An unreadable
+// header leaves curImgPath unset, so the next call retries the file.
 func (m *galleryModel) ensureDecoded() {
 	if len(m.images) == 0 {
 		m.curImg, m.curImgPath, m.curSize = nil, "", image.Point{}
@@ -258,8 +257,10 @@ func (m *galleryModel) ensureDecoded() {
 	m.resetZoom()
 	m.regions, m.regionPath, m.regionIdx = nil, nil, -1
 	m.curImg = nil
-	m.curImgPath = p
 	m.curSize = imageSize(p)
+	if m.curSize != (image.Point{}) {
+		m.curImgPath = p
+	}
 	m.requestDecode()
 }
 

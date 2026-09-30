@@ -126,18 +126,19 @@ func TestZoomDeepestIsFillViewOnExtremeAspect(t *testing.T) {
 	}
 }
 
-func TestZoomInAtCeilingAfterResizeDoesNotZoomOut(t *testing.T) {
-	m, frac := extremeAspectModel(t)
+func TestZoomInAfterResizeFillsBox(t *testing.T) {
+	m, _ := extremeAspectModel(t)
 	for range 40 {
 		pressZoom(&m, 'z')
 	}
-	before := zoomMagnification(m.crop, frac)
+	// A resize can leave the previous fill crop letterboxed in the new box; the
+	// next zoom-in must still fill it.
 	m.width, m.height = 70, 50
 	m.l = computeLayout(70, 50)
 	pressZoom(&m, 'z')
-	frac = boxAspectFrac(300, 1800, m.l.previewW*10, m.l.previewH*20)
-	if got := zoomMagnification(m.crop, frac); got < before-1e-9 {
-		t.Fatalf("zoom-in after resize dropped magnification %.6f -> %.6f", before, got)
+	sx, sy := displayedSpan(m.crop, m.curSize, m.l.previewW*10, m.l.previewH*20)
+	if math.Abs(sx-1) > 1e-3 || math.Abs(sy-1) > 1e-3 {
+		t.Fatalf("zoom-in after resize left the view letterboxed: spans %.4f x %.4f", sx, sy)
 	}
 }
 

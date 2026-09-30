@@ -191,13 +191,7 @@ func (m *galleryModel) zoomBy(factor float64) {
 	if m.curSize != (image.Point{}) && m.usesBoxFitZoom() {
 		frac := boxAspectFrac(m.curSize.X, m.curSize.Y, m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
 		maxMag := max(1/m.zoomFloor(), frac, 1/frac)
-		cur := zoomMagnification(m.crop, frac)
-		// A resize can lower the ceiling below the current view; zooming in
-		// must not snap back out to it.
-		if factor > 1 && cur >= maxMag {
-			return
-		}
-		mag := min(cur*factor, maxMag)
+		mag := min(zoomMagnification(m.crop, frac)*factor, maxMag)
 		if mag <= 1 {
 			m.crop = fullCrop()
 			return

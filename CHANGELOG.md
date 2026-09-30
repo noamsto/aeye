@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/noamsto/aeye/compare/v1.4.0...v1.4.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* stop re-rendering on idle poll ticks ([#282](https://github.com/noamsto/aeye/issues/282)) ([af24b3e](https://github.com/noamsto/aeye/commit/af24b3e475bb57e6a8d874c0b12c20acc8752041))
+
 ## [1.4.0](https://github.com/noamsto/aeye/compare/v1.3.0...v1.4.0) (2026-09-28)
 
 

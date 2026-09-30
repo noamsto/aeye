@@ -528,6 +528,9 @@ func TestDecodeErrorResetsGeometry(t *testing.T) {
 // must not overwrite it.
 func TestD2LandingSkipsBitmapRestore(t *testing.T) {
 	m := land(t, newDecodeModel(t, sizeA, sizeB))
+	if len(m.images) < 2 {
+		t.Fatalf("model has %d images, want 2", len(m.images))
+	}
 	m.images[1].Vector = filepath.Join(t.TempDir(), "b.svg")
 	m, _ = send(t, m, keyNext)
 	m, _ = send(t, m, keyZoom)
@@ -595,6 +598,9 @@ func TestSymbolsZoomDuringDecodeWindow(t *testing.T) {
 	previewSrc = nil
 	m, _ = send(t, m, keyZoom)
 	m.View()
+	if len(m.images) < 2 {
+		t.Fatalf("model has %d images, want 2", len(m.images))
+	}
 	if want := []string{m.images[1].Path}; !equalStrings(previewSrc, want) {
 		t.Fatalf("pending zoom rendered %q, want the original %q", previewSrc, want)
 	}

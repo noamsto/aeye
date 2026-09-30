@@ -17,10 +17,10 @@ func TestTickSnapshotStale(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", dir) // no theme-state.json: Detect() == "dark"
 	t.Setenv("AEYE_BRIDGED", "")
 	manifest := manifestPath("%1")
-	if err := os.MkdirAll(filepath.Dir(manifest), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(manifest), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(manifest, nil, 0o644); err != nil {
+	if err := os.WriteFile(manifest, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 

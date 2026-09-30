@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/xml"
+	"image"
 	"math"
 	"os"
 	"regexp"
@@ -409,20 +410,18 @@ func (m *galleryModel) exitRegions() {
 	m.resetZoom()
 }
 
-// focusedFrame is the crop that frames the focused region, using the decoded
-// image's pixel dims as the source size. Not ok when nothing is focused or
-// decoded.
+// focusedFrame is the crop that frames the focused region, using the image's
+// source pixel size. Not ok when nothing is focused or the size is unknown.
 func (m *galleryModel) focusedFrame() (cropFrac, bool) {
 	r, ok := m.focusedRegion()
-	if !ok || m.curImg == nil {
+	if !ok || m.curSize == (image.Point{}) {
 		return cropFrac{}, false
 	}
-	b := m.curImg.Bounds()
-	return frameRegion(r, b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx()), true
+	return frameRegion(r, m.curSize.X, m.curSize.Y, m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx()), true
 }
 
 // frameFocused sets the crop to frame the focused region. No-op when nothing is
-// focused or decoded.
+// focused or the image size is unknown.
 func (m *galleryModel) frameFocused() {
 	if c, ok := m.focusedFrame(); ok {
 		m.crop = c

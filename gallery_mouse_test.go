@@ -298,11 +298,12 @@ func TestOnlyTheNewestPanFlushSurvives(t *testing.T) {
 // below would silently become a miss instead of a real failure.
 func geomModel(srcW, srcH int, crop cropFrac) *galleryModel {
 	return &galleryModel{
-		width:  120,
-		height: 70,
-		l:      layout{previewW: 100, previewH: 50, stripH: 8},
-		curImg: image.NewRGBA(image.Rect(0, 0, srcW, srcH)),
-		crop:   crop,
+		width:   120,
+		height:  70,
+		l:       layout{previewW: 100, previewH: 50, stripH: 8},
+		curImg:  image.NewRGBA(image.Rect(0, 0, srcW, srcH)),
+		curSize: image.Pt(srcW, srcH),
+		crop:    crop,
 	}
 }
 
@@ -679,12 +680,12 @@ func TestRegionClickGuards(t *testing.T) {
 		}
 	})
 
-	t.Run("nil curImg is inert", func(t *testing.T) {
+	t.Run("unknown size is inert", func(t *testing.T) {
 		m := diagramModel(1000, 1000, cropFrac{0.3, 0.3, 0.6, 0.6}, []string{"C"}, 2)
-		m.curImg = nil
+		m.curSize = image.Point{}
 		wantCrop, wantPath, wantIdx := m.crop, slices.Clone(m.regionPath), m.regionIdx
 		if m.regionClick(60, 30) {
-			t.Error("regionClick with no decoded image reported a change")
+			t.Error("regionClick with unknown image size reported a change")
 		}
 		if m.crop != wantCrop || !slices.Equal(m.regionPath, wantPath) || m.regionIdx != wantIdx {
 			t.Errorf("state mutated: crop=%+v path=%v idx=%d", m.crop, m.regionPath, m.regionIdx)
@@ -694,7 +695,7 @@ func TestRegionClickGuards(t *testing.T) {
 	t.Run("degenerate pane does not panic", func(t *testing.T) {
 		m := mouseModel(30, 12, 0, 5) // TestPreviewRectDegeneratePane: previewRect() == rect{} here
 		m.images[0].Vector = "diagram.svg"
-		m.curImg = image.NewRGBA(image.Rect(0, 0, 100, 100))
+		m.curSize = image.Pt(100, 100)
 		m.regions = newRegionTree([]region{{path: "C", x0: 0, y0: 0, x1: 1, y1: 1}})
 		m.regionIdx = 0 // >=0: reaches the step-back branch, which is unreachable through handleMouse
 		if pr := m.previewRect(); pr != (rect{}) {

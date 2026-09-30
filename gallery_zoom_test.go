@@ -104,9 +104,10 @@ func TestZoomOutFloorsToFull(t *testing.T) {
 // 1.6:1, so the box-aspect fill crop is a full-height, 2/9-width vertical slice.
 func wideModel() *galleryModel {
 	return &galleryModel{
-		curImg: image.NewRGBA(image.Rect(0, 0, 720, 100)),
-		l:      layout{previewW: 160, previewH: 50},
-		crop:   fullCrop(),
+		curImg:  image.NewRGBA(image.Rect(0, 0, 720, 100)),
+		curSize: image.Pt(720, 100),
+		l:       layout{previewW: 160, previewH: 50},
+		crop:    fullCrop(),
 	}
 }
 
@@ -208,9 +209,10 @@ func TestZoomInGrowsIntoLetterboxThenPacksWide(t *testing.T) {
 // threshold (3.84x) stays comfortably under zoomMax.
 func tallModel() *galleryModel {
 	return &galleryModel{
-		curImg: image.NewRGBA(image.Rect(0, 0, 300, 720)),
-		l:      layout{previewW: 160, previewH: 50},
-		crop:   fullCrop(),
+		curImg:  image.NewRGBA(image.Rect(0, 0, 300, 720)),
+		curSize: image.Pt(300, 720),
+		l:       layout{previewW: 160, previewH: 50},
+		crop:    fullCrop(),
 	}
 }
 
@@ -452,9 +454,10 @@ func TestToggleFillFromRegionClearsFocus(t *testing.T) {
 func TestToggleFillNoopWhenMatched(t *testing.T) {
 	// preview box pixels = 160*10 × 50*20 = 1600×1000 (1.6:1); image 160×100 matches.
 	m := &galleryModel{
-		curImg: image.NewRGBA(image.Rect(0, 0, 160, 100)),
-		l:      layout{previewW: 160, previewH: 50},
-		crop:   fullCrop(),
+		curImg:  image.NewRGBA(image.Rect(0, 0, 160, 100)),
+		curSize: image.Pt(160, 100),
+		l:       layout{previewW: 160, previewH: 50},
+		crop:    fullCrop(),
 	}
 	m.toggleFill()
 	if !m.crop.isFull() {
@@ -476,14 +479,14 @@ func TestCropGeometryUsesMeasuredCellSize(t *testing.T) {
 	// a crop to the preview box must read the measured size, or the fill is skewed.
 	img := image.NewRGBA(image.Rect(0, 0, 1600, 900))
 	fill := func(cw, ch int) cropFrac {
-		m := &galleryModel{l: layout{previewW: 100, previewH: 30}, cellW: cw, cellH: ch, curImg: img}
+		m := &galleryModel{l: layout{previewW: 100, previewH: 30}, cellW: cw, cellH: ch, curImg: img, curSize: image.Pt(1600, 900)}
 		return m.baseFillCrop()
 	}
 	if a, b := fill(10, 20), fill(10, 22); a == b {
 		t.Errorf("baseFillCrop ignored the cell size: %+v at 10x20 == %+v at 10x22", a, b)
 	}
 
-	m := &galleryModel{l: layout{previewW: 100, previewH: 30}, cellW: 10, cellH: 22, curImg: img}
+	m := &galleryModel{l: layout{previewW: 100, previewH: 30}, cellW: 10, cellH: 22, curImg: img, curSize: image.Pt(1600, 900)}
 	m.crop = m.baseFillCrop()
 	if !m.cropFillsBox() {
 		t.Errorf("crop %+v from baseFillCrop does not fill the box at a 10x22 cell", m.crop)

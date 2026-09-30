@@ -171,8 +171,9 @@ type galleryModel struct {
 	visible         bool        // pane reachable by the image store at the last tick (see paneVisible)
 	pinned          bool        // follow the newest image until the user first navigates
 	crop            cropFrac    // visible sub-rectangle of the source (fullCrop = fit)
-	curImg          image.Image // decoded source of the current selection
-	curImgPath      string      // path curImg was decoded from
+	curImg          image.Image // decoded working copy of the selection; nil while its decode is pending
+	curImgPath      string      // path the selection state (curSize, decode request) belongs to
+	curSize         image.Point // source pixel size of curImgPath; zero when its header is unreadable
 	// Terminal cell size in pixels, measured once at startup (CSI 16 t), with the
 	// cellPxW/cellPxH estimates as fallback. Load-bearing for crop geometry: the
 	// estimates assume a 1:2 cell, so a real 10x22 cell skews every crop shaped

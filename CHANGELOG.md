@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/noamsto/aeye/compare/v1.5.0...v1.6.0) (2026-09-30)
+
+
+### Features
+
+* minimap viewport rectangle on the filmstrip thumb ([#299](https://github.com/noamsto/aeye/issues/299)) ([4a55e7f](https://github.com/noamsto/aeye/commit/4a55e7fdecffb0f38ca55bd6d0d4ccbbfca07fea))
+
 ## [1.5.0](https://github.com/noamsto/aeye/compare/v1.4.2...v1.5.0) (2026-09-30)
 
 

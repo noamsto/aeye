@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -203,6 +204,7 @@ type galleryModel struct {
 	lastPanAt            time.Time
 	panGen               uint64
 	bridged              bool
+	tick                 *tickSnapshot
 
 	// Native kitty OSC 72 drag-out: dragNative is probed once at startup and the
 	// terminal is armed as a drag source; dragInFlight stops a second drag from
@@ -229,7 +231,8 @@ const (
 func (m galleryModel) Init() tea.Cmd {
 	// Probed at startup too: the launcher can pin an old store path, so a viewer
 	// is often already behind at its first frame.
-	cmds := []tea.Cmd{galleryTickCmd(), updateTickCmd(), probeUpdateCmd(m.update)}
+	m.tick.publish(m)
+	cmds := []tea.Cmd{galleryTickCmd(m.tick, m.pane), updateTickCmd(), probeUpdateCmd(m.update)}
 	if m.dragNative && m.tty != nil {
 		// Register as a drag source up front so a plain mouse drag exports the
 		// image — no key to press. The terminal reports each gesture via OSC 72.
@@ -243,10 +246,54 @@ func (m galleryModel) Init() tea.Cmd {
 
 type galleryTickMsg struct{}
 
+const galleryTickInterval = 1500 * time.Millisecond
+
 // galleryTickCmd polls the manifest so the carousel auto-refreshes while the
-// plugin hook appends new images.
-func galleryTickCmd() tea.Cmd {
-	return tea.Tick(1500*time.Millisecond, func(time.Time) tea.Msg { return galleryTickMsg{} })
+// plugin hook appends new images. It polls off the event loop and delivers a
+// tick only once the handler has something to act on: every delivered message
+// costs a full View() render.
+func galleryTickCmd(s *tickSnapshot, pane string) tea.Cmd {
+	return func() tea.Msg {
+		for {
+			time.Sleep(galleryTickInterval)
+			if s.stale(pane) {
+				return galleryTickMsg{}
+			}
+		}
+	}
+}
+
+// tickSnapshot mirrors the model fields the galleryTickMsg handler compares
+// against, republished after every Update so the polling goroutine sees
+// changes made by any message (reload, focus), not just by the tick.
+type tickSnapshot struct {
+	mu      sync.Mutex
+	bridged bool
+	visible bool
+	theme   string
+	mtime   int64
+}
+
+func (s *tickSnapshot) publish(m galleryModel) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.bridged, s.visible, s.theme, s.mtime = m.bridged, m.visible, m.theme, m.mtime
+	s.mu.Unlock()
+}
+
+// stale reports whether the galleryTickMsg handler would change anything —
+// the same comparisons it makes, cheapest (no tmux subprocess) first.
+func (s *tickSnapshot) stale(pane string) bool {
+	s.mu.Lock()
+	bridged, visible, theme, mtime := s.bridged, s.visible, s.theme, s.mtime
+	s.mu.Unlock()
+	if manifestMtime(pane) != mtime || themestate.Detect() != theme {
+		return true
+	}
+	v, relayed := tickProbe()
+	return v != visible || bridgedPolicy(relayed) != bridged
 }
 
 type settleMsg struct{}
@@ -521,6 +568,14 @@ func (m *galleryModel) isPending(e imageEntry) bool {
 }
 
 func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.handle(msg)
+	if nm, ok := next.(galleryModel); ok {
+		nm.tick.publish(nm)
+	}
+	return next, cmd
+}
+
+func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if traceEnabled {
 		switch msg.(type) {
 		case tea.MouseMotionMsg, galleryTickMsg:
@@ -765,7 +820,7 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// re-store even when the manifest (and signature) is unchanged.
 				m.lastTransmitSig = nil
 				m.reload() // re-stores as a side effect
-				return m, tea.Batch(galleryTickCmd(), m.kickVector(), m.repaintCmd())
+				return m, tea.Batch(galleryTickCmd(m.tick, m.pane), m.kickVector(), m.repaintCmd())
 			}
 		}
 		// A live light/dark switch repaints from the already-rendered variant —
@@ -779,9 +834,9 @@ func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if mt := manifestMtime(m.pane); mt != m.mtime {
 			tracef("reload manifest mtime changed")
 			m.reload()
-			return m, tea.Batch(galleryTickCmd(), m.kickVector(), m.schedulePaint())
+			return m, tea.Batch(galleryTickCmd(m.tick, m.pane), m.kickVector(), m.schedulePaint())
 		}
-		return m, galleryTickCmd()
+		return m, galleryTickCmd(m.tick, m.pane)
 	case updateTickMsg:
 		return m, tea.Batch(updateTickCmd(), probeUpdateCmd(m.update))
 	case updateProbeMsg:
@@ -1202,6 +1257,7 @@ func runGallery(pane string) error {
 		// where the query still confirms the running version actually supports it.
 		dragNative: os.Getenv("TMUX") == "" && strings.HasPrefix(termName(), "xterm-kitty") && probeDragProtocol(),
 		bridged:    bridgedPolicy(relayed),
+		tick:       &tickSnapshot{},
 	}
 	// Decode the initial selection now so zoom works on the first keystroke
 	// (otherwise curImg is nil until the first refresh tick).
@@ -1357,12 +1413,34 @@ func tmuxPaneVisible() bool {
 	// -t is load-bearing: an untargeted display-message evaluates window_active
 	// against the session's current window, where it is always 1 — which hides
 	// the very transition this exists to catch.
-	out, err := exec.Command("tmux", "display-message", "-p", "-t", os.Getenv("TMUX_PANE"), //nolint:gosec // fixed tmux binary; args built by the tool, not shell-interpreted
-		"#{window_active} #{session_attached} #{window_zoomed_flag} #{pane_active}").Output()
+	out, err := exec.Command("tmux", "display-message", "-p", "-t", os.Getenv("TMUX_PANE"), paneVisibleFormat).Output() //nolint:gosec // fixed tmux binary; args built by the tool, not shell-interpreted
 	if err != nil {
 		return true
 	}
 	return parsePaneVisible(string(out))
+}
+
+const paneVisibleFormat = "#{window_active} #{session_attached} #{window_zoomed_flag} #{pane_active}"
+
+// tickProbe is paneVisible and relayTermName's relayed flag in one tmux
+// invocation — the idle poll's only subprocess. A package var so tests can
+// fake it alongside the other two.
+var tickProbe = tmuxTickProbe
+
+func tmuxTickProbe() (visible, relayed bool) {
+	pane := os.Getenv("TMUX_PANE")
+	if os.Getenv("TMUX") == "" || pane == "" {
+		_, relayed = relayTermName()
+		return paneVisible(), relayed
+	}
+	args := append([]string{"display-message", "-p", "-t", pane, paneVisibleFormat, ";"}, relayListClientsArgs(pane)...)
+	out, err := exec.Command("tmux", args...).Output() //nolint:gosec // fixed tmux binary; args built by the tool, not shell-interpreted
+	if err != nil {
+		return true, false
+	}
+	first, rest, _ := strings.Cut(string(out), "\n")
+	_, relayed = parseRelayTermName(rest)
+	return parsePaneVisible(first), relayed
 }
 
 // parsePaneVisible mirrors tmux's own gate: tty_write skips clients whose

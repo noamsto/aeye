@@ -154,7 +154,7 @@ func cropAtMagnification(mag, cx, cy, frac float64) cropFrac {
 // rest, growing into the letterbox (one axis still at the full extent), or
 // already packed (aspect matches the box — cropFillsBox — having shrunk both
 // axes together past the pack point). Packed still needs this model rather than
-// scaleCropAbout because its floor and its zoom-out-to-full snap both key off
+// scaleCropAbout because its ceiling and its zoom-out-to-full snap both key off
 // the box-bound (primary) axis specifically, and that axis is no longer
 // identifiable once neither side is pinned at 1. Never while a region frame is
 // focused, which zooms relative to its own framing instead (see zoomFloor).
@@ -176,8 +176,10 @@ func (m *galleryModel) usesBoxFitZoom() bool {
 // both axes shrink together, aspect pinned to the box's (packed). That avoids
 // both past regressions: scaling a same-aspect crop never grows past the rest
 // band's height (#242), and adopting a box-aspect crop on the first step jumps
-// too far on an extreme aspect ratio (#176: 5.6x on a 7.2:1 image). Zooming out
-// mirrors the same model and snaps back to fullCrop once it retraces to rest.
+// too far on an extreme aspect ratio (#176: 5.6x on a 7.2:1 image). Zooming in
+// stops at zoomMax, or at the fill point when an extreme aspect ratio needs more
+// to fill the box, so zoom always reaches a filled view. Zooming out mirrors the
+// same model and snaps back to fullCrop once it retraces to rest.
 //
 // A focused region frame (Tab), or any other non-full crop not anchored to the
 // rest framing, instead scales uniformly about its center with aspect preserved,
@@ -186,7 +188,7 @@ func (m *galleryModel) zoomBy(factor float64) {
 	if m.curSize != (image.Point{}) && m.usesBoxFitZoom() {
 		frac := boxAspectFrac(m.curSize.X, m.curSize.Y, m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
 		mag := zoomMagnification(m.crop, frac) * factor
-		if maxMag := 1 / m.zoomFloor(); mag > maxMag {
+		if maxMag := max(1/m.zoomFloor(), max(frac, 1/frac)); mag > maxMag {
 			mag = maxMag
 		}
 		if mag <= 1 {

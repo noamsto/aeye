@@ -88,3 +88,58 @@ func TestZoomFillsBoxOnExtremeAspect(t *testing.T) {
 		}
 	}
 }
+
+// extremeAspectModel is a 300x1800 image in a 100x50 pane of 10x20 cells; the
+// preview box's aspect puts the fill point past zoomMax. It also returns the
+// box aspect fraction.
+func extremeAspectModel(t *testing.T) (galleryModel, float64) {
+	t.Helper()
+	m := mouseModel(100, 50, 0, 1)
+	if len(m.images) < 1 {
+		t.Fatalf("model has %d images, want 1", len(m.images))
+	}
+	m.ready = true
+	m.cellW, m.cellH = 10, 20
+	m.curSize = image.Pt(300, 1800)
+	m.curImgPath = m.images[0].Path
+	m.crop = fullCrop()
+	return m, boxAspectFrac(300, 1800, m.l.previewW*10, m.l.previewH*20)
+}
+
+func pressZoom(m *galleryModel, r rune) {
+	out, _ := m.Update(tea.KeyPressMsg{Text: string(r), Code: r})
+	*m = out.(galleryModel)
+}
+
+func TestZoomDeepestIsFillViewOnExtremeAspect(t *testing.T) {
+	m, frac := extremeAspectModel(t)
+	for range 40 {
+		pressZoom(&m, 'z')
+	}
+	if math.Abs(m.crop.w()-1) > 1e-9 || math.Abs(m.crop.h()-1/frac) > 1e-9 {
+		t.Fatalf("deepest crop = %.6f x %.6f, want 1 x %.6f", m.crop.w(), m.crop.h(), 1/frac)
+	}
+	deepest := m.crop
+	pressZoom(&m, 'z')
+	if m.crop != deepest {
+		t.Fatalf("zoom past the ceiling moved the crop: %+v -> %+v", deepest, m.crop)
+	}
+}
+
+func TestZoomOutFromFillCeilingRetraces(t *testing.T) {
+	m, frac := extremeAspectModel(t)
+	for range 40 {
+		pressZoom(&m, 'z')
+	}
+	before := zoomMagnification(m.crop, frac)
+	pressZoom(&m, 'Z')
+	if got := before / zoomMagnification(m.crop, frac); math.Abs(got-1.25) > 1e-9 {
+		t.Fatalf("first zoom-out divided magnification by %.6f, want 1.25", got)
+	}
+	for range 60 {
+		pressZoom(&m, 'Z')
+	}
+	if !m.crop.isFull() {
+		t.Fatalf("zoom-out never reached the full image: %+v", m.crop)
+	}
+}

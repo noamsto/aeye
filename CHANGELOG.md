@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2](https://github.com/noamsto/aeye/compare/v1.4.1...v1.4.2) (2026-09-30)
+
+
+### Performance Improvements
+
+* decode the selected image off the input path ([#286](https://github.com/noamsto/aeye/issues/286)) ([cb41a8e](https://github.com/noamsto/aeye/commit/cb41a8e2a31d3273c1c8ef58db55de986c79c125))
+
 ## [1.4.1](https://github.com/noamsto/aeye/compare/v1.4.0...v1.4.1) (2026-09-30)
 
 

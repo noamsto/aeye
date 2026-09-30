@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -356,8 +357,13 @@ func TestZoomDuringDecodeWindowApplies(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := storesFor(t, written[int(before):], m.previewID()); len(got) != 0 {
-				t.Fatalf("stored the preview %d times while pixels were pending", len(got))
+			// Only the selected thumb's minimap may be written while pixels are
+			// pending: no deletes, no preview store, no other strip slot.
+			slot := strconv.Itoa(selectedSlotID(&m))
+			for _, body := range apcBodies(written[int(before):]) {
+				if keys, _ := apcKeys(body); keys["a"] != "T" || keys["i"] != slot {
+					t.Fatalf("APC %q while pixels were pending, want only a=T stores of slot %s", body, slot)
+				}
 			}
 			pending := ttyLen(t, m)
 			crop := m.crop

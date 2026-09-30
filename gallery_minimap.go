@@ -170,6 +170,7 @@ func (m *galleryModel) overlayStore(w minimapStamp) string {
 	if key := w.baseKey(); key != m.mini.baseKey {
 		base := m.minimapBase(w)
 		if base == nil {
+			tracef("minimap base failed: %s", w.path)
 			m.mini.failedKey = key
 			return ""
 		}
@@ -188,6 +189,7 @@ func (m *galleryModel) overlayStore(w minimapStamp) string {
 	if out := writePNGEnc(m.minimapPNGPath(), m.mini.frame, "", fastPNG.Encode); out != "" {
 		return transmitVirtual(w.id, out, m.l.stripW, m.l.stripH)
 	}
+	tracef("minimap write failed: %s", w.path)
 	return ""
 }
 

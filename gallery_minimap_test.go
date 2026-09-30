@@ -152,30 +152,42 @@ type kittyStore struct {
 	path string
 }
 
-// storesFor returns every a=T store for image id in buf, in order. TMUX must be
+// apcBodies returns the body of every kitty APC in buf, in order. TMUX must be
 // unset so the APCs are not passthrough-wrapped.
+func apcBodies(buf []byte) []string {
+	var out []string
+	rest := string(buf)
+	for {
+		_, after, ok := strings.Cut(rest, "\x1b_G")
+		if !ok {
+			return out
+		}
+		body, next, ok := strings.Cut(after, "\x1b\\")
+		if !ok {
+			return out
+		}
+		out = append(out, body)
+		rest = next
+	}
+}
+
+// apcKeys splits an APC body into its control keys and payload.
+func apcKeys(body string) (map[string]string, string) {
+	ctrl, payload, _ := strings.Cut(body, ";")
+	keys := map[string]string{}
+	for kv := range strings.SplitSeq(ctrl, ",") {
+		k, v, _ := strings.Cut(kv, "=")
+		keys[k] = v
+	}
+	return keys, payload
+}
+
+// storesFor returns every a=T store for image id in buf, in order.
 func storesFor(t *testing.T, buf []byte, id int) []kittyStore {
 	t.Helper()
 	var out []kittyStore
-	rest := string(buf)
-	for {
-		i := strings.Index(rest, "\x1b_G")
-		if i < 0 {
-			return out
-		}
-		rest = rest[i+3:]
-		end := strings.Index(rest, "\x1b\\")
-		if end < 0 {
-			return out
-		}
-		body := rest[:end]
-		rest = rest[end+2:]
-		ctrl, payload, _ := strings.Cut(body, ";")
-		keys := map[string]string{}
-		for kv := range strings.SplitSeq(ctrl, ",") {
-			k, v, _ := strings.Cut(kv, "=")
-			keys[k] = v
-		}
+	for _, body := range apcBodies(buf) {
+		keys, payload := apcKeys(body)
 		if keys["i"] != strconv.Itoa(id) || keys["a"] != "T" {
 			continue
 		}
@@ -185,6 +197,7 @@ func storesFor(t *testing.T, buf []byte, id int) []kittyStore {
 		}
 		out = append(out, kittyStore{keys: keys, path: string(p)})
 	}
+	return out
 }
 
 // added is what the model wrote after the recorder held before bytes.
@@ -535,4 +548,26 @@ func TestMinimapBrokenBaseNotRetried(t *testing.T) {
 	if got := storesFor(t, added(rec, before), selectedSlotID(m)); len(got) != 0 {
 		t.Errorf("a broken base was retried: %d stores on the next pan", len(got))
 	}
+}
+
+func TestMinimapClearedOnDecodeFailure(t *testing.T) {
+	rec := newTransmitRecorder(t)
+	m := newMinimapModel(t, rec)
+	m.transmitView()
+
+	before := rec.Len()
+	m.crop = cropFrac{0.1, 0.2, 0.4, 0.6}
+	m.transmitPreviewOnly()
+	assertOverlay(t, m, onlyStore(t, added(rec, before), selectedSlotID(m)))
+
+	before = rec.Len()
+	next, _ := m.handle(decodedMsg{gen: m.decodeGen, path: m.curImgPath})
+	got, ok := next.(galleryModel)
+	if !ok {
+		t.Fatalf("handle returned %T, want galleryModel", next)
+	}
+	if !got.crop.isFull() {
+		t.Fatalf("decode failure left the crop at %+v", got.crop)
+	}
+	assertPlain(t, onlyStore(t, added(rec, before), selectedSlotID(&got)), &got)
 }

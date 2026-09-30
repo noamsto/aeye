@@ -151,7 +151,9 @@ session reads/writes/screenshots images.
 
 When zoomed in or fill-framed (`f`), the arrows/`hjkl` pan the preview instead
 of moving the selection — use `n`/`p`/`g`/`G` (or `0`/`Esc`) to change image
-while the crop is not full.
+while the crop is not full. Each image's zoom and pan is remembered for the
+session — `0`/`Esc` or zooming out to fit clears it, and an image whose file
+changed (mtime or size) opens at fit.
 
 #### Diagrams (D2)
 

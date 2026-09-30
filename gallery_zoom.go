@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -239,17 +240,83 @@ func (m *galleryModel) panBy(dx, dy float64) {
 	m.crop = cropFrac{x0, y0, x0 + w, y0 + h}
 }
 
+// imageStamp identifies the file behind a path at selection time: a remembered
+// crop is only valid for the same bytes' mtime and header size.
+type imageStamp struct {
+	mtime int64
+	size  image.Point
+}
+
+type savedCrop struct {
+	crop  cropFrac
+	stamp imageStamp
+}
+
+func stampOf(path string, size image.Point) imageStamp {
+	var mtime int64
+	if fi, err := os.Stat(path); err == nil {
+		mtime = fi.ModTime().UnixNano()
+	}
+	return imageStamp{mtime: mtime, size: size}
+}
+
+// rememberCrop saves the leaving image's crop. A fit crop is the default, so it
+// is deleted rather than stored; a Tab region framing is never remembered
+// because regions reset on switch and a region-tight crop would misbehave under
+// zoomFloor without its focus.
+func (m *galleryModel) rememberCrop() {
+	if m.curImgPath == "" {
+		return
+	}
+	if m.crop.isFull() || m.regionIdx >= 0 {
+		delete(m.crops, m.curImgPath)
+		return
+	}
+	if m.crops == nil {
+		m.crops = map[string]savedCrop{}
+	}
+	m.crops[m.curImgPath] = savedCrop{m.crop, m.curStamp}
+}
+
+// recalledCrop is p's remembered crop if the file is unchanged since it was
+// saved, else fit (dropping the stale entry).
+func (m *galleryModel) recalledCrop(p string) cropFrac {
+	sc, ok := m.crops[p]
+	if !ok {
+		return fullCrop()
+	}
+	if sc.stamp != m.curStamp {
+		delete(m.crops, p)
+		return fullCrop()
+	}
+	return sc.crop
+}
+
+// pruneCrops forgets crops of images no longer in the carousel.
+func (m *galleryModel) pruneCrops() {
+	for p := range m.crops {
+		if !slices.ContainsFunc(m.images, func(e imageEntry) bool { return e.Path == p }) {
+			delete(m.crops, p)
+		}
+	}
+}
+
 // ensureDecoded records the currently-selected image — its path and source size
 // — and requests its decode, but only when the selected path changed since the
-// last call; the pixels arrive later as a decodedMsg. A changed selection resets
-// the crop to fit and drops the previous working copy before the new decode
-// allocates; an unchanged selection (e.g. an auto-refresh tick that appended a
+// last call; the pixels arrive later as a decodedMsg. A changed selection saves
+// the leaving image's crop and restores the entering image's (or fit), and drops
+// the previous working copy before the new decode allocates. The identity key is
+// the path, validated by the mtime and header size captured at selection, so a
+// diagram re-rendered at the same path opens at fit; a content hash was rejected
+// because it reads the whole file on every switch. A restored crop set while
+// pixels are pending lands with the decode, like any zoom pressed in the decode
+// window. An unchanged selection (e.g. an auto-refresh tick that appended a
 // different image elsewhere) preserves the crop and the pixels. curImgPath is
 // set even when the header is unreadable, so a broken file is not retried on
 // every call.
 func (m *galleryModel) ensureDecoded() {
 	if len(m.images) == 0 {
-		m.curImg, m.curImgPath, m.curSize = nil, "", image.Point{}
+		m.curImg, m.curImgPath, m.curSize, m.curStamp = nil, "", image.Point{}, imageStamp{}
 		m.regions, m.regionPath, m.regionIdx = nil, nil, -1
 		m.requestDecode()
 		return
@@ -258,11 +325,13 @@ func (m *galleryModel) ensureDecoded() {
 	if p == m.curImgPath {
 		return
 	}
-	m.resetZoom()
+	m.rememberCrop()
 	m.regions, m.regionPath, m.regionIdx = nil, nil, -1
 	m.curImg = nil
 	m.curImgPath = p
 	m.curSize = imageSize(p)
+	m.curStamp = stampOf(p, m.curSize)
+	m.crop = m.recalledCrop(p)
 	m.requestDecode()
 }
 

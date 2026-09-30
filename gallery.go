@@ -169,13 +169,15 @@ type galleryModel struct {
 	mtime           int64       // manifest mtime at last load (for auto-refresh)
 	update          updateWatch // newer aeye on PATH than this build (see probeUpdateCmd)
 	ready           bool
-	visible         bool        // pane reachable by the image store at the last tick (see paneVisible)
-	pinned          bool        // follow the newest image until the user first navigates
-	crop            cropFrac    // visible sub-rectangle of the source (fullCrop = fit)
-	curImg          image.Image // decoded working copy of the selection; nil while its decode is pending
-	curImgPath      string      // path the selection state (curSize, decode request) belongs to
-	curSize         image.Point // source pixel size of curImgPath; zero when its header is unreadable
-	curScale        float64     // scale curImg was built at (workingScale); below 1 the copy is capped
+	visible         bool                 // pane reachable by the image store at the last tick (see paneVisible)
+	pinned          bool                 // follow the newest image until the user first navigates
+	crop            cropFrac             // visible sub-rectangle of the source (fullCrop = fit)
+	crops           map[string]savedCrop // per-image crops remembered across selection changes (see ensureDecoded)
+	curStamp        imageStamp           // identity of curImgPath when selected; validates a remembered crop
+	curImg          image.Image          // decoded working copy of the selection; nil while its decode is pending
+	curImgPath      string               // path the selection state (curSize, decode request) belongs to
+	curSize         image.Point          // source pixel size of curImgPath; zero when its header is unreadable
+	curScale        float64              // scale curImg was built at (workingScale); below 1 the copy is capped
 	// decodeGen is bumped by every decode request (selection change, or a resize
 	// that outgrew curScale); kicks and results carrying an older one are dropped,
 	// mirroring vecGen/rasterGen. decodeArmedGen is the last gen given a kick, so
@@ -505,6 +507,7 @@ func (m *galleryModel) reload() {
 			warmCacheAsync(paths, m.l.previewW, m.l.previewH, m.l.stripW, m.l.stripH)
 		}
 	}
+	m.pruneCrops()
 	if m.pending != nil {
 		found := slices.ContainsFunc(m.images, m.isPending)
 		if !found {
@@ -657,8 +660,8 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 			kittyNeighbor(dir)
 			return m, nil
 		// When zoomed, hjkl and the arrows pan; otherwise they navigate the
-		// filmstrip. To move to another image while zoomed, use n/p/g/G (which
-		// reset the crop) or 0/esc first.
+		// filmstrip. To move to another image while zoomed, use n/p/g/G (the target
+		// opens at its remembered crop, or fit) or 0/esc first.
 		case "right", "l":
 			if !m.crop.isFull() {
 				m.panBy(0.1, 0)

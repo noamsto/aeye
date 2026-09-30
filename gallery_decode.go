@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"image"
+	"io"
 	"os"
+	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"golang.org/x/image/draw"
 )
 
@@ -63,4 +67,99 @@ func workingCopy(img image.Image, s float64) image.Image {
 		return dst
 	}
 	return img
+}
+
+// decodeDebounce delays the decode past a key-repeat burst (25-30 steps/s): the
+// PNG decoder allocates its full output buffer before reading a pixel, so a held
+// key must start one decode for the final selection, not one per step.
+const decodeDebounce = 50 * time.Millisecond
+
+// decodeKickMsg starts the decode for gen once the debounce has passed. Stale
+// kicks (a later selection or resize re-requested) are dropped.
+type decodeKickMsg struct{ gen uint64 }
+
+// decodedMsg carries a finished decode back to the loop. img is nil on failure
+// or cancellation; src is the decoded source size (before the working copy) and
+// scale the workingScale the copy was built at.
+type decodedMsg struct {
+	gen   uint64
+	path  string
+	img   image.Image
+	src   image.Point
+	scale float64
+}
+
+// ctxReader fails reads once ctx is cancelled, so a superseded decode stops at
+// its next read (image.Decode buffers, so about every 4 KB) instead of running
+// to completion.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
+}
+
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
+}
+
+// decodeWorking decodes path and returns its working copy for a boxW x boxH px
+// preview box, with the source size and the scale the copy was built at. img is
+// nil when the decode fails or ctx is cancelled.
+func decodeWorking(ctx context.Context, path string, boxW, boxH int) (img image.Image, src image.Point, scale float64) {
+	f, err := os.Open(path) //nolint:gosec // path is the user's own image/manifest file
+	if err != nil {
+		return nil, image.Point{}, 0
+	}
+	defer f.Close() //nolint:errcheck // read-only file or already-failing path; close error is not actionable
+	full, _, err := image.Decode(ctxReader{ctx, f})
+	if err != nil || ctx.Err() != nil {
+		return nil, image.Point{}, 0
+	}
+	src = full.Bounds().Size()
+	scale = workingScale(src, boxW, boxH)
+	return workingCopy(full, scale), src, scale
+}
+
+// decodeCmd runs decodeWorking off the loop. It captures only values, never the
+// model, so the result can't race the state Update goes on mutating.
+func decodeCmd(ctx context.Context, gen uint64, path string, boxW, boxH int) tea.Cmd {
+	return func() tea.Msg {
+		img, src, scale := decodeWorking(ctx, path, boxW, boxH)
+		return decodedMsg{gen: gen, path: path, img: img, src: src, scale: scale}
+	}
+}
+
+// cancelDecode aborts the in-flight decode, if any.
+func (m *galleryModel) cancelDecode() {
+	if m.decodeCancel != nil {
+		m.decodeCancel()
+		m.decodeCancel = nil
+	}
+}
+
+// requestDecode supersedes any earlier decode: it is cancelled, and bumping
+// decodeGen makes its kick or result arrive stale. Update's armDecode schedules
+// the new one.
+func (m *galleryModel) requestDecode() {
+	m.cancelDecode()
+	m.decodeGen++
+}
+
+// armDecode returns the debounced kick for the latest decode request, once per
+// generation. It waits for ready (the working copy is capped against the preview
+// box) and for a known size (an unreadable header can't decode either).
+func (m *galleryModel) armDecode() tea.Cmd {
+	if !m.ready || m.curSize == (image.Point{}) || m.decodeArmedGen == m.decodeGen {
+		return nil
+	}
+	m.decodeArmedGen = m.decodeGen
+	g := m.decodeGen
+	return tea.Tick(decodeDebounce, func(time.Time) tea.Msg { return decodeKickMsg{gen: g} })
+}
+
+// previewBoxPx is the preview box in pixels.
+func (m *galleryModel) previewBoxPx() (int, int) {
+	return m.l.previewW * m.cellWpx(), m.l.previewH * m.cellHpx()
 }

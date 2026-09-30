@@ -237,15 +237,18 @@ func (m *galleryModel) panBy(dx, dy float64) {
 }
 
 // ensureDecoded records the currently-selected image — its path and source size
-// — and decodes it into m.curImg, but only when the selected path changed since
-// the last call. A changed selection resets the crop to fit; an unchanged
-// selection (e.g. an auto-refresh tick that appended a different image
-// elsewhere) preserves the crop and the decode. curImgPath is set even when the
-// decode fails, so an unreadable file is not retried on every call.
+// — and requests its decode, but only when the selected path changed since the
+// last call; the pixels arrive later as a decodedMsg. A changed selection resets
+// the crop to fit and drops the previous working copy before the new decode
+// allocates; an unchanged selection (e.g. an auto-refresh tick that appended a
+// different image elsewhere) preserves the crop and the pixels. curImgPath is
+// set even when the header is unreadable, so a broken file is not retried on
+// every call.
 func (m *galleryModel) ensureDecoded() {
 	if len(m.images) == 0 {
 		m.curImg, m.curImgPath, m.curSize = nil, "", image.Point{}
 		m.regions, m.regionPath, m.regionIdx = nil, nil, -1
+		m.requestDecode()
 		return
 	}
 	p := m.images[m.cursor].Path
@@ -254,19 +257,10 @@ func (m *galleryModel) ensureDecoded() {
 	}
 	m.resetZoom()
 	m.regions, m.regionPath, m.regionIdx = nil, nil, -1
+	m.curImg = nil
 	m.curImgPath = p
 	m.curSize = imageSize(p)
-	m.curImg = nil
-	f, err := os.Open(p) //nolint:gosec // path is the user's own image/manifest file
-	if err != nil {
-		return
-	}
-	defer f.Close() //nolint:errcheck // read-only file or already-failing path; close error is not actionable
-	img, _, err := image.Decode(f)
-	if err != nil {
-		return
-	}
-	m.curImg = img
+	m.requestDecode()
 }
 
 // cropPixels maps a normalized crop to a pixel rectangle inside b, offset by
@@ -368,6 +362,13 @@ func (m *galleryModel) storePreviewCrop() string {
 // blank); skipping the delete avoids the blank-frame flicker on zoom/pan.
 func (m *galleryModel) transmitPreviewOnly() {
 	if m.backend != backendKitty || m.tty == nil || len(m.images) == 0 {
+		return
+	}
+	// Pixels pending: the only frame this could produce is the unzoomed original,
+	// which transmitView already stored (and storing the file itself makes kitty
+	// decode it at full size). A full crop still re-stores: on a d2 entry a sharp
+	// zoomed vector frame may be up and must be replaced on zoom-out.
+	if m.curImg == nil && !m.crop.isFull() {
 		return
 	}
 	fmt.Fprint(m.tty, m.storePreviewCrop()) //nolint:errcheck // best-effort tty escape-sequence write

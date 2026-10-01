@@ -4,8 +4,9 @@ name: dependabot-vendor-hash
 # expression pins, so every Go bump it opens fails the `nix` job until that
 # hash is corrected. This pushes the correction onto the PR branch.
 #
-# pull_request_target is what grants the write token: Dependabot-triggered
-# events get a read-only one and cannot read Actions secrets at all.
+# pull_request_target is what grants access to the App secrets:
+# Dependabot-triggered events cannot read Actions secrets at all. The push
+# uses the App token, so the job's own token stays read-only.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
@@ -14,7 +15,7 @@ on:
       - go.sum
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: vendor-hash-${{ github.event.pull_request.number }}
@@ -28,13 +29,23 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: false
 
+      # The action defaults to writing the job token into nix.conf as an
+      # access token; blank it so the build below cannot read one.
       - uses: DeterminateSystems/determinate-nix-action@v3
+        with:
+          github-token: ""
 
       # No token exists in the job yet, so this build cannot exfiltrate one.
       # The App token is minted afterwards, purely to push.
+      # `fix hashes` only rewrites mismatches the daemon has recorded from a
+      # failed build, so the build has to run first. It fails whenever a hash
+      # is stale; with every hash right it passes and nothing changes.
       - name: Fix hashes
-        run: determinate-nixd fix hashes --auto-apply
+        run: |
+          nix build .#default --no-link --keep-going || true
+          determinate-nixd fix hashes --auto-apply
 
       - uses: actions/create-github-app-token@v3
         id: app-token

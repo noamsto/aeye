@@ -28,13 +28,19 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: false
 
       - uses: DeterminateSystems/determinate-nix-action@v3
 
       # No token exists in the job yet, so this build cannot exfiltrate one.
       # The App token is minted afterwards, purely to push.
+      # `fix hashes` only rewrites mismatches the daemon has recorded from a
+      # failed build, so the build has to run first. It fails whenever a hash
+      # is stale; with every hash right it passes and nothing changes.
       - name: Fix hashes
-        run: determinate-nixd fix hashes --auto-apply
+        run: |
+          nix build .#default --no-link --keep-going || true
+          determinate-nixd fix hashes --auto-apply
 
       - uses: actions/create-github-app-token@v3
         id: app-token

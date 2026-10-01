@@ -196,6 +196,7 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 			dir = -1
 		case tea.MouseWheelDown:
 			dir = +1
+		default:
 		}
 		if dir == 0 {
 			break

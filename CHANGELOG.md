@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.1](https://github.com/noamsto/aeye/compare/v1.6.0...v1.6.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* **ci:** build before determinate-nixd fix hashes in dependabot-vendor-hash ([#308](https://github.com/noamsto/aeye/issues/308)) ([419ea93](https://github.com/noamsto/aeye/commit/419ea931a939e21f1d7f01ffb84f7900eed82085))
+* **lint:** add default arm to mouse-wheel button switch for golangci-lint 2.14 ([#309](https://github.com/noamsto/aeye/issues/309)) ([01d3878](https://github.com/noamsto/aeye/commit/01d387891beaefc2a3d49c4d0a561734c73092e7)), closes [#307](https://github.com/noamsto/aeye/issues/307)
+
 ## [1.6.0](https://github.com/noamsto/aeye/compare/v1.5.0...v1.6.0) (2026-09-30)
 
 

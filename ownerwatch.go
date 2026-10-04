@@ -6,11 +6,9 @@ import (
 )
 
 // ownerWatch returns a channel closed when the process named by AEYE_OWNER_PID
-// exits, or nil when there is no owner to watch. The launcher sets the pid when
-// it can resolve the agent that opened the carousel; a carousel opened manually
-// gets no watch and behaves exactly as before. Over the remote bridge the viewer
-// need not run on the agent's host, so a local pid watch is meaningless and the
-// pid is neither passed nor honoured there.
+// exits, or nil when there is no owner to watch: the pid is absent (a manual
+// launch), invalid, or the session is remote-bridged, where the viewer may run
+// on a different host from the agent and a local pid is meaningless.
 func ownerWatch() <-chan struct{} {
 	if bridged() {
 		return nil

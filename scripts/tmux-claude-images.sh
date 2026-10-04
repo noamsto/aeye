@@ -114,12 +114,10 @@ resolve_target() {
 # owner_pid_self -> pid of the agent process holding this pane: the ancestor of
 # this launcher that is a direct child of the pane's shell. Mirrors
 # adapters/core/manifest-lifecycle.sh's owner_pid_self; the toggle ships
-# standalone in releases (and in the nix wrapper), so it cannot source that file.
-# Identified by position, not name, so it resolves claude, codex, cursor and pi
-# alike. Empty outside tmux, when the walk cannot reach the pane shell, or when
-# the launcher itself is that direct child (a manual launch from the pane shell)
-# — watching the launcher, which exits at once, would close the viewer
-# immediately.
+# standalone, so it cannot source that file. Empty outside tmux, when the walk
+# cannot reach the pane shell, or when the launcher itself is that direct child
+# (a manual launch — watching the launcher, which exits at once, would close the
+# viewer immediately).
 owner_pid_self() {
 	local pane_pid p pp i
 	[[ -n ${TMUX_PANE:-} ]] || return 0
@@ -670,9 +668,8 @@ main() {
 	[[ ${1:-} == --ensure-open ]] && ENSURE_OPEN=1
 	# Resolve the agent pid the viewer should watch (the carousel closes when its
 	# owner exits). The spawned viewer inherits tmux's env, not the agent's, so it
-	# cannot work this out itself. Over the remote bridge the viewer may run on a
-	# different host, where a local pid is meaningless, so it is neither passed nor
-	# honoured there.
+	# cannot work this out itself; over the remote bridge a local pid is meaningless
+	# and is left unset.
 	if [[ -z ${AEYE_BRIDGED:-} ]]; then
 		OWNER_PID="$(owner_pid_self)"
 	fi

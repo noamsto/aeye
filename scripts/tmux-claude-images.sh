@@ -20,6 +20,8 @@ set -euo pipefail
 STATE_DIR="${AEYE_DIR:-${CLAUDE_STATUS_DIR:-/tmp/claude-status}}"
 IMAGES_DIR="$STATE_DIR/images"
 ENSURE_OPEN=""
+# The agent pid the spawned viewer should watch (AEYE_OWNER_PID); empty = no watch.
+OWNER_PID=""
 
 # A terminal cell is roughly twice as tall as it is wide, so the window's pixel
 # aspect ratio is cols : (CELL_ASPECT * rows). Split the longer pixel axis so
@@ -109,6 +111,38 @@ resolve_target() {
 	fi
 }
 
+# owner_pid_self -> pid of the agent process holding this pane: the ancestor of
+# this launcher that is a direct child of the pane's shell. Mirrors
+# adapters/core/manifest-lifecycle.sh's owner_pid_self; the toggle ships
+# standalone in releases (and in the nix wrapper), so it cannot source that file.
+# Identified by position, not name, so it resolves claude, codex, cursor and pi
+# alike. Empty outside tmux, when the walk cannot reach the pane shell, or when
+# the launcher itself is that direct child (a manual launch from the pane shell)
+# — watching the launcher, which exits at once, would close the viewer
+# immediately.
+owner_pid_self() {
+	local pane_pid p pp i
+	[[ -n ${TMUX_PANE:-} ]] || return 0
+	command -v tmux >/dev/null 2>&1 || return 0
+	pane_pid="$(tmux display-message -p -t "$TMUX_PANE" '#{pane_pid}' 2>/dev/null)" || return 0
+	[[ $pane_pid =~ ^[0-9]+$ ]] || return 0
+	p=$$
+	# Bounded: a cycle is impossible, but a walk that never meets pane_pid (the
+	# launcher was reparented) must end rather than spin.
+	for ((i = 0; i < 16; i++)); do
+		pp="$(ps -o ppid= -p "$p" 2>/dev/null | tr -d '[:space:]')"
+		[[ $pp =~ ^[0-9]+$ ]] || return 0
+		((pp <= 1)) && return 0
+		if [[ $pp == "$pane_pid" ]]; then
+			[[ $p == "$$" ]] && return 0
+			printf '%s' "$p"
+			return 0
+		fi
+		p="$pp"
+	done
+	return 0
+}
+
 # has_flag CAPS LETTER -> true if LETTER is a boolean flag in CAPS (the letters
 # packed into the first "[-...]" cluster of a `list-commands` line).
 has_flag() {
@@ -194,6 +228,7 @@ launch_tmux() {
 	# binary path with spaces survives tmux re-parsing it via the shell.
 	local env_args=()
 	[[ -n $SESSION ]] && env_args+=(-e AEYE_OWNER="$SESSION")
+	[[ -n $OWNER_PID ]] && env_args+=(-e AEYE_OWNER_PID="$OWNER_PID")
 	[[ -n ${AEYE_DEBUG:-} ]] && env_args+=(-e AEYE_DEBUG="$AEYE_DEBUG")
 	[[ -n ${AEYE_BRIDGED:-} ]] && env_args+=(-e AEYE_BRIDGED="$AEYE_BRIDGED")
 	# The viewer's argv is the manifest KEY, which is not a tmux target — forward
@@ -321,6 +356,7 @@ launch_kitty() {
 	# stays inert in the viewer.
 	local owner_env=()
 	[[ -n $SESSION ]] && owner_env=(--env AEYE_OWNER="$SESSION")
+	[[ -n $OWNER_PID ]] && owner_env+=(--env AEYE_OWNER_PID="$OWNER_PID")
 	local debug_env=()
 	[[ -n ${AEYE_DEBUG:-} ]] && debug_env=(--env AEYE_DEBUG="$AEYE_DEBUG")
 	# Toggle: a viewer window is tagged with user_var claude_img_src=$KEY.
@@ -377,6 +413,8 @@ launch_wezterm() {
 	# agent. env forwards the state dir — the mux server never saw our env.
 	local dbg=()
 	[[ -n ${AEYE_DEBUG:-} ]] && dbg=(AEYE_DEBUG="$AEYE_DEBUG")
+	local owner=()
+	[[ -n $OWNER_PID ]] && owner=(AEYE_OWNER_PID="$OWNER_PID")
 	# Host pane size in cells: `wezterm cli list` gives .size.cols/.size.rows for
 	# the $WEZTERM_PANE entry. Split its longer axis (overridable via AEYE_SPLIT).
 	# // 0 defaults absent fields so resolve_axis never sees literal "null null"
@@ -389,7 +427,7 @@ launch_wezterm() {
 	axis="$(resolve_axis "$w" "$h")"
 	[[ $axis == bottom ]] && dir=--bottom || dir=--right
 	pane="$(wezterm cli split-pane "$dir" --percent 40 --cwd "$STATE_DIR" -- \
-		env ${dbg[@]+"${dbg[@]}"} AEYE_DIR="$STATE_DIR" CLAUDE_STATUS_DIR="$STATE_DIR" "$VIEWER_BIN" "$KEY")"
+		env ${dbg[@]+"${dbg[@]}"} ${owner[@]+"${owner[@]}"} AEYE_DIR="$STATE_DIR" CLAUDE_STATUS_DIR="$STATE_DIR" "$VIEWER_BIN" "$KEY")"
 	printf '%s\n' "$pane" >"$panefile"
 }
 
@@ -413,7 +451,9 @@ launch_ghostty() {
 	# --working-directory is explicit to dodge the 1.3.0 -e working-dir bug.
 	local dbg=()
 	[[ -n ${AEYE_DEBUG:-} ]] && dbg=(AEYE_DEBUG="$AEYE_DEBUG")
-	local cmd=(env ${dbg[@]+"${dbg[@]}"} AEYE_DIR="$STATE_DIR" CLAUDE_STATUS_DIR="$STATE_DIR" "$VIEWER_BIN" "$KEY")
+	local owner=()
+	[[ -n $OWNER_PID ]] && owner=(AEYE_OWNER_PID="$OWNER_PID")
+	local cmd=(env ${dbg[@]+"${dbg[@]}"} ${owner[@]+"${owner[@]}"} AEYE_DIR="$STATE_DIR" CLAUDE_STATUS_DIR="$STATE_DIR" "$VIEWER_BIN" "$KEY")
 	case "$(uname -s)" in
 	Darwin) open -na ghostty --args --working-directory="$STATE_DIR" -e "${cmd[@]}" ;;
 	*) ghostty +new-window --working-directory="$STATE_DIR" -e "${cmd[@]}" ;;
@@ -505,8 +545,10 @@ launch_iterm() {
 	# a path with spaces (e.g. /Users/Jane Doe/...).
 	local dbg_frag=""
 	[[ -n ${AEYE_DEBUG:-} ]] && printf -v dbg_frag 'AEYE_DEBUG=%q ' "$AEYE_DEBUG"
+	local owner_frag=""
+	[[ -n $OWNER_PID ]] && printf -v owner_frag 'AEYE_OWNER_PID=%q ' "$OWNER_PID"
 	local cmd
-	cmd="env ${dbg_frag}AEYE_DIR=$(printf '%q' "$STATE_DIR") CLAUDE_STATUS_DIR=$(printf '%q' "$STATE_DIR") $(printf '%q' "$VIEWER_BIN") $(printf '%q' "$KEY")"
+	cmd="env ${dbg_frag}${owner_frag}AEYE_DIR=$(printf '%q' "$STATE_DIR") CLAUDE_STATUS_DIR=$(printf '%q' "$STATE_DIR") $(printf '%q' "$VIEWER_BIN") $(printf '%q' "$KEY")"
 	# Split along the current session's longer axis (overridable via AEYE_SPLIT);
 	# the read is guarded (|| true) since a failed/empty iterm_dims would otherwise
 	# hit set -e's read-at-EOF trap.
@@ -626,6 +668,14 @@ main() {
 	fi
 	resolve_target
 	[[ ${1:-} == --ensure-open ]] && ENSURE_OPEN=1
+	# Resolve the agent pid the viewer should watch (the carousel closes when its
+	# owner exits). The spawned viewer inherits tmux's env, not the agent's, so it
+	# cannot work this out itself. Over the remote bridge the viewer may run on a
+	# different host, where a local pid is meaningless, so it is neither passed nor
+	# honoured there.
+	if [[ -z ${AEYE_BRIDGED:-} ]]; then
+		OWNER_PID="$(owner_pid_self)"
+	fi
 	if [[ ${1:-} == --resolve ]]; then # test seam: print resolution, no launch
 		printf '%s\t%s\t%s\n' "$MODE" "${KEY:-}" "${MANIFEST:-}"
 		return

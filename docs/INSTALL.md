@@ -203,5 +203,6 @@ compiler).
 | `AEYE_BIN` | Override the viewer binary the toggle launches (default: `aeye` on PATH). |
 | `AEYE_DIR` | State dir for manifests. Falls back to `CLAUDE_STATUS_DIR`, then `/tmp/claude-status`. |
 | `AEYE_SESSION_ID` | Agent-neutral session id used to key the manifest (and viewer) outside tmux. Exported by the pi `/aeye` command's exec script; `CLAUDE_CODE_SESSION_ID` is the Claude equivalent. |
+| `AEYE_OWNER_PID` | Agent pid the launcher resolves and forwards so the viewer exits when its owner does. Set by `tmux-claude-images` on the tmux path when the owner is resolvable; never set over the remote bridge. |
 | `CLAUDE_STATUS_DIR` | Secondary state-dir fallback (shared with claude-status tooling). |
 | `AEYE_D2` / `AEYE_RESVG` | Override the `d2` / `resvg` binaries used for diagram rendering. |

@@ -219,6 +219,11 @@ type galleryModel struct {
 	bridged              bool
 	tick                 *tickSnapshot
 
+	// ownerGone closes when the agent that launched this viewer exits (nil = no
+	// watch). A carousel whose owner is gone outlives its purpose, so its exit
+	// cleans up like any other quit.
+	ownerGone <-chan struct{}
+
 	// Native kitty OSC 72 drag-out: dragNative is probed once at startup and the
 	// terminal is armed as a drag source; dragInFlight stops a second drag from
 	// being initiated while one is already running.
@@ -246,6 +251,9 @@ func (m galleryModel) Init() tea.Cmd {
 	// is often already behind at its first frame.
 	m.tick.publish(m)
 	cmds := []tea.Cmd{galleryTickCmd(m.tick, m.pane), updateTickCmd(), probeUpdateCmd(m.update)}
+	if m.ownerGone != nil {
+		cmds = append(cmds, ownerExitCmd(m.ownerGone))
+	}
 	if m.dragNative && m.tty != nil {
 		// Register as a drag source up front so a plain mouse drag exports the
 		// image — no key to press. The terminal reports each gesture via OSC 72.
@@ -258,6 +266,20 @@ func (m galleryModel) Init() tea.Cmd {
 }
 
 type galleryTickMsg struct{}
+
+// ownerExitedMsg is delivered once the watched owner process exits; the handler
+// quits the program through the normal path so the terminal and alt-screen are
+// restored exactly as on `q`.
+type ownerExitedMsg struct{}
+
+// ownerExitCmd blocks off the event loop until ownerGone closes, then asks the
+// program to quit.
+func ownerExitCmd(ownerGone <-chan struct{}) tea.Cmd {
+	return func() tea.Msg {
+		<-ownerGone
+		return ownerExitedMsg{}
+	}
+}
 
 const galleryTickInterval = 1500 * time.Millisecond
 
@@ -615,6 +637,10 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	switch msg := msg.(type) {
+	case ownerExitedMsg:
+		// The owning agent exited: quit rather than commit a pending deletion —
+		// the user is no longer watching to confirm it.
+		return m, tea.Quit
 	case tea.WindowSizeMsg:
 		w, h := msg.Width, msg.Height
 		if w == 0 || h == 0 {
@@ -1333,6 +1359,7 @@ func runGallery(pane string) error {
 		cursor:       max(0, len(images)-1),
 		pinned:       true,
 		crop:         fullCrop(),
+		ownerGone:    ownerWatch(),
 		// OSC 72 can't cross tmux and only kitty implements it; probe only there,
 		// where the query still confirms the running version actually supports it.
 		dragNative: os.Getenv("TMUX") == "" && strings.HasPrefix(termName(), "xterm-kitty") && probeDragProtocol(),

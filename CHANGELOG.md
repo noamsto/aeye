@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/noamsto/aeye/compare/v1.6.1...v1.7.0) (2026-10-04)
+
+
+### Features
+
+* **viewer:** close the carousel when its owning agent exits ([#312](https://github.com/noamsto/aeye/issues/312)) ([51dc856](https://github.com/noamsto/aeye/commit/51dc8567034c195b2450aa8f108fa3008ddd646d))
+
 ## [1.6.1](https://github.com/noamsto/aeye/compare/v1.6.0...v1.6.1) (2026-10-01)
 
 

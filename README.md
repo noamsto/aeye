@@ -232,6 +232,14 @@ a split: `grid` (default) floats only in a tmux-og crew grid window
 (`@crew_grid=1`); `always` floats in any tmux window, as long as the server's
 `new-pane` supports floats; `never` always splits.
 
+**Lifecycle.** When the launcher can resolve the agent that opened the carousel
+(inside tmux, by walking the launcher's process ancestry to the pane's shell) it
+forwards that pid as `AEYE_OWNER_PID`; the viewer watches it and exits — which
+then closes its split or window — as soon as the agent does, including on a
+crash, `kill-window`, or terminal close that agent end-hooks miss. A carousel
+opened by hand, or launched over the remote bridge (where the viewer can run on
+a different host), gets no pid and behaves exactly as before.
+
 ### Enable kitty-pane mode (native drag-out inside tmux)
 
 Native drag-out needs a real kitty pane — tmux can't carry the protocol. To make

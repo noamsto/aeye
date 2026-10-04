@@ -144,7 +144,7 @@ run_with_live_panes() { # $1=live nums  $2=stdin json
 	printf '{}\n' >"$AEYE_DIR/images/4242-9.jsonl"   # live pane
 	run run_with_live_panes "7 9" '{"source":"resume","session_id":"sess-A"}'
 	[ "$status" -eq 0 ]
-	[ -f "$MANIFEST" ]                  # current pane, kept
+	[ -f "$MANIFEST" ]                       # current pane, kept
 	[ -f "$AEYE_DIR/images/4242-9.jsonl" ]   # live, kept
 	[ ! -f "$AEYE_DIR/images/4242-8.jsonl" ] # dead, swept
 }

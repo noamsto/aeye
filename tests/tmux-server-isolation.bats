@@ -54,7 +54,7 @@ start_session() {
 @test "each tmux server keeps its own manifest for the same pane number" {
 	capture 4242
 	capture 5555
-	[ "$(ls "$IMAGES"/*.jsonl | wc -l)" -eq 2 ]
+	[ "$(find "$IMAGES" -maxdepth 1 -name '*.jsonl' | wc -l)" -eq 2 ]
 }
 
 @test "the GC sweep reaps a manifest whose tmux server is gone" {

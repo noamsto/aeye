@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 // TestWatchOwnerFiresOnExit is the core behavior: the watcher must stay quiet
@@ -85,6 +87,42 @@ func TestOwnerWatchValidPid(t *testing.T) {
 
 	if got := ownerWatch(); got == nil {
 		t.Fatal("ownerWatch() = nil for a valid pid; want a channel")
+	}
+}
+
+// TestOwnerExitedQuitsProgram pins the program-side half of the fix: the owner
+// exit message must quit through the normal tea.Quit path, or the viewer would
+// stay up (and orphan itself) despite the watcher firing correctly.
+func TestOwnerExitedQuitsProgram(t *testing.T) {
+	_, cmd := galleryModel{}.handle(ownerExitedMsg{})
+	if cmd == nil {
+		t.Fatal("handle(ownerExitedMsg{}) returned nil cmd; want tea.Quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("handle(ownerExitedMsg{}) cmd() = %T; want tea.QuitMsg", cmd())
+	}
+}
+
+// TestOwnerExitCmd covers the command that connects the watcher to the message:
+// it stays parked until the channel closes, then delivers ownerExitedMsg.
+func TestOwnerExitCmd(t *testing.T) {
+	gone := make(chan struct{})
+	cmd := ownerExitCmd(gone)
+	done := make(chan tea.Msg, 1)
+	go func() { done <- cmd() }()
+	select {
+	case <-done:
+		t.Fatal("ownerExitCmd fired before the owner channel closed")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(gone)
+	select {
+	case msg := <-done:
+		if _, ok := msg.(ownerExitedMsg); !ok {
+			t.Fatalf("ownerExitCmd delivered %T; want ownerExitedMsg", msg)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("ownerExitCmd did not deliver after the owner channel closed")
 	}
 }
 

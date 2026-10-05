@@ -14,7 +14,20 @@ func newRasterMinimapModel(t *testing.T) *galleryModel {
 	t.Helper()
 	m := newMinimapModel(t, newTransmitRecorder(t))
 	m.backend, m.rasterFormat = backendRaster, formatITerm
+	for _, e := range m.images {
+		cachedPNG(e.Path, m.l.stripW, m.l.stripH)
+	}
 	return m
+}
+
+// slotPNG is stripSlotPNG for a warm cache, where a miss is a test failure.
+func slotPNG(t *testing.T, m *galleryModel, i int) string {
+	t.Helper()
+	got, ok := m.stripSlotPNG(i)
+	if !ok {
+		t.Fatalf("slot %d missed a warm cache", i)
+	}
+	return got
 }
 
 func plainThumb(t *testing.T, m *galleryModel, i int) string {
@@ -41,8 +54,8 @@ func decodePNGFile(t *testing.T, path string) image.Image {
 func TestStripSlotPNGPlainAtFit(t *testing.T) {
 	m := newRasterMinimapModel(t)
 	for i := range m.images {
-		if want := plainThumb(t, m, i); m.stripSlotPNG(i) != want {
-			t.Errorf("slot %d at fit = %s, want the plain thumb %s", i, m.stripSlotPNG(i), want)
+		if want := plainThumb(t, m, i); slotPNG(t, m, i) != want {
+			t.Errorf("slot %d at fit = %s, want the plain thumb %s", i, slotPNG(t, m, i), want)
 		}
 	}
 }
@@ -50,12 +63,12 @@ func TestStripSlotPNGPlainAtFit(t *testing.T) {
 func TestStripSlotPNGOverlayOnSelectedOnly(t *testing.T) {
 	m := newRasterMinimapModel(t)
 	m.zoomBy(zoomStep)
-	if got := m.stripSlotPNG(m.cursor); got != m.minimapPNGPath() {
+	if got := slotPNG(t, m, m.cursor); got != m.minimapPNGPath() {
 		t.Fatalf("selected slot = %s, want the overlay %s", got, m.minimapPNGPath())
 	}
 	other := 0
-	if want := plainThumb(t, m, other); m.stripSlotPNG(other) != want {
-		t.Errorf("unselected slot = %s, want the plain thumb %s", m.stripSlotPNG(other), want)
+	if want := plainThumb(t, m, other); slotPNG(t, m, other) != want {
+		t.Errorf("unselected slot = %s, want the plain thumb %s", slotPNG(t, m, other), want)
 	}
 
 	plain, _ := pngSize(plainThumb(t, m, m.cursor))
@@ -75,11 +88,11 @@ func TestStripSlotPNGOverlayOnSelectedOnly(t *testing.T) {
 func TestStripSlotPNGFollowsPanAndClears(t *testing.T) {
 	m := newRasterMinimapModel(t)
 	m.zoomBy(zoomStep * zoomStep)
-	m.stripSlotPNG(m.cursor)
+	slotPNG(t, m, m.cursor)
 	before := decodePNGFile(t, m.minimapPNGPath())
 
 	m.panBy(0.3, 0)
-	if got := m.stripSlotPNG(m.cursor); got != m.minimapPNGPath() {
+	if got := slotPNG(t, m, m.cursor); got != m.minimapPNGPath() {
 		t.Fatalf("after pan, selected slot = %s, want the overlay", got)
 	}
 	after := decodePNGFile(t, m.minimapPNGPath())
@@ -88,7 +101,7 @@ func TestStripSlotPNGFollowsPanAndClears(t *testing.T) {
 	}
 
 	m.crop = fullCrop()
-	if want := plainThumb(t, m, m.cursor); m.stripSlotPNG(m.cursor) != want {
+	if want := plainThumb(t, m, m.cursor); slotPNG(t, m, m.cursor) != want {
 		t.Error("overlay not cleared at fit")
 	}
 }
@@ -101,7 +114,7 @@ func TestStripSlotPNGBrokenBaseFallsBack(t *testing.T) {
 		t.Fatal("model has no images")
 	}
 	m.images[m.cursor].Path = "/nonexistent/aeye-missing.png"
-	if want := plainThumb(t, m, m.cursor); m.stripSlotPNG(m.cursor) != want {
+	if want := plainThumb(t, m, m.cursor); slotPNG(t, m, m.cursor) != want {
 		t.Error("unreadable base should fall back to the plain thumb")
 	}
 }
@@ -144,7 +157,8 @@ func BenchmarkRasterPanStrip(b *testing.B) {
 				if mode == "overlay" {
 					m.panBy(0.01*float64(1-2*(i%2)), 0)
 				}
-				renderRaster(m.rasterFormat, m.stripSlotPNG(m.cursor), m.l.stripW, m.l.stripH)
+				png, _ := m.stripSlotPNG(m.cursor)
+				renderRaster(m.rasterFormat, png, m.l.stripW, m.l.stripH)
 			}
 		})
 	}
@@ -185,7 +199,34 @@ func TestStripSlotPNGDecodeFailureRepaints(t *testing.T) {
 	if cmd == nil {
 		t.Error("decode failure scheduled no raster repaint, so the stale rectangle stays")
 	}
-	if want := plainThumb(t, &got, got.cursor); got.stripSlotPNG(got.cursor) != want {
+	if want := plainThumb(t, &got, got.cursor); slotPNG(t, &got, got.cursor) != want {
 		t.Error("selected slot still carries the overlay after the decode failed")
+	}
+}
+
+// A cold cache must not make the overlay path decode: the slot reports a miss
+// (painted blank, then repainted when the async fill lands) and no thumb is written.
+func TestStripSlotPNGColdCacheDoesNotTranscode(t *testing.T) {
+	m := newRasterMinimapModel(t)
+	m.zoomBy(zoomStep)
+	if m.cursor < 0 || m.cursor >= len(m.images) {
+		t.Fatal("cursor outside the model's images")
+	}
+	out, ok := pngCacheName(m.images[m.cursor].Path, m.l.stripW, m.l.stripH)
+	if !ok {
+		t.Fatal("no cache name for the selected image")
+	}
+	if err := os.Remove(out); err != nil {
+		t.Fatal(err)
+	}
+	m.cacheMiss = false
+	if got, ok := m.stripSlotPNG(m.cursor); ok || got != "" {
+		t.Fatalf("cold selected slot = %q, %v; want a miss", got, ok)
+	}
+	if !m.cacheMiss {
+		t.Error("miss did not ask for a fill")
+	}
+	if _, err := os.Stat(out); err == nil {
+		t.Error("stripSlotPNG transcoded on the loop")
 	}
 }

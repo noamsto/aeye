@@ -32,8 +32,8 @@ write to $SRC_DIR/<name>.d2 renders there automatically — draw one whenever a
 picture would carry part of your explanation: architecture, data flow, state
 machines, pipelines, entity relationships. Not for linear or trivial things,
 and the prose still does the explaining. Never write .d2 files inside the
-working project. The aeye diagrams skill has the few syntax rules that keep a
-render clean; load it when you draw.
+working project. The aeye diagrams skill holds the house style and core syntax;
+load it when you draw, and open its references for deeper constructs.
 EOF
 
 jq -nc --arg ctx "$guidance" \

@@ -5,10 +5,7 @@ description: Use when a picture beats prose — drawing architecture, data flow,
 
 # Diagrams (D2 → carousel)
 
-When structure is clearer seen than read, write a [D2](https://d2lang.com)
-diagram as a `.d2` file. aeye's pi hookyard handler renders it browser-free
-(`aeye render-diagram` → svg → resvg → png) into the per-pane image manifest,
-and the carousel shows it like any other image — auto-opening once per session.
+{{INTRO}}
 
 Every `d2` block here and in the references is a complete, single-board source —
 copy one and edit it.
@@ -36,12 +33,7 @@ previous render: the hook prunes any earlier image filed under the same name, so
 to revise a diagram, overwrite the same file and it replaces the old one in the
 carousel instead of stacking beside it.
 
-That pruning only fires if the write lands under the right name, so write **one
-`.d2` per tool call, named by absolute path**. The hook takes the file the call
-names: an explicit `file_path`, else the first `.d2` token in the command that exists on disk,
-resolved against the *project* cwd. A call naming two `.d2` files renders the
-first only; a path made relative by an earlier `cd` resolves to nothing and
-renders nothing.
+{{WRITE_CALLS}}
 
 Only a `.d2` under the scratch dir's `src/` is adopted into the carousel. A
 `.d2` anywhere else still renders but files nothing, and a `<name>-check.d2` /

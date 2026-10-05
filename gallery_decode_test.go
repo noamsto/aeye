@@ -278,11 +278,30 @@ func runDecode(t *testing.T, m galleryModel) (galleryModel, decodedMsg) {
 	if cmd == nil {
 		t.Fatal("kick for the current request started no decode")
 	}
-	res, ok := cmd().(decodedMsg)
+	res, ok := findDecoded(cmd)
 	if !ok {
 		t.Fatal("decode cmd did not return a decodedMsg")
 	}
 	return m, res
+}
+
+// findDecoded runs cmd and returns the decodedMsg it produces, looking through
+// the tea.Batch that Update wraps around a kick's decode and cache commands.
+func findDecoded(cmd tea.Cmd) (decodedMsg, bool) {
+	if cmd == nil {
+		return decodedMsg{}, false
+	}
+	switch msg := cmd().(type) {
+	case decodedMsg:
+		return msg, true
+	case tea.BatchMsg:
+		for _, c := range msg {
+			if d, ok := findDecoded(c); ok {
+				return d, true
+			}
+		}
+	}
+	return decodedMsg{}, false
 }
 
 // land runs the latest decode and delivers its result.

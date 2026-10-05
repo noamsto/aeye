@@ -17,13 +17,11 @@ var warmDebounce = 150 * time.Millisecond
 // decode, so a burst of superseded fills must not all run at once.
 var transcodeSlots = make(chan struct{}, 2)
 
-// cacheJob is one thumbnail to have in the cache.
 type cacheJob struct {
 	path       string
 	cols, rows int
 }
 
-// cacheTarget is what a fill was started for.
 type cacheTarget struct {
 	l         layout
 	cursor, n int
@@ -31,7 +29,6 @@ type cacheTarget struct {
 	mtime     int64
 }
 
-// cacheKickMsg starts the fill for generation gen, once its debounce has elapsed.
 type cacheKickMsg struct {
 	gen    uint64
 	target cacheTarget
@@ -48,7 +45,6 @@ type cacheFilledMsg struct {
 	rest   []cacheJob
 }
 
-// cacheWarmedMsg reports the rest of the images warmed.
 type cacheWarmedMsg struct{ failed []string }
 
 // cachedPNGOrMiss is the loop-side cachedPNG: it only looks. A miss reports
@@ -118,7 +114,6 @@ func (m *galleryModel) armCache(prev layout) tea.Cmd {
 	return tea.Tick(delay, func(time.Time) tea.Msg { return cacheKickMsg{gen: g, target: target} })
 }
 
-// startCache launches the fill for a kick that is still current.
 func (m *galleryModel) startCache(msg cacheKickMsg) tea.Cmd {
 	if msg.gen != m.cacheGen {
 		return nil
@@ -146,7 +141,7 @@ func (m *galleryModel) cacheFilled(msg cacheFilledMsg) tea.Cmd {
 	m.cacheBusy = false
 	cmds := []tea.Cmd{func() tea.Msg { return cacheWarmedMsg{failed: runCacheJobs(msg.ctx, msg.rest)} }}
 	if msg.notify && msg.target == m.cacheTarget() {
-		// restoreView re-stores the bitmap over any sharp d2 frame already there.
+		// restoreView re-stores the bitmap over any sharp d2 frame, so render it again.
 		cmds = append(cmds, m.restoreView(), m.kickVector())
 	}
 	return tea.Batch(cmds...)

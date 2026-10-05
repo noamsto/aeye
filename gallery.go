@@ -190,9 +190,10 @@ type galleryModel struct {
 	// sets cacheMiss, and the Update that raised it arms a fill off the loop.
 	// cacheGen supersedes an earlier fill's kick and result. cacheBusy/cacheFor mark
 	// a notifying fill (it re-stores the view when it lands) for that target, so a
-	// repeat miss on it doesn't restart the fill; a miss that arrives while the
-	// kick is still pending (cachePending) sets cacheBusy to join it. cacheFailed holds the cache files that could not be
-	// written, so their source is used as-is instead of asking again.
+	// repeat miss on it doesn't restart the fill; a miss that arrives while the kick
+	// is still pending (cachePending) sets cacheBusy to join it. cacheFailed holds
+	// the cache files that could not be written, so their source is used as-is
+	// instead of asking again.
 	cacheGen     uint64
 	cacheMiss    bool
 	cacheBusy    bool

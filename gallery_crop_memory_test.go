@@ -297,6 +297,9 @@ func TestReloadKeepsDiagramCropAcrossThemeSwitch(t *testing.T) {
 	m = sendAll(t, m, key2)
 
 	m = flipTheme(m, "light")
+	if len(m.images) == 0 {
+		t.Fatal("no images after the theme flip")
+	}
 	if _, ok := m.crops[cropKey(m.images[0])]; !ok {
 		t.Fatalf("crops = %v, want the unselected diagram's crop kept across the theme flip", m.crops)
 	}

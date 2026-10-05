@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.8.0](https://github.com/noamsto/aeye/compare/v1.7.0...v1.8.0) (2026-10-05)
+
+
+### Features
+
+* **skills:** single-source the diagrams skill and slim its core ([#317](https://github.com/noamsto/aeye/issues/317)) ([4ebf0c7](https://github.com/noamsto/aeye/commit/4ebf0c76a2bf91b2d31ad5420d5dcb7b3acef004))
+* **viewer:** keep a diagram's remembered crop across a theme switch ([#321](https://github.com/noamsto/aeye/issues/321)) ([cda9b10](https://github.com/noamsto/aeye/commit/cda9b107a652b6404a4b3cf3dcff586a441acb96))
+
+
+### Bug Fixes
+
+* **viewer:** retry an undecodable carousel selection on the next reload ([#316](https://github.com/noamsto/aeye/issues/316)) ([3a427ae](https://github.com/noamsto/aeye/commit/3a427ae2ca5f9f894a5334a524afdca2341d600d))
+* **viewer:** zoom follows the preview box after a resize ([#318](https://github.com/noamsto/aeye/issues/318)) ([6d2f593](https://github.com/noamsto/aeye/commit/6d2f593ba362d50387f60a6065a8bd98115128b3))
+
+
+### Performance Improvements
+
+* **viewer:** fill the thumbnail cache off the input loop ([#323](https://github.com/noamsto/aeye/issues/323)) ([711ed0b](https://github.com/noamsto/aeye/commit/711ed0b8e462253f14ec722c2820093e0fd675da))
+
 ## [1.7.0](https://github.com/noamsto/aeye/compare/v1.6.1...v1.7.0) (2026-10-04)
 
 

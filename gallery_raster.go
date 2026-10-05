@@ -189,8 +189,9 @@ func (m *galleryModel) paintStrip() {
 // thumb with the viewport rectangle while zoomed, else the plain cached thumb.
 // ok is false on a cache miss: the lookup never decodes on the loop, so the slot
 // is repainted, overlay included, once the async fill lands.
-// chafa paints pixel formats at 1:1, so the overlay is drawn at the plain thumb's
-// own size: a differently sized one would leave stale pixels when it clears at fit.
+// The overlay is drawn at the plain thumb's own size so the letterbox geometry
+// matches: a differently sized one would leave stale pixels when it clears at fit.
+// A failed transcode answers with the full-size source, which is never decoded here.
 func (m *galleryModel) stripSlotPNG(idx int) (string, bool) {
 	if idx < 0 || idx >= len(m.images) {
 		return "", false
@@ -201,6 +202,9 @@ func (m *galleryModel) stripSlotPNG(idx int) (string, bool) {
 	}
 	w := m.minimapWant()
 	if !w.overlay {
+		return plain, true
+	}
+	if cache, ok := pngCacheName(m.images[idx].Path, m.l.stripW, m.l.stripH); !ok || cache != plain {
 		return plain, true
 	}
 	size, ok := pngSize(plain)

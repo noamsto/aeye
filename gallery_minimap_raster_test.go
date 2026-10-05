@@ -230,3 +230,29 @@ func TestStripSlotPNGColdCacheDoesNotTranscode(t *testing.T) {
 		t.Error("stripSlotPNG transcoded on the loop")
 	}
 }
+
+// A thumb that failed to transcode answers with the full-size source: the overlay
+// must not decode it on the loop, so the slot stays plain and nothing is written.
+func TestStripSlotPNGFailedTranscodeSkipsOverlay(t *testing.T) {
+	m := newRasterMinimapModel(t)
+	m.zoomBy(zoomStep)
+	if m.cursor < 0 || m.cursor >= len(m.images) {
+		t.Fatal("cursor outside the model's images")
+	}
+	src := m.images[m.cursor].Path
+	out, ok := pngCacheName(src, m.l.stripW, m.l.stripH)
+	if !ok {
+		t.Fatal("no cache name for the selected image")
+	}
+	if err := os.Remove(out); err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(m.minimapPNGPath()) //nolint:errcheck,gosec // scratch from an earlier slot paint
+	m.cacheFailed = map[string]bool{out: true}
+	if got := slotPNG(t, m, m.cursor); got != src {
+		t.Errorf("slot = %s, want the source %s", got, src)
+	}
+	if _, err := os.Stat(m.minimapPNGPath()); err == nil {
+		t.Error("overlay was built from the full-size source")
+	}
+}

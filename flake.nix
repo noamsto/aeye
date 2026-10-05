@@ -47,7 +47,7 @@
           gofmt.enable = true;
           # govet and golangci-lint require network access (to resolve Go module
           # deps) which is unavailable in the Nix build sandbox. Go correctness
-          # is still enforced by the buildGoModule doCheck = true check.
+          # is still enforced by checks.go-gate.
           govet.enable = false;
           golangci-lint.enable = false;
           shellcheck.enable = true;
@@ -88,7 +88,8 @@
             version = releaseVersion;
             src = ./.;
             vendorHash = "sha256-fR06/nSpTjLCF7NMtDNniA9QRkwr6T+99H/f8apTp9g=";
-            doCheck = true;
+            # Tests run once, under -race, in checks.go-gate.
+            doCheck = false;
             ldflags = ["-X main.buildSuffix=${rev}"];
             nativeBuildInputs = [pkgs.makeWrapper];
             # Self-contained: pin the diagram font and carry resvg/chafa so the
@@ -134,6 +135,7 @@
         # so it runs in the network-less sandbox that blocks the pre-commit lint hooks.
         checks.go-gate = self'.packages.default.overrideAttrs (old: {
           pname = "aeye-go-gate";
+          doCheck = true;
           nativeBuildInputs = old.nativeBuildInputs ++ [pkgs.golangci-lint pkgs.nilaway];
           postConfigure = ''
             export HOME=$TMPDIR

@@ -192,6 +192,9 @@ func (m *galleryModel) paintStrip() {
 // chafa paints pixel formats at 1:1, so the overlay is drawn at the plain thumb's
 // own size: a differently sized one would leave stale pixels when it clears at fit.
 func (m *galleryModel) stripSlotPNG(idx int) (string, bool) {
+	if idx < 0 || idx >= len(m.images) {
+		return "", false
+	}
 	plain, ok := m.cachedPNGOrMiss(m.images[idx].Path, m.l.stripW, m.l.stripH)
 	if !ok || idx != m.cursor {
 		return plain, ok

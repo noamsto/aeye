@@ -17,6 +17,14 @@ func newRasterMinimapModel(t *testing.T) *galleryModel {
 	return m
 }
 
+func plainThumb(t *testing.T, m *galleryModel, i int) string {
+	t.Helper()
+	if i < 0 || i >= len(m.images) {
+		t.Fatalf("no image %d of %d", i, len(m.images))
+	}
+	return cachedPNG(m.images[i].Path, m.l.stripW, m.l.stripH)
+}
+
 func decodePNGFile(t *testing.T, path string) image.Image {
 	t.Helper()
 	b, err := os.ReadFile(path) //nolint:gosec // scratch path the model wrote
@@ -33,7 +41,7 @@ func decodePNGFile(t *testing.T, path string) image.Image {
 func TestStripSlotPNGPlainAtFit(t *testing.T) {
 	m := newRasterMinimapModel(t)
 	for i := range m.images {
-		if want := cachedPNG(m.images[i].Path, m.l.stripW, m.l.stripH); m.stripSlotPNG(i) != want {
+		if want := plainThumb(t, m, i); m.stripSlotPNG(i) != want {
 			t.Errorf("slot %d at fit = %s, want the plain thumb %s", i, m.stripSlotPNG(i), want)
 		}
 	}
@@ -46,11 +54,11 @@ func TestStripSlotPNGOverlayOnSelectedOnly(t *testing.T) {
 		t.Fatalf("selected slot = %s, want the overlay %s", got, m.minimapPNGPath())
 	}
 	other := 0
-	if want := cachedPNG(m.images[other].Path, m.l.stripW, m.l.stripH); m.stripSlotPNG(other) != want {
+	if want := plainThumb(t, m, other); m.stripSlotPNG(other) != want {
 		t.Errorf("unselected slot = %s, want the plain thumb %s", m.stripSlotPNG(other), want)
 	}
 
-	plain, _ := pngSize(cachedPNG(m.images[m.cursor].Path, m.l.stripW, m.l.stripH))
+	plain, _ := pngSize(plainThumb(t, m, m.cursor))
 	r := minimapRect(plain, m.crop)
 	img := decodePNGFile(t, m.minimapPNGPath())
 	if got := img.Bounds().Size(); got != plain {
@@ -80,7 +88,7 @@ func TestStripSlotPNGFollowsPanAndClears(t *testing.T) {
 	}
 
 	m.crop = fullCrop()
-	if want := cachedPNG(m.images[m.cursor].Path, m.l.stripW, m.l.stripH); m.stripSlotPNG(m.cursor) != want {
+	if want := plainThumb(t, m, m.cursor); m.stripSlotPNG(m.cursor) != want {
 		t.Error("overlay not cleared at fit")
 	}
 }
@@ -89,8 +97,11 @@ func TestStripSlotPNGBrokenBaseFallsBack(t *testing.T) {
 	m := newRasterMinimapModel(t)
 	m.zoomBy(zoomStep)
 	m.mini.baseKey = minimapBaseKey{}
+	if len(m.images) == 0 {
+		t.Fatal("model has no images")
+	}
 	m.images[m.cursor].Path = "/nonexistent/aeye-missing.png"
-	if want := cachedPNG(m.images[m.cursor].Path, m.l.stripW, m.l.stripH); m.stripSlotPNG(m.cursor) != want {
+	if want := plainThumb(t, m, m.cursor); m.stripSlotPNG(m.cursor) != want {
 		t.Error("unreadable base should fall back to the plain thumb")
 	}
 }
@@ -174,7 +185,7 @@ func TestStripSlotPNGDecodeFailureRepaints(t *testing.T) {
 	if cmd == nil {
 		t.Error("decode failure scheduled no raster repaint, so the stale rectangle stays")
 	}
-	if want := cachedPNG(got.images[got.cursor].Path, got.l.stripW, got.l.stripH); got.stripSlotPNG(got.cursor) != want {
+	if want := plainThumb(t, &got, got.cursor); got.stripSlotPNG(got.cursor) != want {
 		t.Error("selected slot still carries the overlay after the decode failed")
 	}
 }

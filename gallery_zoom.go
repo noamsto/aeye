@@ -316,8 +316,8 @@ func (m *galleryModel) pruneCrops() {
 }
 
 // ensureDecoded records the currently-selected image — its path and source size
-// — and requests its decode, but only when the selected path changed since the
-// last call; the pixels arrive later as a decodedMsg. A changed selection saves
+// — and requests its decode, but only when the selection changed or its last
+// header read or decode failed; the pixels arrive later as a decodedMsg. A changed selection saves
 // the leaving image's crop and restores the entering image's (or fit), and drops
 // the previous working copy before the new decode allocates. The identity key is
 // cropKey (the path, except that a diagram's theme variants share one), validated
@@ -326,9 +326,9 @@ func (m *galleryModel) pruneCrops() {
 // because it reads the whole file on every switch. A restored crop set while
 // pixels are pending lands with the decode, like any zoom pressed in the decode
 // window. An unchanged selection (e.g. an auto-refresh tick that appended a
-// different image elsewhere) preserves the crop and the pixels. curImgPath is
-// set even when the header is unreadable, so a broken file is not retried on
-// every call.
+// different image elsewhere) preserves the crop and the pixels. curImgPath stays
+// empty while the header is unreadable, so the next call retries a file that was
+// caught mid-write.
 func (m *galleryModel) ensureDecoded() {
 	if len(m.images) == 0 {
 		m.curImg, m.curImgPath, m.curSize, m.curStamp = nil, "", image.Point{}, imageStamp{}
@@ -344,9 +344,12 @@ func (m *galleryModel) ensureDecoded() {
 	m.rememberCrop()
 	m.regions, m.regionPath, m.regionIdx = nil, nil, -1
 	m.curImg = nil
-	m.curImgPath = p
+	m.curImgPath = ""
 	m.curCropKey = cropKey(e)
 	m.curSize = imageSize(p)
+	if m.curSize != (image.Point{}) {
+		m.curImgPath = p
+	}
 	m.curStamp = cropStamp(e, m.curSize)
 	m.crop = m.recalledCrop(m.curCropKey)
 	m.requestDecode()

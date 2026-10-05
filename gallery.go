@@ -177,7 +177,7 @@ type galleryModel struct {
 	curCropKey      string               // cropKey of the selection; where rememberCrop files its crop
 	curStamp        imageStamp           // cropStamp of the selection when selected; validates a remembered crop
 	curImg          image.Image          // decoded working copy of the selection; nil while its decode is pending
-	curImgPath      string               // path the selection state (curSize, decode request) belongs to
+	curImgPath      string               // path the selection state (curSize, decode request) belongs to; empty while its header is unreadable or its decode failed, so the next ensureDecoded retries
 	curSize         image.Point          // source pixel size of curImgPath; zero when its header is unreadable
 	curScale        float64              // scale curImg was built at (workingScale); below 1 the copy is capped
 	// decodeGen is bumped by every decode request (selection change, or a resize
@@ -1004,7 +1004,7 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Undecodable: fall back to the no-zoom geometry of an unknown size. The
 			// crop was never visibly applied, since no pixels existed.
 			tracef("decode failed: %s", msg.path)
-			m.curImg, m.curSize = nil, image.Point{}
+			m.curImg, m.curSize, m.curImgPath = nil, image.Point{}, ""
 			m.resetZoom()
 			m.syncMinimap()
 			return m, nil

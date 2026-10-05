@@ -251,6 +251,18 @@ func newDecodeModel(t *testing.T, sizes ...image.Point) galleryModel {
 	return m
 }
 
+// fileInDir opens the directory holding p as a root, so reads and writes of the
+// fixture are confined to it by construction.
+func fileInDir(t *testing.T, p string) (root *os.Root, name string) {
+	t.Helper()
+	root, err := os.OpenRoot(filepath.Dir(p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { root.Close() }) //nolint:errcheck,gosec // test cleanup
+	return root, filepath.Base(p)
+}
+
 func send(t *testing.T, m galleryModel, msg tea.Msg) (galleryModel, tea.Cmd) {
 	t.Helper()
 	next, cmd := m.Update(msg)
@@ -266,11 +278,30 @@ func runDecode(t *testing.T, m galleryModel) (galleryModel, decodedMsg) {
 	if cmd == nil {
 		t.Fatal("kick for the current request started no decode")
 	}
-	res, ok := cmd().(decodedMsg)
+	res, ok := findDecoded(cmd)
 	if !ok {
 		t.Fatal("decode cmd did not return a decodedMsg")
 	}
 	return m, res
+}
+
+// findDecoded runs cmd and returns the decodedMsg it produces, looking through
+// the tea.Batch that Update wraps around a kick's decode and cache commands.
+func findDecoded(cmd tea.Cmd) (decodedMsg, bool) {
+	if cmd == nil {
+		return decodedMsg{}, false
+	}
+	switch msg := cmd().(type) {
+	case decodedMsg:
+		return msg, true
+	case tea.BatchMsg:
+		for _, c := range msg {
+			if d, ok := findDecoded(c); ok {
+				return d, true
+			}
+		}
+	}
+	return decodedMsg{}, false
 }
 
 // land runs the latest decode and delivers its result.
@@ -684,4 +715,100 @@ func TestArmDecodeOncePerGen(t *testing.T) {
 	if unsized.armDecode() != nil {
 		t.Error("armed for an unreadable header")
 	}
+}
+
+func TestUndecodableSelectionRetries(t *testing.T) {
+	t.Run("truncated body is re-requested after the failure", func(t *testing.T) {
+		m := newDecodeModel(t, sizeA)
+		p := m.images[0].Path
+		root, name := fileInDir(t, p)
+		full, err := root.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := root.WriteFile(name, full[:len(full)/2], 0o600); err != nil {
+			t.Fatal(err)
+		}
+		m.curImgPath = "" // force a fresh selection over the half-written file
+		m.ensureDecoded()
+		m.armDecode()
+		m = land(t, m)
+		if m.curImg != nil || m.curImgPath != "" {
+			t.Fatalf("failed decode kept state: img=%v path=%q", m.curImg != nil, m.curImgPath)
+		}
+		gen := m.decodeGen
+		m.ensureDecoded()
+		if m.decodeGen == gen {
+			t.Error("ensureDecoded did not re-request the decode")
+		}
+	})
+	t.Run("A B unreadable A leaves A decodable", func(t *testing.T) {
+		m := newDecodeModel(t, sizeA, sizeB)
+		a := m.images[0].Path
+		if err := os.WriteFile(m.images[1].Path, []byte("not an image"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		m, _ = send(t, m, keyNext)
+		if m.curImgPath != "" {
+			t.Fatalf("curImgPath = %q while on unreadable B, want empty", m.curImgPath)
+		}
+		m, _ = send(t, m, keyPrev)
+		if m.curImgPath != a {
+			t.Fatal("did not return to A")
+		}
+		if m = land(t, m); m.curImg == nil {
+			t.Error("A did not decode after returning from B")
+		}
+	})
+	t.Run("completed file decodes on reload", func(t *testing.T) {
+		m := newDecodeModel(t, sizeA)
+		p := m.images[0].Path
+		root, name := fileInDir(t, p)
+		full, err := root.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := root.WriteFile(name, full[:len(full)/2], 0o600); err != nil {
+			t.Fatal(err)
+		}
+		m.curImgPath = ""
+		m.ensureDecoded()
+		m.armDecode()
+		if m = land(t, m); m.curImg != nil {
+			t.Fatal("truncated file decoded")
+		}
+		if err := root.WriteFile(name, full, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		m.ensureDecoded()
+		m.armDecode()
+		if m = land(t, m); m.curImg == nil {
+			t.Error("completed file did not decode on reload")
+		}
+	})
+	t.Run("header not yet written is retried once complete", func(t *testing.T) {
+		m := newDecodeModel(t, sizeA)
+		p := m.images[0].Path
+		root, name := fileInDir(t, p)
+		full, err := root.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := root.WriteFile(name, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		m.curImgPath = ""
+		m.ensureDecoded()
+		if m.curImgPath != "" || m.armDecode() != nil {
+			t.Fatal("unreadable header was recorded or armed a decode")
+		}
+		if err := root.WriteFile(name, full, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		m.ensureDecoded()
+		m.armDecode()
+		if m = land(t, m); m.curImg == nil {
+			t.Error("completed file did not decode on reload")
+		}
+	})
 }

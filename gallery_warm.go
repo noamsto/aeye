@@ -70,6 +70,9 @@ func (m *galleryModel) cachedPNGOrMiss(srcPath string, cols, rows int) (string, 
 }
 
 func (m *galleryModel) cacheTarget() cacheTarget {
+	if len(m.images) == 0 {
+		return cacheTarget{l: m.l}
+	}
 	e := m.images[m.cursor]
 	return cacheTarget{m.l, m.cursor, len(m.images), e.Path, e.Mtime}
 }

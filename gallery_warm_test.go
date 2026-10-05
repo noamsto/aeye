@@ -357,3 +357,18 @@ func TestRasterPaintMissJoinsPendingFill(t *testing.T) {
 		t.Error("the pending fill won't re-paint for the miss that joined it")
 	}
 }
+
+// The image list can empty while a fill runs (a foreign or unreadable manifest,
+// the last image deleted); the fill landing must not index it.
+func TestFillLandingOnEmptyListDoesNotPanic(t *testing.T) {
+	rec := newTransmitRecorder(t)
+	m := newColdModel(t, rec, 2)
+	cachedPNG(m.images[0].Path, m.l.previewW, m.l.previewH)
+	cachedPNG(m.images[0].Path, m.l.stripW, m.l.stripH)
+	next, cmd := m.Update(tea.KeyPressMsg{Text: "l", Code: 'l'})
+	cur := next.(galleryModel)
+	filled := runFill(t, &cur, cmd)
+
+	cur.images = nil
+	cur.Update(filled)
+}

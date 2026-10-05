@@ -316,8 +316,8 @@ func (m *galleryModel) pruneCrops() {
 }
 
 // ensureDecoded records the currently-selected image — its path and source size
-// — and requests its decode, but only when the selected path changed since the
-// last call; the pixels arrive later as a decodedMsg. A changed selection saves
+// — and requests its decode, but only when the selection changed or its last
+// header read or decode failed; the pixels arrive later as a decodedMsg. A changed selection saves
 // the leaving image's crop and restores the entering image's (or fit), and drops
 // the previous working copy before the new decode allocates. The identity key is
 // cropKey (the path, except that a diagram's theme variants share one), validated

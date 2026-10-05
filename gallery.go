@@ -192,12 +192,13 @@ type galleryModel struct {
 	// a fill that will re-store the view for that target, so a repeat miss on it
 	// doesn't restart the fill. cacheFailed holds the cache files that could not be
 	// written, so their source is used as-is instead of asking again.
-	cacheGen    uint64
-	cacheMiss   bool
-	cacheBusy   bool
-	cacheFor    cacheTarget
-	cacheCancel context.CancelFunc
-	cacheFailed map[string]bool
+	cacheGen     uint64
+	cacheMiss    bool
+	cacheBusy    bool
+	cachePending bool
+	cacheFor     cacheTarget
+	cacheCancel  context.CancelFunc
+	cacheFailed  map[string]bool
 	// Terminal cell size in pixels, measured once at startup (CSI 16 t), with the
 	// cellPxW/cellPxH estimates as fallback. Load-bearing for crop geometry: the
 	// estimates assume a 1:2 cell, so a real 10x22 cell skews every crop shaped
@@ -442,6 +443,9 @@ func (m *galleryModel) transmitView() {
 		return
 	}
 	m.clearStored()
+	// The store is gone from here on, so until this call completes the last
+	// signature no longer describes it.
+	m.lastTransmitSig = nil
 	// A thumbnail the cache doesn't hold yet is left out rather than transcoded
 	// here: the view is stored again once the fill lands (see armCache).
 	complete := true
@@ -455,10 +459,12 @@ func (m *galleryModel) transmitView() {
 	} else {
 		src, ok = m.cachedPNGOrMiss(src, m.l.previewW, m.l.previewH)
 	}
+	// Recorded even on a miss: other paths (vector, crop, minimap) store under
+	// pid without recording it, and the next clearStored must remove those.
+	m.storedIDs = append(m.storedIDs, pid)
 	if ok {
 		apc = transmitVirtual(pid, src, m.l.previewW, m.l.previewH)
 		n, err = fmt.Fprint(m.tty, apc)
-		m.storedIDs = append(m.storedIDs, pid)
 	} else {
 		complete = false
 	}
@@ -482,6 +488,7 @@ func (m *galleryModel) transmitView() {
 		} else if thumb, ok := m.cachedPNGOrMiss(m.images[idx].Path, m.l.stripW, m.l.stripH); ok {
 			sapc = transmitVirtual(sid, thumb, m.l.stripW, m.l.stripH)
 		}
+		m.storedIDs = append(m.storedIDs, sid)
 		if sapc == "" {
 			complete = false
 			if idx == m.cursor {
@@ -496,7 +503,6 @@ func (m *galleryModel) transmitView() {
 				m.mini.stored = minimapStamp{}
 			}
 		}
-		m.storedIDs = append(m.storedIDs, sid)
 		stripCells++
 		stripBytes += len(sapc)
 		stripWritten += sn
@@ -944,7 +950,7 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 		pw, ph := tmuxPaneSize()
 		tracef("sizeRetry attempt=%d tmux pane size=%dx%d", msg.attempt, pw, ph)
 		if pw > 0 && ph > 0 {
-			return m.Update(tea.WindowSizeMsg{Width: pw, Height: ph})
+			return m.handle(tea.WindowSizeMsg{Width: pw, Height: ph})
 		}
 		if msg.attempt+1 >= sizeRetryMax {
 			return m, nil

@@ -233,8 +233,13 @@ func TestLateFillForSupersededSelectionIgnored(t *testing.T) {
 	filled := runFill(t, &cur, cmd)
 
 	// The selection moves back to the warm image before the fill lands.
+	viewBefore := rec.Len()
 	next, _ = cur.Update(tea.KeyPressMsg{Text: "h", Code: 'h'})
 	cur = next.(galleryModel)
+	wantA, _ := pngCacheName(cur.images[0].Path, cur.l.previewW, cur.l.previewH)
+	if st := storesFor(t, added(rec, viewBefore), cur.previewID()); len(st) == 0 || st[len(st)-1].path != wantA {
+		t.Errorf("returning to the cached image left its preview unstored: %v", st)
+	}
 	before := rec.Len()
 	next, cmd = cur.Update(filled)
 	cur = next.(galleryModel)
@@ -292,5 +297,63 @@ func TestUndecodableSourceIsNotRefilled(t *testing.T) {
 	cur.transmitView()
 	if cur.cacheMiss {
 		t.Error("a source that failed to transcode keeps asking for a fill")
+	}
+}
+
+// A layout the fill never reached must not leave the view blank when the pane
+// returns to a layout whose thumbnails are cached: the cold transmit in between
+// cleared the store.
+func TestResizeAndBackBeforeFillRestoresView(t *testing.T) {
+	rec := newTransmitRecorder(t)
+	m := newColdModel(t, rec, 2)
+	warmThumbs(m)
+	m.transmitView()
+	cur := *m
+
+	next, _ := cur.Update(tea.WindowSizeMsg{Width: 90, Height: 40})
+	cur = next.(galleryModel)
+	before := rec.Len()
+	next, _ = cur.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+	cur = next.(galleryModel)
+
+	if st := storesFor(t, added(rec, before), cur.previewID()); len(st) == 0 {
+		t.Error("view left blank after resizing back to a cached layout")
+	}
+}
+
+// A miss still records the preview id, so the next transmit deletes whatever
+// other paths (vector, crop) stored under it meanwhile.
+func TestMissedPreviewIDStillCleared(t *testing.T) {
+	rec := newTransmitRecorder(t)
+	m := newColdModel(t, rec, 1)
+	m.transmitView()
+	for _, id := range m.storedIDs {
+		if id == m.previewID() {
+			return
+		}
+	}
+	t.Errorf("storedIDs %v lack the preview id %d", m.storedIDs, m.previewID())
+}
+
+// On raster a resize raises no miss itself; the repaint 50ms later does. That
+// miss must join the pending debounced fill, not start an undebounced one.
+func TestRasterPaintMissJoinsPendingFill(t *testing.T) {
+	fastWarmDebounce(t)
+	rec := newTransmitRecorder(t)
+	m := newColdModel(t, rec, 2)
+	m.backend = backendRaster
+	*m = pump(*m, tea.WindowSizeMsg{Width: m.width, Height: m.height})
+
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 90, Height: 40})
+	cur := next.(galleryModel)
+	gen := cur.cacheGen
+	next, _ = cur.Update(rasterPaintMsg{gen: cur.rasterGen})
+	cur = next.(galleryModel)
+
+	if cur.cacheGen != gen {
+		t.Errorf("a paint miss superseded the debounced fill (gen %d -> %d)", gen, cur.cacheGen)
+	}
+	if !cur.cacheBusy {
+		t.Error("the pending fill won't re-paint for the miss that joined it")
 	}
 }

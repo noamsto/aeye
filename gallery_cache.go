@@ -74,7 +74,7 @@ func cachedPNGCtx(ctx context.Context, srcPath string, cols, rows int) string {
 		return srcPath
 	}
 	defer f.Close() //nolint:errcheck // read-only file; close error is irrelevant
-	src, _, err := image.Decode(f)
+	src, _, err := image.Decode(ctxReader{ctx, f})
 	if err != nil || ctx.Err() != nil {
 		return srcPath
 	}

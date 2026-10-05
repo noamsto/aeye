@@ -27,12 +27,13 @@ type cacheJob struct {
 type cacheTarget struct {
 	l         layout
 	cursor, n int
+	path      string
+	mtime     int64
 }
 
 // cacheKickMsg starts the fill for generation gen, once its debounce has elapsed.
 type cacheKickMsg struct {
 	gen    uint64
-	notify bool
 	target cacheTarget
 }
 
@@ -69,7 +70,8 @@ func (m *galleryModel) cachedPNGOrMiss(srcPath string, cols, rows int) (string, 
 }
 
 func (m *galleryModel) cacheTarget() cacheTarget {
-	return cacheTarget{m.l, m.cursor, len(m.images)}
+	e := m.images[m.cursor]
+	return cacheTarget{m.l, m.cursor, len(m.images), e.Path, e.Mtime}
 }
 
 func (m *galleryModel) cancelCache() {
@@ -93,18 +95,24 @@ func (m *galleryModel) armCache(prev layout) tea.Cmd {
 	}
 	resized := m.l != prev
 	target := m.cacheTarget()
+	if !resized && miss && m.cachePending && m.cacheFor == target {
+		// The pending kick is still waiting out its debounce: let it carry this miss
+		// rather than superseding it with an undebounced one.
+		m.cacheBusy = true
+		return nil
+	}
 	if !resized && (!miss || (m.cacheBusy && m.cacheFor == target)) {
 		return nil
 	}
 	m.cancelCache()
 	m.cacheGen++
-	m.cacheBusy, m.cacheFor = miss, target
+	m.cacheBusy, m.cachePending, m.cacheFor = miss, true, target
 	g := m.cacheGen
 	delay := time.Duration(0)
 	if resized && prev != (layout{}) {
 		delay = warmDebounce
 	}
-	return tea.Tick(delay, func(time.Time) tea.Msg { return cacheKickMsg{gen: g, notify: miss, target: target} })
+	return tea.Tick(delay, func(time.Time) tea.Msg { return cacheKickMsg{gen: g, target: target} })
 }
 
 // startCache launches the fill for a kick that is still current.
@@ -114,10 +122,12 @@ func (m *galleryModel) startCache(msg cacheKickMsg) tea.Cmd {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cacheCancel = cancel
+	m.cachePending = false
+	notify := m.cacheBusy
 	urgent, rest := m.cacheJobs()
 	return func() tea.Msg {
 		failed := runCacheJobs(ctx, urgent)
-		return cacheFilledMsg{gen: msg.gen, notify: msg.notify, target: msg.target, failed: failed, ctx: ctx, rest: rest}
+		return cacheFilledMsg{gen: msg.gen, notify: notify, target: msg.target, failed: failed, ctx: ctx, rest: rest}
 	}
 }
 
@@ -133,7 +143,8 @@ func (m *galleryModel) cacheFilled(msg cacheFilledMsg) tea.Cmd {
 	m.cacheBusy = false
 	cmds := []tea.Cmd{func() tea.Msg { return cacheWarmedMsg{failed: runCacheJobs(msg.ctx, msg.rest)} }}
 	if msg.notify && msg.target == m.cacheTarget() {
-		cmds = append(cmds, m.restoreView())
+		// restoreView re-stores the bitmap over any sharp d2 frame already there.
+		cmds = append(cmds, m.restoreView(), m.kickVector())
 	}
 	return tea.Batch(cmds...)
 }

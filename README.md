@@ -155,9 +155,9 @@ thin, tall diagram or a short, wide one — has nothing to pan there, so that
 axis's keys fall back to switching images, exactly like `n`/`p` (the current
 crop is saved and the target's remembered one restored). Each image's zoom and
 pan is remembered for the session — `0`/`Esc` or zooming out to fit clears it,
-and an image whose file changed (modification time or pixel dimensions), or a
-diagram after a light/dark theme switch (its render is a different file), opens
-at fit.
+and an image whose file changed (modification time or pixel dimensions) opens at
+fit. A diagram's zoom and pan survives a light/dark theme switch; it opens at
+fit only when the diagram is re-rendered.
 While zoomed, the selected filmstrip thumbnail marks the visible region with an
 outlined rectangle (kitty-protocol terminals).
 

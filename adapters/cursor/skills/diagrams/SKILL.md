@@ -1,6 +1,6 @@
 ---
 name: diagrams
-description: Use when a picture beats prose — drawing architecture, data flow, state machines, pipelines, or entity relationships as a D2 diagram that renders into the aeye viewer. Produces beautiful, legible diagrams (sketch style, role-by-stroke palette) and covers the full authoring vocabulary plus where to write the file.
+description: Use when a picture beats prose — drawing architecture, data flow, state machines, pipelines, or entity relationships as a D2 diagram that renders into the aeye viewer. Covers where to write the file, house style, and core syntax; deeper references load on demand.
 ---
 
 # Diagrams (D2 → carousel)
@@ -8,12 +8,11 @@ description: Use when a picture beats prose — drawing architecture, data flow,
 When structure is clearer seen than read, write a [D2](https://d2lang.com)
 diagram as a `.d2` file with the `Write` tool. A `postToolUse` hook renders it
 browser-free (`aeye render-diagram` → svg → resvg → png) into the per-pane image
-manifest, and
-the carousel shows it like any other image — auto-opening once per session.
+manifest, and the carousel shows it like any other image — auto-opening once per
+session.
 
-This skill is the authoring reference: house style, the syntax you'll reach
-for, and worked examples you can lift verbatim. Every diagram below is a
-complete, single-board D2 source — copy one and edit it.
+Every `d2` block here and in the references is a complete, single-board source —
+copy one and edit it.
 
 ## When to draw (and when not to)
 
@@ -33,31 +32,29 @@ the working project.
 
 `<name>` is the caption the carousel shows under the diagram, so name the file
 for the concept it draws, in kebab-case — `auth-token-flow`, `render-pipeline`,
-`origins-erd` — not `diagram` or `untitled`. It's also the name you'd reuse to
-redraw, so make it specific — to revise a diagram, overwrite the same file
-rather than adding a second one.
-
-The name is what retires the previous render — the hook prunes any earlier image
-filed under the same name — so an overwrite replaces the diagram in the carousel
-instead of stacking beside it.
+`origins-erd` — not `diagram` or `untitled`. The name is also what retires the
+previous render: the hook prunes any earlier image filed under the same name, so
+to revise a diagram, overwrite the same file and it replaces the old one in the
+carousel instead of stacking beside it.
 
 That pruning only fires if the write lands under the right name, so write **one
-`.d2` per tool call, named by absolute path**. The hook takes the file the call
-names: an explicit `file_path`, else the first `.d2` token in the command,
-resolved against the *project* cwd. A call naming two `.d2` files renders the
-first only; a path made relative by an earlier `cd` resolves to nothing and
-renders nothing. Adoption is contained to this scratch dir and skips a
-`<name>-check.d2` / `<name>-test.d2` basename, so verify a render by copying the
-source to a `-check.d2` there — a `/tmp/a.d2` round-trip renders but files
-nothing.
+`.d2` per tool call, named by absolute path**. The hook reads the `file_path` of
+`Write` and `Read` calls, resolved against the *project* cwd; a `.d2` created by
+a `Shell` command (heredoc, `sed -i`) is not picked up — use `Write`.
+
+Only a `.d2` under the scratch dir's `src/` is adopted into the carousel. A
+`.d2` anywhere else still renders but files nothing, and a `<name>-check.d2` /
+`<name>-test.d2` basename is never adopted even there — so verify a render by
+copying the source to a `-check.d2` in the scratch dir. A `/tmp/a.d2` round-trip
+renders but files nothing.
 
 ## House style
 
-The carousel hook applies the sketch look, the mode-appropriate theme, and a set
-of **semantic role classes** automatically — you do **not** put `sketch`,
-`theme`, or those classes in the file. Tag a shape or edge with a role and aeye
-colors it for the rendered theme: a soft pastel fill on light, a bright accent
-border + title on dark (no heavy blocks either way).
+The hook applies the sketch look, the mode-appropriate theme, and a set of
+**semantic role classes** automatically — you do **not** put `sketch`, `theme`,
+or those classes in the file. Tag a shape or edge with a role and aeye colors it
+for the rendered theme — a soft pastel fill on light, a bright accent border +
+title on dark (no heavy blocks either way):
 
 | `class:` | meaning |
 |----------|---------|
@@ -73,8 +70,8 @@ before -> after: fix { class: good }
 ```
 
 For your own *structural* distinctions (service vs store vs external), define
-extra classes — tell those apart by **stroke + shape**, not fill, so they read on
-both themes:
+extra classes and tell them apart by **stroke + shape**, not fill, so they read
+on both themes:
 
 ```text
 classes: {
@@ -84,34 +81,48 @@ classes: {
 }
 ```
 
-Why these choices:
-
-- **Sketch + theme come from the hook** — the hand-drawn stroke reads as
-  "explanatory sketch," not a rigid spec. If you ever render a file by hand,
-  add `vars: { d2-config: { sketch: true; pad: 16 } }` to match; under the
-  carousel it's redundant.
-- **Color through roles; in your own classes, stroke not fill.** The semantic
-  roles above are aeye-managed — it picks a theme-appropriate treatment, so
-  `class: warn` is safe whatever theme renders. For a class you define yourself,
-  tell it apart by a colored *stroke* + distinct *shape*: those read on both
-  themes because the label keeps the theme's own contrasting text color, whereas a
-  raw `fill` you set by hand is baked for one theme. Reserve hand-set `fill` for a
-  genuine one-off — **carry a per-node distinction on the `stroke`, not the fill**
-  (a colored border keeps the theme's own label + fill, so contrast never depends
-  on the fill's luminance). The render's contrast pass re-inks a filled node's
-  label — named colors included — so a stray `fill` stays readable, but that's a
-  backstop, not a license: it needs the `aeye` binary on PATH and flattens the
-  label to one ink, where a stroke keeps the theme's text palette intact.
-- **A `classes` block alone draws nothing** — it's shown as `text` here on
-  purpose. Drop it into a diagram that has shapes, as the worked examples do.
+A `classes` block alone draws nothing — it's shown as `text` here on purpose;
+drop it into a diagram that has shapes. Carry per-node distinctions on the
+`stroke`, not a hand-set `fill` (a raw fill is baked for one theme).
 
 ## Flow direction
 
-Default to `direction: right`. The carousel preview is landscape, so a
-left-to-right flow fills the frame; a tall stack wastes it. Use
-`direction: down` only for things that are inherently vertical — sequence
-diagrams and deep trees. When a chain gets long and thin, **group** related
-nodes into a container instead of stringing one more box on the end.
+Pick the axis from the diagram's structure, not from the preview's shape: **the
+chain runs along the long axis, the branching across the wide one.** The carousel
+has zoom, pan, and region drill-in, so a diagram that needs panning is fine — one
+that's illegible at any zoom is not. Never cut content or squash a layout to make
+something fit the frame.
+
+`direction: right` is the right default for a short chain. Reach for
+`direction: down` when the branching is the widest thing on the board, or when the
+chain's edges carry labels: an edge label consumes space *along* the flow axis
+(layered engines lay labels out as dummy nodes, so each one occupies a layer). A
+labeled five-stage chain that renders as a 5:1 strip left-to-right comes out
+1:1.6 top-to-bottom, same content. Sequence diagrams and deep trees stay `down`.
+
+An extreme ratio in either axis is a symptom, not the bug — nodes carrying prose
+is the usual cause. Fix the content per the next section; the proportions follow.
+
+## What goes in a node
+
+- **Nodes are the things; edges carry what happens between them.** Follow the
+  convention of the kind of diagram you're drawing: in state machines and ERDs the
+  nodes are nouns and the edge carries the verb, event, or guard — a three-way
+  verdict is a condition on a transition, not three stages, so it belongs on the
+  arrows. Data flow diagrams invert this (processes are verb phrases, the flows
+  are the nouns); don't carry the rule across that line.
+- **~3 short lines per node.** A node's width is set by its longest label line
+  before layout runs, so paragraph labels multiply the board's width and then no
+  direction rescues it. If a box needs more room, it's prose, or it's two nodes.
+- **No conclusions, no recommendations.** "SO THE LOW END IS UNREACHABLE" is the
+  argument; "THREE POSSIBLE FIXES" is the remediation. Both belong in the message
+  text — the diagram shows the mechanism the reader reasons *from*.
+- **One abstraction level per canvas.** Mechanism, observed numbers, conclusion,
+  and fix list are four diagrams' worth of material, not one.
+
+Moving the verbs onto the edges is the highest-leverage edit available — it usually
+deletes nodes and crossings at once, and
+[crossings damage comprehension more than any other layout property](https://link.springer.com/chapter/10.1007/3-540-63938-1_67).
 
 ## Core syntax
 
@@ -129,17 +140,13 @@ with arrows, nest them with `{ }`:
   variable substitution (`${var}`), and `\\$` escapes the backslash instead,
   leaving the `$` live; either way a literal `"$5,000,000"` fails to compile with
   *"substitutions must begin on {"* and nothing renders. Scan labels for `$`
-  before writing the file. The hook reports the compile error back to you, so a
-  failure is visible — but only after the round trip.
+  before writing the file.
 - Write labels as **plain quoted strings** (use `\n` for line breaks); do **not**
   use `|md` / `|markdown` block bodies — **`title:` included**, the most common
   slip. D2 emits markdown as an HTML `<foreignObject>`, which the carousel's
-  static rasterizer (resvg) cannot paint, so the node would render as a blank box.
-  The render hook detects this and **suppresses the whole diagram** — it won't
-  appear in the carousel at all until you rewrite the block as a plain quoted
-  label, so a `|md` title means no diagram, not just a blank title. (`|code` and
-  `|latex`/`|tex` are fine: they compile to native SVG text/glyphs, not
-  `<foreignObject>`.)
+  static rasterizer (resvg) cannot paint. The render hook detects this and
+  **suppresses the whole diagram** until you rewrite the block as a plain quoted
+  label — a `|md` title means no diagram, not just a blank title. (`|code` and `|latex`/`|tex` are fine: they compile to native SVG.)
 
 A complete minimal diagram — request path through a small service:
 
@@ -153,249 +160,35 @@ api -> db: query
 api -> client: response
 ```
 
-## Rich constructs
+## Check the render
 
-**Grouping** — wrap a subsystem in a container to give the layout structure and
-a labeled boundary; edges can cross in and out. A container's name renders as a
-visible label on the boundary, so name it meaningfully (`backend`, not `g1`).
-Containers also become drill-in **regions** in the carousel — Tab cycles them
-and `]` `[` drill in and out — so when the diagram has real subsystems, group
-them into containers and the reader gets navigation for free. Only group what's
-genuinely a subsystem, though: don't wrap a flat three-node flow in a container
-it doesn't need just to manufacture regions.
+No pane at all, rather than a blank one, means the file never compiled: the hook
+reports the D2 error back to you, and also logs it to
+`<state-dir>/images/diagrams/render-errors.log`.
 
-```d2
-direction: right
-gateway: API Gateway
-backend: Backend {
-  auth: Auth
-  orders: Orders
-  auth -> orders: token
-}
-gateway -> backend.auth: request
-```
+Look at the rendered PNG once before you rely on the diagram — the renders land
+beside the source, at `<state-dir>/images/diagrams/<hash>-{light,dark}.png`. A
+size measurement catches none of the failures that actually happen: alternatives
+that read as a pipeline, an edge crossing a node's label, an unconnected node
+parked in a corner where it reads as a mistake.
 
-**ERDs** with `shape: sql_table` — fields take a type, and `constraint` renders
-as a PK/FK/UNQ badge. Add `layout-engine: elk` for cleaner, orthogonal edge
-routing on multi-table ERDs:
+## References
 
-```d2
-vars: { d2-config: { layout-engine: elk } }
-users: {
-  shape: sql_table
-  id: int { constraint: primary_key }
-  email: varchar { constraint: unique }
-}
-posts: {
-  shape: sql_table
-  id: int { constraint: primary_key }
-  user_id: int { constraint: foreign_key }
-}
-posts.user_id -> users.id
-```
+Each sits in `references/` beside this file; open it when its trigger fires.
 
-**Sequence diagrams** with `shape: sequence_diagram` — children become
-lifelines, ordered by first appearance, and `direction: down` keeps time
-flowing top-to-bottom:
-
-```d2
-direction: down
-flow: {
-  shape: sequence_diagram
-  client; api; db
-  client -> api: POST /order
-  api -> db: insert
-  db -> api: ok
-  api -> client: 201 Created
-}
-```
-
-**Classes** factor shared styling. Define once in `classes:`, apply with
-`class:` — this is the house palette in action:
-
-```d2
-direction: right
-classes: {
-  svc:   { style: { stroke: "#1565C0"; stroke-width: 2 } }
-  store: { shape: cylinder; style: { stroke: "#2E7D32"; stroke-width: 2 } }
-}
-api: API { class: svc }
-db: Postgres { class: store }
-api -> db: query
-```
-
-**Icons** load an image into a shape — but the URL is **fetched at compile
-time**, so keep icons out of diagrams this skill renders. The syntax, for
-reference: `server: { icon: https://icons.terrastruct.com/infra/019-network.svg }`.
-
-**Styling vocab** — reach for these inside `style: { ... }`: `stroke`,
-`stroke-width`, `stroke-dash` (dashed = external/optional), `border-radius`,
-`shadow: true`, `font-color`. Use `fill` sparingly, for genuine emphasis only.
-
-**Captions and legends** — pin a free node near a shape or corner with `near`,
-e.g. `near: top-center` for a title or `near: bottom-right` for a key.
-
-## Worked examples
-
-Each is a complete, single-board diagram. Lift one and adapt it.
-
-**Architecture** — grouping plus the role palette; stroke + shape carry meaning:
-
-```d2
-direction: right
-title: Checkout service { near: top-center; style: { stroke-width: 0; fill: transparent } }
-classes: {
-  svc:   { style: { stroke: "#1565C0"; stroke-width: 2 } }
-  store: { shape: cylinder; style: { stroke: "#2E7D32"; stroke-width: 2 } }
-  ext:   { style: { stroke: "#E65100"; stroke-width: 2; stroke-dash: 3 } }
-}
-web: Web App { class: svc }
-core: Checkout {
-  api: API { class: svc }
-  worker: Worker { class: svc }
-  api -> worker: enqueue job
-}
-db: Orders DB { class: store }
-pay: Stripe { class: ext }
-web -> core.api: place order
-core.api -> db: write order
-core.worker -> pay: charge card
-```
-
-**Entity relationships** — three tables, FK edges, ELK for clean routing:
-
-```d2
-vars: { d2-config: { layout-engine: elk } }
-direction: right
-users: {
-  shape: sql_table
-  id: int { constraint: primary_key }
-  email: varchar { constraint: unique }
-}
-orders: {
-  shape: sql_table
-  id: int { constraint: primary_key }
-  user_id: int { constraint: foreign_key }
-  total: decimal
-}
-items: {
-  shape: sql_table
-  id: int { constraint: primary_key }
-  order_id: int { constraint: foreign_key }
-}
-orders.user_id -> users.id
-items.order_id -> orders.id
-```
-
-**State machine** — labeled transitions, self-loop for retry:
-
-```d2
-direction: right
-queued -> running: dequeue
-running -> done: success
-running -> failed: error
-failed -> queued: retry
-running -> running: heartbeat
-```
-
-**Pipeline** — a stage chain with a branch; grouped so it stays wide, not thin:
-
-```d2
-direction: right
-classes: {
-  store: { shape: cylinder; style: { stroke: "#2E7D32"; stroke-width: 2 } }
-}
-ingest: Ingest
-transform: Transform {
-  clean: Clean
-  enrich: Enrich
-  clean -> enrich
-}
-warehouse: Warehouse { class: store }
-alerts: Alerts
-ingest -> transform.clean: raw events
-transform.enrich -> warehouse: load
-transform.enrich -> alerts: anomalies
-```
-
-## Aesthetic do / don't
-
-- **Keep it to ~12 nodes.** Past that, split into separate diagrams.
-- **Distinguish roles by stroke + shape, not a rainbow of fills** — see the
-  house palette.
-- **Label every non-obvious edge.** An unlabeled arrow asks the reader to guess.
-- **Don't echo the target's name in an edge label.** An arrow into a container
-  titled "X lifecycle" needs no `"lifecycle"` label — the duplicate text stacks
-  on the container's own title right where the edge enters. Label an edge only
-  with what the target's name doesn't already say.
-- **One concept per diagram.** Don't merge the architecture and the data model.
-- **`direction: right` unless it's inherently tall** (sequence, deep tree).
-- **Let layout breathe** — prefer grouping over one long thin chain.
-- **An arrow cutting through a node's label?** Switch to ELK —
-  `vars: { d2-config: { layout-engine: elk } }`. The default engine (dagre)
-  draws straight lines that can cross a box; ELK routes orthogonally from node
-  borders, so edges attach instead of slicing through text. A good default for
-  any branchy flow with a node that several edges converge on, not just ERDs.
-
-## Embedding a diagram in GitHub
-
-A diagram can outlive the carousel — a README, a PR body, or an issue can carry
-the same render. GitHub has no `d2` fence the way it has one for mermaid, and its
-markdown sanitizer drops inline `<svg>` markup, so the diagram travels as a
-**committed SVG file referenced as an image**.
-
-**Ship both themes.** GitHub renders on a light or a dark page, and a render
-baked for the wrong one arrives as dark ink on dark. Every carousel render
-already produced the pair — the hook renders each source twice, leaving
-`<hash>-light.svg` and `<hash>-dark.svg` beside the PNGs. To put a pair at a path
-you choose, render it twice yourself; each call writes the `.svg` beside the
-`.png` it names, so point them at the scratch dir and copy the SVGs out:
-
-```bash
-AEYE_D2_THEME=105 aeye render-diagram flow.d2 <scratch>/flow-light.png
-AEYE_D2_THEME=200 aeye render-diagram flow.d2 <scratch>/flow-dark.png
-```
-
-Land them as `docs/assets/<name>.svg` (light) and `docs/assets/<name>-dark.svg`,
-and **commit the `.d2` beside them** so the next person redraws from source
-instead of reverse-engineering a picture. That committed source is the one `.d2`
-that belongs inside a project; drafting still happens in the scratch dir.
-
-**Reference the pair with `<picture>`**, light as the `<img>` fallback:
-
-```html
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/flow-dark.svg">
-  <img alt="Ingest cleans and enriches events into the warehouse; anomalies branch to alerts" src="docs/assets/flow.svg" width="700">
-</picture>
-```
-
-- **`alt` carries the diagram's content**, not its existence — it's what a screen
-  reader reads and what a failed load leaves behind. "Architecture diagram" says
-  nothing; name the mechanism, as the example does.
-- **`width` is how you constrain it.** GitHub draws an SVG at its intrinsic size,
-  so a wide board overflows the column. ~700px suits a README.
-- **A relative path only resolves inside a committed file** (README, `docs/*.md`).
-  An issue or PR body has no file to resolve against, so link the raw URL there,
-  pinned to a commit rather than a branch, or it drifts:
-  `https://raw.githubusercontent.com/<owner>/<repo>/<sha>/docs/assets/flow.svg`.
-- **The SVG is self-contained** — the font is embedded as a data URI, so it draws
-  the same for every reader with nothing fetched at view time. That's also why
-  each file runs ~100–150 KB, and a themed pair is twice that: commit the
-  diagrams a reader needs, not every draft.
-- **`AEYE_D2_SKETCH=0` drops the hand-drawn stroke** for straight lines. Worth it
-  where the diagram is reference documentation someone returns to, rather than an
-  explanation passing through a conversation.
-
-Open the page on GitHub in both color modes before you rely on it. The failure
-this pattern exists to prevent is invisible from the files alone.
+- `references/rich-constructs-and-examples.md` — containers, ERDs, sequence
+  diagrams, classes, icons, styling vocab, and worked architecture / ERD / state
+  machine / pipeline examples to lift. Open before drawing anything past a flat
+  flow.
+- `references/style-and-layout.md` — why the house style is what it is, plus
+  layout do/don'ts (node budget, ELK vs dagre, `grid-*`, container direction).
+  Open when a render looks wrong or the board is past ~12 nodes.
+- `references/github-embedding.md` — shipping a diagram in a README, PR body, or
+  issue as a committed light/dark SVG pair. Open when a diagram must outlive the
+  carousel.
 
 ## Requirements
 
-Rendering needs `aeye` (embeds the d2 compiler; runs `aeye render-diagram`) and
-`resvg` on PATH. If either is missing the hook no-ops silently (no diagram, no
-error) — install both to enable diagrams. Theme and contrast handling run inside
-`aeye` when it is present (it is, in the nix package): the label-recolor backstop
-re-inks the label of any hand-filled node, whether the fill is a `#hex` or a CSS
-name like `green`, which is why the stroke-coded diagrams this skill recommends
-stay readable under both themes.
+Rendering needs `aeye` (it embeds the d2 compiler) and `resvg` on PATH. If either
+is missing the hook no-ops silently (no diagram, no error) — install both to
+enable diagrams. Theme choice and the contrast pass run inside `aeye`.

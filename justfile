@@ -126,3 +126,7 @@ fmt:
 # Remove the built binary
 clean:
     rm -f {{bin}}
+
+# Regenerate every adapter's diagrams skill from adapters/core/skills/diagrams.
+sync-diagrams-skill:
+    scripts/sync-diagrams-skill.sh

@@ -251,6 +251,18 @@ func newDecodeModel(t *testing.T, sizes ...image.Point) galleryModel {
 	return m
 }
 
+// fileInDir opens the directory holding p as a root, so reads and writes of the
+// fixture are confined to it by construction.
+func fileInDir(t *testing.T, p string) (root *os.Root, name string) {
+	t.Helper()
+	root, err := os.OpenRoot(filepath.Dir(p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { root.Close() }) //nolint:errcheck,gosec // test cleanup
+	return root, filepath.Base(p)
+}
+
 func send(t *testing.T, m galleryModel, msg tea.Msg) (galleryModel, tea.Cmd) {
 	t.Helper()
 	next, cmd := m.Update(msg)
@@ -690,11 +702,12 @@ func TestUndecodableSelectionRetries(t *testing.T) {
 	t.Run("truncated body is re-requested after the failure", func(t *testing.T) {
 		m := newDecodeModel(t, sizeA)
 		p := m.images[0].Path
-		full, err := os.ReadFile(p)
+		root, name := fileInDir(t, p)
+		full, err := root.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, full[:len(full)/2], 0o600); err != nil {
+		if err := root.WriteFile(name, full[:len(full)/2], 0o600); err != nil {
 			t.Fatal(err)
 		}
 		m.curImgPath = "" // force a fresh selection over the half-written file
@@ -731,11 +744,12 @@ func TestUndecodableSelectionRetries(t *testing.T) {
 	t.Run("completed file decodes on reload", func(t *testing.T) {
 		m := newDecodeModel(t, sizeA)
 		p := m.images[0].Path
-		full, err := os.ReadFile(p)
+		root, name := fileInDir(t, p)
+		full, err := root.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, full[:len(full)/2], 0o600); err != nil {
+		if err := root.WriteFile(name, full[:len(full)/2], 0o600); err != nil {
 			t.Fatal(err)
 		}
 		m.curImgPath = ""
@@ -744,7 +758,7 @@ func TestUndecodableSelectionRetries(t *testing.T) {
 		if m = land(t, m); m.curImg != nil {
 			t.Fatal("truncated file decoded")
 		}
-		if err := os.WriteFile(p, full, 0o600); err != nil {
+		if err := root.WriteFile(name, full, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		m.ensureDecoded()
@@ -756,11 +770,12 @@ func TestUndecodableSelectionRetries(t *testing.T) {
 	t.Run("header not yet written is retried once complete", func(t *testing.T) {
 		m := newDecodeModel(t, sizeA)
 		p := m.images[0].Path
-		full, err := os.ReadFile(p)
+		root, name := fileInDir(t, p)
+		full, err := root.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, nil, 0o600); err != nil {
+		if err := root.WriteFile(name, nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		m.curImgPath = ""
@@ -768,7 +783,7 @@ func TestUndecodableSelectionRetries(t *testing.T) {
 		if m.curImgPath != "" || m.armDecode() != nil {
 			t.Fatal("unreadable header was recorded or armed a decode")
 		}
-		if err := os.WriteFile(p, full, 0o600); err != nil {
+		if err := root.WriteFile(name, full, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		m.ensureDecoded()

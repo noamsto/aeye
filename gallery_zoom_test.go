@@ -141,12 +141,11 @@ func TestZoomByFirstStepIsGradual(t *testing.T) {
 	}
 }
 
-// Regression: zoomMagnification used to pick which axis to read purely off
-// frac's sign, which reflects the box's CURRENT dimensions. A terminal resize
-// mid zoom-sequence that flips which axis the box binds (frac crosses 1) then
-// made it read the still-pinned-at-1 axis instead of the one the zoom actually
-// grew, silently resetting the effective magnification back to ~1.
-func TestZoomMagnificationSurvivesAxisFlippingResize(t *testing.T) {
+// Regression: a terminal resize mid zoom-sequence that flips which axis the box
+// binds (frac crosses 1) must not make zoomMagnification read a stale axis off
+// the crop. It reads what is on screen: after the flip the 0.8-wide growth-phase
+// crop of this 7.2:1 image shows at exactly its rest scale, so M is 1.
+func TestZoomMagnificationReadsOnScreenAfterAxisFlippingResize(t *testing.T) {
 	m := wideModel() // frac<=1 here: width is box-bound, height letterboxed.
 	m.zoomBy(1.25)
 	if !approx(m.crop.w(), 0.8) || !approx(m.crop.h(), 1.0) {
@@ -160,8 +159,13 @@ func TestZoomMagnificationSurvivesAxisFlippingResize(t *testing.T) {
 	}
 	b := m.curImg.Bounds()
 	frac := boxAspectFrac(b.Dx(), b.Dy(), m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx())
-	if got := zoomMagnification(m.crop, frac); !approx(got, 1.25) {
-		t.Errorf("magnification after an axis-flipping resize = %v, want 1.25 (still-pinned axis is h, not w)", got)
+	// The box is now far wider than the image, so the full height binds at rest
+	// and the 0.8-wide, full-height crop renders at that same scale.
+	if want := onScreenMag(m); !approx(want, 1.0) {
+		t.Fatalf("setup: on-screen magnification = %v, want 1.0", want)
+	}
+	if got := zoomMagnification(m.crop, frac); !approx(got, 1.0) {
+		t.Errorf("magnification after an axis-flipping resize = %v, want 1.0", got)
 	}
 }
 
@@ -296,6 +300,8 @@ func TestZoomInFromFramedRegionMagnifiesView(t *testing.T) {
 	// A wide framed region (Tab onto a step group): aspect far from the box, so it
 	// letterboxes. Zooming in must magnify the framed view in place — scale about
 	// its center, aspect preserved — not jump to a full-image-span slice.
+	m.regions = newRegionTree([]region{{path: "a", x0: 0.1, y0: 0.45, x1: 0.9, y1: 0.55}})
+	m.regionIdx = 0
 	m.crop = cropFrac{0.1, 0.45, 0.9, 0.55}
 	wantAspect := m.crop.w() / m.crop.h()
 	cx, cy := m.crop.cx(), m.crop.cy()

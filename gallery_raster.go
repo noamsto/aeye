@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"io"
 	"os"
 	"os/exec"
@@ -188,6 +189,8 @@ func (m *galleryModel) paintStrip() {
 // thumb with the viewport rectangle while zoomed, else the plain cached thumb.
 // ok is false on a cache miss: the lookup never decodes on the loop, so the slot
 // is repainted, overlay included, once the async fill lands.
+// chafa paints pixel formats at 1:1, so the overlay is drawn at the plain thumb's
+// own size: a differently sized one would leave stale pixels when it clears at fit.
 func (m *galleryModel) stripSlotPNG(idx int) (string, bool) {
 	plain, ok := m.cachedPNGOrMiss(m.images[idx].Path, m.l.stripW, m.l.stripH)
 	if !ok || idx != m.cursor {
@@ -197,6 +200,11 @@ func (m *galleryModel) stripSlotPNG(idx int) (string, bool) {
 	if !w.overlay {
 		return plain, true
 	}
+	size, ok := pngSize(plain)
+	if !ok {
+		return plain, true
+	}
+	w.fit, w.rect = size, minimapRect(size, m.crop)
 	frame := m.minimapFrame(w)
 	if frame == nil {
 		return plain, true
@@ -204,7 +212,18 @@ func (m *galleryModel) stripSlotPNG(idx int) (string, bool) {
 	if out := writePNGEnc(m.minimapPNGPath(), frame, "", fastPNG.Encode); out != "" {
 		return out, true
 	}
+	tracef("minimap write failed: %s", w.path)
 	return plain, true
+}
+
+func pngSize(path string) (image.Point, bool) {
+	f, err := os.Open(path) //nolint:gosec // cache file or the user's own image
+	if err != nil {
+		return image.Point{}, false
+	}
+	defer f.Close() //nolint:errcheck // read-only file; close error is irrelevant
+	cfg, _, err := image.DecodeConfig(f)
+	return image.Pt(cfg.Width, cfg.Height), err == nil && cfg.Width > 0 && cfg.Height > 0
 }
 
 // paintRaster paints the whole view (preview + filmstrip) out-of-band on the tty.

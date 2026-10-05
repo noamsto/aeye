@@ -50,11 +50,11 @@ func TestStripSlotPNGOverlayOnSelectedOnly(t *testing.T) {
 		t.Errorf("unselected slot = %s, want the plain thumb %s", m.stripSlotPNG(other), want)
 	}
 
-	fit := minimapFit(m.curSize, m.minimapBox())
-	r := minimapRect(fit, m.crop)
+	plain, _ := pngSize(cachedPNG(m.images[m.cursor].Path, m.l.stripW, m.l.stripH))
+	r := minimapRect(plain, m.crop)
 	img := decodePNGFile(t, m.minimapPNGPath())
-	if got := img.Bounds().Size(); got != fit {
-		t.Fatalf("overlay raster is %v, want %v", got, fit)
+	if got := img.Bounds().Size(); got != plain {
+		t.Fatalf("overlay raster is %v, want the plain thumb's %v", got, plain)
 	}
 	if c := color32(img.At(r.Min.X, r.Min.Y)); c != (rgb{0, 0, 0}) {
 		t.Errorf("outer ring corner = %v, want black", c)
@@ -161,4 +161,20 @@ func newRasterBenchModel(b *testing.B) *galleryModel {
 	m.l = computeLayout(m.width, m.height)
 	b.Cleanup(func() { os.Remove(m.minimapPNGPath()) }) //nolint:errcheck,gosec // scratch cleanup
 	return m
+}
+
+func TestStripSlotPNGDecodeFailureRepaints(t *testing.T) {
+	m := newRasterMinimapModel(t)
+	m.zoomBy(zoomStep)
+	next, cmd := m.handle(decodedMsg{gen: m.decodeGen, path: m.curImgPath})
+	got, ok := next.(galleryModel)
+	if !ok {
+		t.Fatalf("handle returned %T, want galleryModel", next)
+	}
+	if cmd == nil {
+		t.Error("decode failure scheduled no raster repaint, so the stale rectangle stays")
+	}
+	if want := cachedPNG(got.images[got.cursor].Path, got.l.stripW, got.l.stripH); got.stripSlotPNG(got.cursor) != want {
+		t.Error("selected slot still carries the overlay after the decode failed")
+	}
 }

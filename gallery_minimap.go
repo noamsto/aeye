@@ -175,16 +175,38 @@ func (m *galleryModel) selectedThumbStore(w minimapStamp) (string, minimapStamp)
 // overlayStore renders w's viewport rectangle onto the scaled thumb and returns
 // its store, or "" when no raster could be built or written.
 func (m *galleryModel) overlayStore(w minimapStamp) string {
+	frame := m.minimapFrame(w)
+	if frame == nil {
+		return ""
+	}
+	if !preferEncodedFrame(m.bridged) {
+		if out := writeRaw(m.minimapRawPath(), frame); out != "" {
+			return transmitVirtualRaw(w.id, out, w.fit.X, w.fit.Y, m.l.stripW, m.l.stripH)
+		}
+	}
+	if out := writePNGEnc(m.minimapPNGPath(), frame, "", fastPNG.Encode); out != "" {
+		return transmitVirtual(w.id, out, m.l.stripW, m.l.stripH)
+	}
+	tracef("minimap write failed: %s", w.path)
+	return ""
+}
+
+// minimapFrame is the scaled thumb with w's viewport rectangle drawn on it, or nil
+// when the base thumb can't be read. The frame is reused across calls.
+func (m *galleryModel) minimapFrame(w minimapStamp) *image.RGBA {
 	if key := w.baseKey(); key != m.mini.baseKey {
+		if key == m.mini.failedKey {
+			return nil
+		}
 		thumb, ok := m.cachedPNGOrMiss(w.path, m.l.stripW, m.l.stripH)
 		if !ok {
-			return ""
+			return nil
 		}
 		base := m.minimapBase(thumb, w.fit)
 		if base == nil {
 			tracef("minimap base failed: %s", w.path)
 			m.mini.failedKey = key
-			return ""
+			return nil
 		}
 		m.mini.base, m.mini.baseKey = base, key
 	}
@@ -193,16 +215,7 @@ func (m *galleryModel) overlayStore(w minimapStamp) string {
 	}
 	copy(m.mini.frame.Pix, m.mini.base.Pix)
 	drawViewport(m.mini.frame, w.rect)
-	if !preferEncodedFrame(m.bridged) {
-		if out := writeRaw(m.minimapRawPath(), m.mini.frame); out != "" {
-			return transmitVirtualRaw(w.id, out, w.fit.X, w.fit.Y, m.l.stripW, m.l.stripH)
-		}
-	}
-	if out := writePNGEnc(m.minimapPNGPath(), m.mini.frame, "", fastPNG.Encode); out != "" {
-		return transmitVirtual(w.id, out, m.l.stripW, m.l.stripH)
-	}
-	tracef("minimap write failed: %s", w.path)
-	return ""
+	return m.mini.frame
 }
 
 // minimapBase is the strip thumb at thumbPath scaled to fit, or nil when it can't be read.
@@ -220,6 +233,9 @@ func (m *galleryModel) minimapBase(thumbPath string, fit image.Point) *image.RGB
 	draw.ApproxBiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Src, nil)
 	return dst
 }
+
+// The chafa-symbols backend draws no minimap: its thumb is cached cell text a few
+// cells wide, so a viewport box would be one or two cells and say little.
 
 // syncMinimap re-stores the selected thumb when its overlay no longer matches the
 // crop. Re-storing in place (a=T, no delete) keeps the thumb visible, like the preview.

@@ -159,7 +159,8 @@ and an image whose file changed (modification time or pixel dimensions) opens at
 fit. A diagram's zoom and pan survives a light/dark theme switch; it opens at
 fit only when the diagram is re-rendered.
 While zoomed, the selected filmstrip thumbnail marks the visible region with an
-outlined rectangle (kitty-protocol terminals).
+outlined rectangle (kitty-protocol, sixel and iTerm terminals; the chafa-symbols
+fallback skips it, since its thumbnails are only a few cells wide).
 
 #### Diagrams (D2)
 

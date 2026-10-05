@@ -1007,7 +1007,7 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.curImg, m.curSize, m.curImgPath = nil, image.Point{}, ""
 			m.resetZoom()
 			m.syncMinimap()
-			return m, nil
+			return m, m.schedulePaint()
 		}
 		// curSize takes the decoded size, so a re-capture at the same path with
 		// new dimensions can't leave geometry and pixels disagreeing.

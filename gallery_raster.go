@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"io"
 	"os"
 	"os/exec"
@@ -175,13 +176,61 @@ func (m *galleryModel) paintStrip() {
 	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
 	for i, cell := range m.filmstripCellRects() {
 		inner := rect{x: cell.x + 1, y: cell.y + 1, w: m.l.stripW, h: m.l.stripH}
-		png, ok := m.cachedPNGOrMiss(m.images[start+i].Path, inner.w, inner.h)
+		png, ok := m.stripSlotPNG(start + i)
 		if !ok {
-			eraseRasterAt(m.tty, inner)
+			eraseRasterAt(m.tty, inner) // painted once the fill lands (see armCache)
 			continue
 		}
 		paintRasterAt(m.tty, inner, renderRaster(m.rasterFormat, png, inner.w, inner.h))
 	}
+}
+
+// stripSlotPNG is the PNG painted into image idx's filmstrip slot: the selected
+// thumb with the viewport rectangle while zoomed, else the plain cached thumb.
+// ok is false on a cache miss: the lookup never decodes on the loop, so the slot
+// is repainted, overlay included, once the async fill lands.
+// The overlay is drawn at the plain thumb's own size so the letterbox geometry
+// matches: a differently sized one would leave stale pixels when it clears at fit.
+// A failed transcode answers with the full-size source, which is never decoded here.
+func (m *galleryModel) stripSlotPNG(idx int) (string, bool) {
+	if idx < 0 || idx >= len(m.images) {
+		return "", false
+	}
+	plain, ok := m.cachedPNGOrMiss(m.images[idx].Path, m.l.stripW, m.l.stripH)
+	if !ok || idx != m.cursor {
+		return plain, ok
+	}
+	w := m.minimapWant()
+	if !w.overlay {
+		return plain, true
+	}
+	if cache, ok := pngCacheName(m.images[idx].Path, m.l.stripW, m.l.stripH); !ok || cache != plain {
+		return plain, true
+	}
+	size, ok := pngSize(plain)
+	if !ok {
+		return plain, true
+	}
+	w.fit, w.rect = size, minimapRect(size, m.crop)
+	frame := m.minimapFrame(w)
+	if frame == nil {
+		return plain, true
+	}
+	if out := writePNGEnc(m.minimapPNGPath(), frame, "", fastPNG.Encode); out != "" {
+		return out, true
+	}
+	tracef("minimap write failed: %s", w.path)
+	return plain, true
+}
+
+func pngSize(path string) (image.Point, bool) {
+	f, err := os.Open(path) //nolint:gosec // cache file or the user's own image
+	if err != nil {
+		return image.Point{}, false
+	}
+	defer f.Close() //nolint:errcheck // read-only file; close error is irrelevant
+	cfg, _, err := image.DecodeConfig(f)
+	return image.Pt(cfg.Width, cfg.Height), err == nil && cfg.Width > 0 && cfg.Height > 0
 }
 
 // paintRaster paints the whole view (preview + filmstrip) out-of-band on the tty.

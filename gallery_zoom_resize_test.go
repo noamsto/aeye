@@ -28,6 +28,7 @@ func zoomedModel(t *testing.T, img, pane image.Point, presses int) galleryModel 
 	m.ready = true
 	m.cellW, m.cellH = 10, 20
 	m.curSize = img
+	m.images = []imageEntry{{}}
 	m.curImgPath = m.images[0].Path
 	m.crop = fullCrop()
 	for range presses {

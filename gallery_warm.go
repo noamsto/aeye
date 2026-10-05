@@ -161,7 +161,7 @@ func (m *galleryModel) noteCacheFailed(outs []string) {
 // at both sizes, nearest the cursor first.
 func (m *galleryModel) cacheJobs() (urgent, rest []cacheJob) {
 	n := len(m.images)
-	if n == 0 {
+	if m.images == nil || n == 0 {
 		return nil, nil
 	}
 	urgent = append(urgent, cacheJob{m.images[m.cursor].Path, m.l.previewW, m.l.previewH})

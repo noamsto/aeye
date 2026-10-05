@@ -114,8 +114,8 @@ func newColdModel(t *testing.T, rec *transmitRecorder, n int) *galleryModel {
 func TestColdSwitchDoesNotTranscodeOnLoop(t *testing.T) {
 	rec := newTransmitRecorder(t)
 	m := newColdModel(t, rec, 2)
-	cachedPNG(m.images[0].Path, m.l.previewW, m.l.previewH)
-	cachedPNG(m.images[0].Path, m.l.stripW, m.l.stripH)
+	cachedPNG(imagePath(m, 0), m.l.previewW, m.l.previewH)
+	cachedPNG(imagePath(m, 0), m.l.stripW, m.l.stripH)
 	warm := cacheFiles(t)
 	before := rec.Len()
 
@@ -142,7 +142,7 @@ func TestColdSwitchDoesNotTranscodeOnLoop(t *testing.T) {
 	if len(stores) == 0 {
 		t.Fatal("preview not stored once the fill landed")
 	}
-	want, _ := pngCacheName(got.images[1].Path, got.l.previewW, got.l.previewH)
+	want, _ := pngCacheName(imagePath(&got, 1), got.l.previewW, got.l.previewH)
 	if stores[len(stores)-1].path != want {
 		t.Errorf("preview stored %q, want its cached thumbnail %q", stores[len(stores)-1].path, want)
 	}
@@ -225,8 +225,8 @@ func TestResizeStormTranscodesOnlySettledSize(t *testing.T) {
 func TestLateFillForSupersededSelectionIgnored(t *testing.T) {
 	rec := newTransmitRecorder(t)
 	m := newColdModel(t, rec, 3)
-	cachedPNG(m.images[0].Path, m.l.previewW, m.l.previewH)
-	cachedPNG(m.images[0].Path, m.l.stripW, m.l.stripH)
+	cachedPNG(imagePath(m, 0), m.l.previewW, m.l.previewH)
+	cachedPNG(imagePath(m, 0), m.l.stripW, m.l.stripH)
 
 	next, cmd := m.Update(tea.KeyPressMsg{Text: "l", Code: 'l'})
 	cur := next.(galleryModel)
@@ -236,7 +236,7 @@ func TestLateFillForSupersededSelectionIgnored(t *testing.T) {
 	viewBefore := rec.Len()
 	next, _ = cur.Update(tea.KeyPressMsg{Text: "h", Code: 'h'})
 	cur = next.(galleryModel)
-	wantA, _ := pngCacheName(cur.images[0].Path, cur.l.previewW, cur.l.previewH)
+	wantA, _ := pngCacheName(imagePath(&cur, 0), cur.l.previewW, cur.l.previewH)
 	if st := storesFor(t, added(rec, viewBefore), cur.previewID()); len(st) == 0 || st[len(st)-1].path != wantA {
 		t.Errorf("returning to the cached image left its preview unstored: %v", st)
 	}
@@ -285,7 +285,7 @@ func TestUndecodableSourceIsNotRefilled(t *testing.T) {
 	if err := os.WriteFile(bad, []byte("not a png"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	m.images[0].Path = bad
+	setImagePath(m, 0, bad)
 
 	next, cmd := m.Update(tea.WindowSizeMsg{Width: 90, Height: 40})
 	cur := pump(next.(galleryModel), runCmd(cmd)...)
@@ -363,12 +363,31 @@ func TestRasterPaintMissJoinsPendingFill(t *testing.T) {
 func TestFillLandingOnEmptyListDoesNotPanic(t *testing.T) {
 	rec := newTransmitRecorder(t)
 	m := newColdModel(t, rec, 2)
-	cachedPNG(m.images[0].Path, m.l.previewW, m.l.previewH)
-	cachedPNG(m.images[0].Path, m.l.stripW, m.l.stripH)
+	cachedPNG(imagePath(m, 0), m.l.previewW, m.l.previewH)
+	cachedPNG(imagePath(m, 0), m.l.stripW, m.l.stripH)
 	next, cmd := m.Update(tea.KeyPressMsg{Text: "l", Code: 'l'})
 	cur := next.(galleryModel)
 	filled := runFill(t, &cur, cmd)
 
 	cur.images = nil
 	cur.Update(filled)
+}
+
+// imagePath and setImagePath range rather than index so the nil-flow analysis
+// sees an images slice that loadManifest may have left empty.
+func imagePath(m *galleryModel, i int) string {
+	for j, im := range m.images {
+		if j == i {
+			return im.Path
+		}
+	}
+	return ""
+}
+
+func setImagePath(m *galleryModel, i int, p string) {
+	for j := range m.images {
+		if j == i {
+			m.images[j].Path = p
+		}
+	}
 }

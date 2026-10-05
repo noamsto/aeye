@@ -465,6 +465,7 @@ func TestSettleMsgReTransmits(t *testing.T) {
 		height:  40,
 	}
 	m.l = computeLayout(m.width, m.height)
+	warmThumbs(&m)
 
 	m.Update(settleMsg{})
 	w.Close() //nolint:errcheck,gosec // test: closes the pipe writer to signal EOF
@@ -547,7 +548,17 @@ func newTransmitModel(t *testing.T, rec *transmitRecorder, n int) *galleryModel 
 		m.images = append(m.images, imageEntry{Path: writeTestPNG(t), Mtime: int64(i + 1)})
 	}
 	m.l = computeLayout(m.width, m.height)
+	warmThumbs(m)
 	return m
+}
+
+// warmThumbs fills the thumbnail cache for every image at m's current layout, so
+// a transmit stores them rather than leaving them for a fill (see armCache).
+func warmThumbs(m *galleryModel) {
+	for _, im := range m.images {
+		cachedPNG(im.Path, m.l.previewW, m.l.previewH)
+		cachedPNG(im.Path, m.l.stripW, m.l.stripH)
+	}
 }
 
 // TestTransmitViewSkipsUnchanged is the #218 core: a transmit that would

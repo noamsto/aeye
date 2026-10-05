@@ -178,6 +178,7 @@ func newVisibilityModel(t *testing.T) (galleryModel, func() []byte) {
 		height:  40,
 	}
 	m.l = computeLayout(m.width, m.height)
+	warmThumbs(&m)
 	if len(m.images) != 1 {
 		t.Fatalf("fixture manifest did not load: %d images", len(m.images))
 	}

@@ -156,7 +156,8 @@ func (m *galleryModel) minimapWant() minimapStamp {
 }
 
 // selectedThumbStore is the APC that puts w into the selected slot, and the stamp
-// the slot then holds (plain when the overlay could not be produced).
+// the slot then holds (plain when the overlay could not be produced). Both are
+// zero while the thumb is not in the cache yet.
 func (m *galleryModel) selectedThumbStore(w minimapStamp) (string, minimapStamp) {
 	if w.overlay {
 		if apc := m.overlayStore(w); apc != "" {
@@ -164,14 +165,22 @@ func (m *galleryModel) selectedThumbStore(w minimapStamp) (string, minimapStamp)
 		}
 		w.overlay, w.fit, w.rect = false, image.Point{}, image.Rectangle{}
 	}
-	return transmitVirtual(w.id, cachedPNG(w.path, m.l.stripW, m.l.stripH), m.l.stripW, m.l.stripH), w
+	thumb, ok := m.cachedPNGOrMiss(w.path, m.l.stripW, m.l.stripH)
+	if !ok {
+		return "", minimapStamp{}
+	}
+	return transmitVirtual(w.id, thumb, m.l.stripW, m.l.stripH), w
 }
 
 // overlayStore renders w's viewport rectangle onto the scaled thumb and returns
 // its store, or "" when no raster could be built or written.
 func (m *galleryModel) overlayStore(w minimapStamp) string {
 	if key := w.baseKey(); key != m.mini.baseKey {
-		base := m.minimapBase(w)
+		thumb, ok := m.cachedPNGOrMiss(w.path, m.l.stripW, m.l.stripH)
+		if !ok {
+			return ""
+		}
+		base := m.minimapBase(thumb, w.fit)
 		if base == nil {
 			tracef("minimap base failed: %s", w.path)
 			m.mini.failedKey = key
@@ -196,9 +205,9 @@ func (m *galleryModel) overlayStore(w minimapStamp) string {
 	return ""
 }
 
-// minimapBase is the cached strip thumb scaled to w.fit, or nil when it can't be read.
-func (m *galleryModel) minimapBase(w minimapStamp) *image.RGBA {
-	f, err := os.Open(cachedPNG(w.path, m.l.stripW, m.l.stripH)) //nolint:gosec // cache file or the user's own image
+// minimapBase is the strip thumb at thumbPath scaled to fit, or nil when it can't be read.
+func (m *galleryModel) minimapBase(thumbPath string, fit image.Point) *image.RGBA {
+	f, err := os.Open(thumbPath) //nolint:gosec // cache file or the user's own image
 	if err != nil {
 		return nil
 	}
@@ -207,7 +216,7 @@ func (m *galleryModel) minimapBase(w minimapStamp) *image.RGBA {
 	if err != nil {
 		return nil
 	}
-	dst := image.NewRGBA(image.Rect(0, 0, w.fit.X, w.fit.Y))
+	dst := image.NewRGBA(image.Rect(0, 0, fit.X, fit.Y))
 	draw.ApproxBiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Src, nil)
 	return dst
 }
@@ -223,6 +232,9 @@ func (m *galleryModel) syncMinimap() {
 		return
 	}
 	apc, got := m.selectedThumbStore(w)
+	if apc == "" {
+		return
+	}
 	if _, err := fmt.Fprint(m.tty, apc); err == nil {
 		m.mini.stored = got
 	}

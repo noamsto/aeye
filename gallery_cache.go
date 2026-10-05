@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha1" //nolint:gosec // sha1 only names cache files; not a security use
 	"encoding/hex"
 	"fmt"
@@ -37,16 +38,35 @@ var imgCacheDir = filepath.Join(os.TempDir(), "aeye-imgcache")
 // original on every navigation. Falls back to srcPath on any failure — already
 // a PNG that's small enough is returned untouched (no transcode).
 func cachedPNG(srcPath string, cols, rows int) string {
+	return cachedPNGCtx(context.Background(), srcPath, cols, rows)
+}
+
+// pngCacheName is the cache file cachedPNG uses for srcPath at cols×rows cells.
+// ok is false when srcPath can't be stat'ed, where cachedPNG returns srcPath.
+func pngCacheName(srcPath string, cols, rows int) (out string, ok bool) {
 	fi, err := os.Stat(srcPath)
 	if err != nil {
-		return srcPath
+		return "", false
 	}
 	tw, th := cols*cellPxW, rows*cellPxH
 	key := fmt.Sprintf("%s|%d|%d|%dx%d", srcPath, fi.ModTime().UnixNano(), fi.Size(), tw, th)
 	sum := sha1.Sum([]byte(key)) //nolint:gosec // sha1 only names cache files; not a security use
-	out := filepath.Join(imgCacheDir, hex.EncodeToString(sum[:])+".png")
+	return filepath.Join(imgCacheDir, hex.EncodeToString(sum[:])+".png"), true
+}
+
+// cachedPNGCtx is cachedPNG that gives up once ctx is cancelled — before the
+// decode, and again before the scale and encode that follow it — returning srcPath
+// like any other failure.
+func cachedPNGCtx(ctx context.Context, srcPath string, cols, rows int) string {
+	out, ok := pngCacheName(srcPath, cols, rows)
+	if !ok {
+		return srcPath
+	}
 	if _, err := os.Stat(out); err == nil {
 		return out
+	}
+	if ctx.Err() != nil {
+		return srcPath
 	}
 
 	f, err := os.Open(srcPath) //nolint:gosec // path is the user's own image file
@@ -55,12 +75,12 @@ func cachedPNG(srcPath string, cols, rows int) string {
 	}
 	defer f.Close() //nolint:errcheck // read-only file; close error is irrelevant
 	src, _, err := image.Decode(f)
-	if err != nil {
+	if err != nil || ctx.Err() != nil {
 		return srcPath
 	}
 
 	b := src.Bounds()
-	scale := min(float64(tw)/float64(b.Dx()), float64(th)/float64(b.Dy()))
+	scale := min(float64(cols*cellPxW)/float64(b.Dx()), float64(rows*cellPxH)/float64(b.Dy()))
 	if scale >= 1 {
 		// Small enough to send as-is, but still write a viewer-owned copy rather
 		// than returning srcPath: kitty fetches the transmit path asynchronously
@@ -73,6 +93,9 @@ func cachedPNG(srcPath string, cols, rows int) string {
 
 	dst := image.NewRGBA(image.Rect(0, 0, int(float64(b.Dx())*scale), int(float64(b.Dy())*scale)))
 	draw.CatmullRom.Scale(dst, dst.Bounds(), src, b, draw.Src, nil)
+	if ctx.Err() != nil {
+		return srcPath
+	}
 	return writePNG(out, dst, srcPath)
 }
 

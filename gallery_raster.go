@@ -144,7 +144,10 @@ func (m *galleryModel) paintPreview() {
 	if m.curImg != nil && !m.crop.isFull() {
 		src = m.renderZoom(r.w, r.h)
 	} else {
-		src = cachedPNG(m.images[m.cursor].Path, r.w, r.h)
+		var ok bool
+		if src, ok = m.cachedPNGOrMiss(m.images[m.cursor].Path, r.w, r.h); !ok {
+			return // painted once the fill lands (see armCache)
+		}
 	}
 	paintRasterAt(m.tty, r, renderRaster(m.rasterFormat, src, r.w, r.h))
 }
@@ -158,7 +161,10 @@ func (m *galleryModel) paintStrip() {
 	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
 	for i, cell := range m.filmstripCellRects() {
 		inner := rect{x: cell.x + 1, y: cell.y + 1, w: m.l.stripW, h: m.l.stripH}
-		png := cachedPNG(m.images[start+i].Path, inner.w, inner.h)
+		png, ok := m.cachedPNGOrMiss(m.images[start+i].Path, inner.w, inner.h)
+		if !ok {
+			continue
+		}
 		paintRasterAt(m.tty, inner, renderRaster(m.rasterFormat, png, inner.w, inner.h))
 	}
 }

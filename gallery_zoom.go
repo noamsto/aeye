@@ -269,33 +269,56 @@ func stampOf(path string, size image.Point) imageStamp {
 	return imageStamp{mtime: mtime, size: size}
 }
 
-// rememberCrop saves the leaving image's crop. A fit crop is the default, so it
-// is deleted rather than stored; a Tab region framing is never remembered
-// because regions reset on switch and a region-tight crop would misbehave under
-// zoomFloor without its focus.
+// cropKey is what an entry's remembered crop is filed under. A d2 diagram's two
+// theme renders are one image, so it is keyed by the canonical dark variant and a
+// theme switch keeps its crop; any other entry is keyed by its exact path, so a
+// raster named x-dark.png is never conflated with x-light.png.
+func cropKey(e imageEntry) string {
+	if e.Source == "d2" {
+		return withTheme(e.Path, "dark")
+	}
+	return e.Path
+}
+
+// cropStamp is the staleness stamp for e's remembered crop. A diagram is stamped
+// from its canonical render, the same file whatever the live theme, so a theme
+// switch keeps the stamp while a re-render of that diagram changes it. liveSize
+// is the header size of e.Path.
+func cropStamp(e imageEntry, liveSize image.Point) imageStamp {
+	key := cropKey(e)
+	if key != e.Path {
+		liveSize = imageSize(key)
+	}
+	return stampOf(key, liveSize)
+}
+
+// rememberCrop saves the leaving image's crop under curCropKey. A fit crop is the
+// default, so it is deleted rather than stored; a Tab region framing is never
+// remembered because regions reset on switch and a region-tight crop would
+// misbehave under zoomFloor without its focus.
 func (m *galleryModel) rememberCrop() {
 	if m.curImgPath == "" {
 		return
 	}
 	if m.crop.isFull() || m.regionIdx >= 0 {
-		delete(m.crops, m.curImgPath)
+		delete(m.crops, m.curCropKey)
 		return
 	}
 	if m.crops == nil {
 		m.crops = map[string]savedCrop{}
 	}
-	m.crops[m.curImgPath] = savedCrop{m.crop, m.curStamp}
+	m.crops[m.curCropKey] = savedCrop{m.crop, m.curStamp}
 }
 
-// recalledCrop is p's remembered crop if the file is unchanged since it was
-// saved, else fit (dropping the stale entry).
-func (m *galleryModel) recalledCrop(p string) cropFrac {
-	sc, ok := m.crops[p]
+// recalledCrop is the crop remembered under key if its image is unchanged since
+// it was saved (curStamp matches), else fit (dropping the stale entry).
+func (m *galleryModel) recalledCrop(key string) cropFrac {
+	sc, ok := m.crops[key]
 	if !ok {
 		return fullCrop()
 	}
 	if sc.stamp != m.curStamp {
-		delete(m.crops, p)
+		delete(m.crops, key)
 		return fullCrop()
 	}
 	return sc.crop
@@ -303,9 +326,9 @@ func (m *galleryModel) recalledCrop(p string) cropFrac {
 
 // pruneCrops forgets crops of images no longer in the carousel.
 func (m *galleryModel) pruneCrops() {
-	for p := range m.crops {
-		if !slices.ContainsFunc(m.images, func(e imageEntry) bool { return e.Path == p }) {
-			delete(m.crops, p)
+	for key := range m.crops {
+		if !slices.ContainsFunc(m.images, func(e imageEntry) bool { return cropKey(e) == key }) {
+			delete(m.crops, key)
 		}
 	}
 }
@@ -315,8 +338,9 @@ func (m *galleryModel) pruneCrops() {
 // last call; the pixels arrive later as a decodedMsg. A changed selection saves
 // the leaving image's crop and restores the entering image's (or fit), and drops
 // the previous working copy before the new decode allocates. The identity key is
-// the path, validated by the mtime and header size captured at selection, so a
-// diagram re-rendered at the same path opens at fit; a content hash was rejected
+// cropKey (the path, except that a diagram's theme variants share one), validated
+// by the mtime and header size captured at selection (cropStamp), so a diagram
+// re-rendered under the same key opens at fit; a content hash was rejected
 // because it reads the whole file on every switch. A restored crop set while
 // pixels are pending lands with the decode, like any zoom pressed in the decode
 // window. An unchanged selection (e.g. an auto-refresh tick that appended a
@@ -330,7 +354,8 @@ func (m *galleryModel) ensureDecoded() {
 		m.requestDecode()
 		return
 	}
-	p := m.images[m.cursor].Path
+	e := m.images[m.cursor]
+	p := e.Path
 	if p == m.curImgPath {
 		return
 	}
@@ -338,9 +363,10 @@ func (m *galleryModel) ensureDecoded() {
 	m.regions, m.regionPath, m.regionIdx = nil, nil, -1
 	m.curImg = nil
 	m.curImgPath = p
+	m.curCropKey = cropKey(e)
 	m.curSize = imageSize(p)
-	m.curStamp = stampOf(p, m.curSize)
-	m.crop = m.recalledCrop(p)
+	m.curStamp = cropStamp(e, m.curSize)
+	m.crop = m.recalledCrop(m.curCropKey)
 	m.requestDecode()
 }
 

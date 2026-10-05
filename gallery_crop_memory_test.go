@@ -1,8 +1,10 @@
 package main
 
 import (
+	"image"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -205,5 +207,176 @@ func TestReloadEvictsCropOfDroppedImage(t *testing.T) {
 	}
 	if _, ok := m.crops[b]; !ok {
 		t.Errorf("crops = %v, want b kept", m.crops)
+	}
+}
+
+// cropDir is a temp AEYE_DIR that holds both the manifest and the image fixtures.
+func cropDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("AEYE_DIR", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "images"), 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// newManifestCropModel is a ready model over a manifest in the cropDir, so
+// tests drive theme flips through the real reload path. pane is the one
+// newDecodeModel derives, so its scratch cleanup stays valid.
+func newManifestCropModel(t *testing.T, theme string, lines ...string) galleryModel {
+	t.Helper()
+	m := newDecodeModel(t, sizeA)
+	m.theme = theme
+	writeCropManifest(t, m.pane, lines...)
+	return land(t, reloaded(m))
+}
+
+func writeCropManifest(t *testing.T, pane string, lines ...string) {
+	t.Helper()
+	if err := os.WriteFile(manifestPath(pane), []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// diagramPair writes <hash>-dark.png and <hash>-light.png at size and returns
+// the manifest line of the d2 entry (recorded at its dark variant).
+func diagramPair(t *testing.T, dir, hash string, size image.Point) string {
+	t.Helper()
+	for i, mode := range []string{"dark", "light"} {
+		p := filepath.Join(dir, hash+"-"+mode+".png")
+		if err := os.WriteFile(p, encode16BitPNG(t, size.X, size.Y, uint16(i+1)*0x3000), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return `{"type":"image","path":"` + filepath.Join(dir, hash+"-dark.png") + `","source":"d2","name":"d","mtime":1}`
+}
+
+const (
+	hashA = "0123456789abcdef"
+	hashB = "fedcba9876543210"
+)
+
+// reloaded runs reload the way the tick handler does, minus Update: it arms the
+// decode request reload made, which Update would otherwise schedule on return.
+func reloaded(m galleryModel) galleryModel {
+	m.reload()
+	m.armDecode()
+	return m
+}
+
+func flipTheme(m galleryModel, theme string) galleryModel {
+	m.theme = theme
+	return reloaded(m)
+}
+
+func TestDiagramCropSurvivesThemeSwitch(t *testing.T) {
+	dir := cropDir(t)
+	m := newManifestCropModel(t, "dark", diagramPair(t, dir, hashA, sizeA))
+	m = sendAll(t, m, keyZoom, keyZoom, keyJ)
+	zoomed := m.crop
+	if zoomed.isFull() {
+		t.Fatal("setup: diagram is not zoomed")
+	}
+
+	m = land(t, flipTheme(m, "light"))
+	if m.crop != zoomed {
+		t.Errorf("light variant opened at %+v, want %+v", m.crop, zoomed)
+	}
+	m = land(t, flipTheme(m, "dark"))
+	if m.crop != zoomed {
+		t.Errorf("dark variant reopened at %+v, want %+v", m.crop, zoomed)
+	}
+}
+
+func TestReloadKeepsDiagramCropAcrossThemeSwitch(t *testing.T) {
+	dir := cropDir(t)
+	m := newManifestCropModel(t, "dark", diagramPair(t, dir, hashA, sizeA), diagramPair(t, dir, hashB, sizeB))
+	m = sendAll(t, m, keyZoom, keyZoom, keyJ)
+	zoomed := m.crop
+	m = sendAll(t, m, key2)
+
+	m = flipTheme(m, "light")
+	if len(m.images) == 0 {
+		t.Fatal("no images after the theme flip")
+	}
+	if _, ok := m.crops[cropKey(m.images[0])]; !ok {
+		t.Fatalf("crops = %v, want the unselected diagram's crop kept across the theme flip", m.crops)
+	}
+	m = sendAll(t, m, key1)
+	if m.crop != zoomed {
+		t.Errorf("diagram reopened at %+v, want %+v", m.crop, zoomed)
+	}
+}
+
+func TestDiagramCropDroppedWhenSourceChanges(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(t *testing.T, dir string, m galleryModel) galleryModel
+	}{
+		{"canonical render rewritten at a new size", func(t *testing.T, dir string, m galleryModel) galleryModel {
+			p := withTheme(m.images[0].Path, "dark")
+			if err := os.WriteFile(p, encode16BitPNG(t, sizeC.X, sizeC.Y, 0x7000), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			return flipTheme(m, "light")
+		}},
+		{"canonical render with a newer mtime", func(t *testing.T, dir string, m galleryModel) galleryModel {
+			later := time.Now().Add(time.Hour)
+			if err := os.Chtimes(withTheme(m.images[0].Path, "dark"), later, later); err != nil {
+				t.Fatal(err)
+			}
+			return flipTheme(m, "light")
+		}},
+		{"different hash", func(t *testing.T, dir string, m galleryModel) galleryModel {
+			writeCropManifest(t, m.pane, diagramPair(t, dir, hashB, sizeA))
+			m = reloaded(m)
+			if len(m.crops) != 0 {
+				t.Errorf("crops = %v, want the replaced diagram's crop pruned", m.crops)
+			}
+			return m
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := cropDir(t)
+			m := newManifestCropModel(t, "dark", diagramPair(t, dir, hashA, sizeA))
+			m = sendAll(t, m, keyZoom, keyZoom, keyJ)
+			if m.crop.isFull() {
+				t.Fatal("setup: diagram is not zoomed")
+			}
+			m = tc.change(t, dir, m)
+			if !m.crop.isFull() {
+				t.Errorf("changed diagram opened at %+v, want fit", m.crop)
+			}
+		})
+	}
+}
+
+// A raster is keyed by its exact path: x-dark.png and x-light.png are two
+// images, not theme variants of one.
+func TestRasterCropNotConflatedAcrossThemeSuffix(t *testing.T) {
+	dir := cropDir(t)
+	var lines []string
+	for _, name := range []string{"x-dark.png", "x-light.png"} {
+		p := filepath.Join(dir, name)
+		writeTestImage(t, p, sizeA.X, sizeA.Y)
+		lines = append(lines, `{"type":"image","path":"`+p+`","mtime":1}`)
+	}
+	m := newDecodeModel(t, sizeA)
+	writeCropManifest(t, m.pane, lines...)
+	m = land(t, reloaded(m))
+	if len(m.images) != 2 {
+		t.Fatalf("setup: images = %+v, want both rasters", m.images)
+	}
+
+	m = sendAll(t, m, keyZoom, keyZoom, keyJ)
+	zoomed := m.crop
+	m = sendAll(t, m, key2)
+	if !m.crop.isFull() {
+		t.Errorf("x-light.png opened at %+v, want fit", m.crop)
+	}
+	m = sendAll(t, m, key1)
+	if m.crop != zoomed {
+		t.Errorf("x-dark.png reopened at %+v, want %+v", m.crop, zoomed)
 	}
 }

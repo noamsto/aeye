@@ -173,8 +173,9 @@ type galleryModel struct {
 	pinned          bool                 // follow the newest image until the user first navigates
 	crop            cropFrac             // visible sub-rectangle of the source (fullCrop = fit)
 	mini            minimapState         // selected thumb's viewport overlay (see syncMinimap)
-	crops           map[string]savedCrop // per-image crops remembered across selection changes (see ensureDecoded)
-	curStamp        imageStamp           // identity of curImgPath when selected; validates a remembered crop
+	crops           map[string]savedCrop // per-image crops remembered across selection changes, by cropKey (see ensureDecoded)
+	curCropKey      string               // cropKey of the selection; where rememberCrop files its crop
+	curStamp        imageStamp           // cropStamp of the selection when selected; validates a remembered crop
 	curImg          image.Image          // decoded working copy of the selection; nil while its decode is pending
 	curImgPath      string               // path the selection state (curSize, decode request) belongs to
 	curSize         image.Point          // source pixel size of curImgPath; zero when its header is unreadable

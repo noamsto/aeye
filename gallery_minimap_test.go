@@ -239,6 +239,7 @@ func newMinimapModel(t *testing.T, rec *transmitRecorder) *galleryModel {
 	m.cursor, m.crop = 1, fullCrop()
 	m.curImgPath, m.curSize = p, image.Pt(400, 100)
 	m.curImg = image.NewRGBA(image.Rect(0, 0, 400, 100))
+	warmThumbs(m)
 	return m
 }
 
@@ -545,6 +546,13 @@ func TestMinimapBrokenBaseNotRetried(t *testing.T) {
 		t.Fatalf("TestMinimapBrokenBaseNotRetried: need at least 2 images, got %d", len(m.images))
 	}
 	m.images[1].Path, m.curImgPath = bad, bad
+	// The state after a fill found the file undecodable: its thumbs resolve to the
+	// source itself.
+	m.cacheFailed = map[string]bool{}
+	for _, sz := range [][2]int{{m.l.previewW, m.l.previewH}, {m.l.stripW, m.l.stripH}} {
+		out, _ := pngCacheName(bad, sz[0], sz[1])
+		m.cacheFailed[out] = true
+	}
 	m.transmitView()
 
 	before := rec.Len()

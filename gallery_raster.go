@@ -133,6 +133,19 @@ func paintRasterAt(w io.Writer, r rect, payload string) {
 	fmt.Fprintf(w, "\x1b7\x1b[%d;%dH%s\x1b8", r.y+1, r.x+1, payload) //nolint:errcheck // best-effort tty escape-sequence write
 }
 
+// eraseRasterAt blanks rect r (ECH per row) so a thumbnail that isn't ready
+// doesn't leave the previous image under its caption. Cursor save/restore as in
+// paintRasterAt.
+func eraseRasterAt(w io.Writer, r rect) {
+	var b strings.Builder
+	b.WriteString("\x1b7")
+	for y := range r.h {
+		fmt.Fprintf(&b, "\x1b[%d;%dH\x1b[%dX", r.y+y+1, r.x+1, r.w)
+	}
+	b.WriteString("\x1b8")
+	fmt.Fprint(w, b.String()) //nolint:errcheck // best-effort tty escape-sequence write
+}
+
 // paintPreview paints the selected image into the preview rect, honoring the
 // current zoom/crop (mirrors transmitView's source selection).
 func (m *galleryModel) paintPreview() {
@@ -144,7 +157,11 @@ func (m *galleryModel) paintPreview() {
 	if m.curImg != nil && !m.crop.isFull() {
 		src = m.renderZoom(r.w, r.h)
 	} else {
-		src = cachedPNG(m.images[m.cursor].Path, r.w, r.h)
+		var ok bool
+		if src, ok = m.cachedPNGOrMiss(m.images[m.cursor].Path, r.w, r.h); !ok {
+			eraseRasterAt(m.tty, r) // painted once the fill lands (see armCache)
+			return
+		}
 	}
 	paintRasterAt(m.tty, r, renderRaster(m.rasterFormat, src, r.w, r.h))
 }
@@ -158,7 +175,11 @@ func (m *galleryModel) paintStrip() {
 	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
 	for i, cell := range m.filmstripCellRects() {
 		inner := rect{x: cell.x + 1, y: cell.y + 1, w: m.l.stripW, h: m.l.stripH}
-		png := cachedPNG(m.images[start+i].Path, inner.w, inner.h)
+		png, ok := m.cachedPNGOrMiss(m.images[start+i].Path, inner.w, inner.h)
+		if !ok {
+			eraseRasterAt(m.tty, inner)
+			continue
+		}
 		paintRasterAt(m.tty, inner, renderRaster(m.rasterFormat, png, inner.w, inner.h))
 	}
 }

@@ -186,6 +186,21 @@ type galleryModel struct {
 	decodeGen      uint64
 	decodeArmedGen uint64
 	decodeCancel   context.CancelFunc
+	// Thumbnail cache fill (see armCache). The loop only looks thumbnails up; a miss
+	// sets cacheMiss, and the Update that raised it arms a fill off the loop.
+	// cacheGen supersedes an earlier fill's kick and result. cacheBusy/cacheFor mark
+	// a notifying fill (it re-stores the view when it lands) for that target, so a
+	// repeat miss on it doesn't restart the fill; a miss that arrives while the kick
+	// is still pending (cachePending) sets cacheBusy to join it. cacheFailed holds
+	// the cache files that could not be written, so their source is used as-is
+	// instead of asking again.
+	cacheGen     uint64
+	cacheMiss    bool
+	cacheBusy    bool
+	cachePending bool
+	cacheFor     cacheTarget
+	cacheCancel  context.CancelFunc
+	cacheFailed  map[string]bool
 	// Terminal cell size in pixels, measured once at startup (CSI 16 t), with the
 	// cellPxW/cellPxH estimates as fallback. Load-bearing for crop geometry: the
 	// estimates assume a 1:2 cell, so a real 10x22 cell skews every crop shaped
@@ -430,16 +445,31 @@ func (m *galleryModel) transmitView() {
 		return
 	}
 	m.clearStored()
-	src := m.images[m.cursor].Path
+	// The store is gone from here on, so until this call completes the last
+	// signature no longer describes it.
+	m.lastTransmitSig = nil
+	// A thumbnail the cache doesn't hold yet is left out rather than transcoded
+	// here: the view is stored again once the fill lands (see armCache).
+	complete := true
+	var apc string
+	var n int
+	var err error
+	pid := m.previewID()
+	src, ok := m.images[m.cursor].Path, true
 	if m.curImg != nil && !m.crop.isFull() {
 		src = m.renderZoom(m.l.previewW, m.l.previewH)
 	} else {
-		src = cachedPNG(src, m.l.previewW, m.l.previewH)
+		src, ok = m.cachedPNGOrMiss(src, m.l.previewW, m.l.previewH)
 	}
-	pid := m.previewID()
-	apc := transmitVirtual(pid, src, m.l.previewW, m.l.previewH)
-	n, err := fmt.Fprint(m.tty, apc)
+	// Recorded even on a miss: other paths (vector, crop, minimap) store under
+	// pid without recording it, and the next clearStored must remove those.
 	m.storedIDs = append(m.storedIDs, pid)
+	if ok {
+		apc = transmitVirtual(pid, src, m.l.previewW, m.l.previewH)
+		n, err = fmt.Fprint(m.tty, apc)
+	} else {
+		complete = false
+	}
 	if traceEnabled {
 		tracef("store preview id=%d bytes=%d n=%d err=%v cur=%d %dx%d nimg=%d",
 			pid, len(apc), n, err, m.cursor, m.l.previewW, m.l.previewH, len(m.images))
@@ -457,8 +487,16 @@ func (m *galleryModel) transmitView() {
 		var got minimapStamp
 		if idx == m.cursor {
 			sapc, got = m.selectedThumbStore(m.minimapWant())
-		} else {
-			sapc = transmitVirtual(sid, cachedPNG(m.images[idx].Path, m.l.stripW, m.l.stripH), m.l.stripW, m.l.stripH)
+		} else if thumb, ok := m.cachedPNGOrMiss(m.images[idx].Path, m.l.stripW, m.l.stripH); ok {
+			sapc = transmitVirtual(sid, thumb, m.l.stripW, m.l.stripH)
+		}
+		m.storedIDs = append(m.storedIDs, sid)
+		if sapc == "" {
+			complete = false
+			if idx == m.cursor {
+				m.mini.stored = minimapStamp{}
+			}
+			continue
 		}
 		sn, serr := fmt.Fprint(m.tty, sapc)
 		if idx == m.cursor {
@@ -467,7 +505,6 @@ func (m *galleryModel) transmitView() {
 				m.mini.stored = minimapStamp{}
 			}
 		}
-		m.storedIDs = append(m.storedIDs, sid)
 		stripCells++
 		stripBytes += len(sapc)
 		stripWritten += sn
@@ -477,7 +514,7 @@ func (m *galleryModel) transmitView() {
 	}
 	// Record the signature only when every write landed — a failed transmit
 	// leaves the store incomplete, so the next call must retry, not skip.
-	if err == nil && stripErr == nil {
+	if complete && err == nil && stripErr == nil {
 		m.lastTransmitSig = &sig
 	}
 	if traceEnabled {
@@ -616,11 +653,12 @@ func (m *galleryModel) isPending(e imageEntry) bool {
 }
 
 func (m galleryModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	prevLayout := m.l
 	next, cmd := m.handle(msg)
 	if nm, ok := next.(galleryModel); ok {
-		// Decode requests are raised in helpers that return no Cmd; arming here
-		// schedules each one wherever it came from.
-		cmd = tea.Batch(cmd, nm.armDecode())
+		// Decode requests and cache misses are raised in helpers that return no
+		// Cmd; arming here schedules each one wherever it came from.
+		cmd = tea.Batch(cmd, nm.armDecode(), nm.armCache(prevLayout))
 		nm.tick.publish(nm)
 		next = nm
 	}
@@ -914,7 +952,7 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 		pw, ph := tmuxPaneSize()
 		tracef("sizeRetry attempt=%d tmux pane size=%dx%d", msg.attempt, pw, ph)
 		if pw > 0 && ph > 0 {
-			return m.Update(tea.WindowSizeMsg{Width: pw, Height: ph})
+			return m.handle(tea.WindowSizeMsg{Width: pw, Height: ph})
 		}
 		if msg.attempt+1 >= sizeRetryMax {
 			return m, nil
@@ -939,6 +977,13 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.gen == m.rasterGen {
 			m.paintRaster()
 		}
+		return m, nil
+	case cacheKickMsg:
+		return m, m.startCache(msg)
+	case cacheFilledMsg:
+		return m, m.cacheFilled(msg)
+	case cacheWarmedMsg:
+		m.noteCacheFailed(msg.failed)
 		return m, nil
 	case decodeKickMsg:
 		if msg.gen != m.decodeGen {

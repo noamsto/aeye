@@ -227,6 +227,9 @@ func writeSizedPNG(t *testing.T, w, h int) string {
 func newMinimapModel(t *testing.T, rec *transmitRecorder) *galleryModel {
 	t.Helper()
 	t.Setenv("TMUX", "")
+	// The scratch rasters are keyed by pane under os.TempDir(); a private dir
+	// keeps concurrent test processes from overwriting or removing each other's.
+	t.Setenv("TMPDIR", t.TempDir())
 	m := newTransmitModel(t, rec, 3)
 	if len(m.images) < 2 {
 		t.Fatalf("newMinimapModel needs at least 2 images, got %d", len(m.images))
@@ -236,9 +239,6 @@ func newMinimapModel(t *testing.T, rec *transmitRecorder) *galleryModel {
 	m.cursor, m.crop = 1, fullCrop()
 	m.curImgPath, m.curSize = p, image.Pt(400, 100)
 	m.curImg = image.NewRGBA(image.Rect(0, 0, 400, 100))
-	for _, s := range []string{m.minimapRawPath(), m.minimapPNGPath(), m.zoomRawPath(), m.zoomScratchPath()} {
-		t.Cleanup(func() { os.Remove(s) }) //nolint:errcheck,gosec // test scratch cleanup
-	}
 	return m
 }
 

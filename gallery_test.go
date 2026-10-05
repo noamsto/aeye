@@ -497,41 +497,37 @@ func writeTestPNG(t *testing.T) string {
 	return path
 }
 
-// transmitRecorder is a pipe-backed tty fake that accumulates everything the
+// transmitRecorder is a file-backed tty fake that accumulates everything the
 // model writes, so a test can assert how many bytes a given transmit added
-// (the one-shot collect in the visibility tests can't snapshot mid-test).
+// (the one-shot collect in the visibility tests can't snapshot mid-test). A
+// regular file, unlike a pipe, has no capacity limit and needs no read
+// deadline: the model's writes are synchronous, so Len sees every byte the
+// moment a transmit returns.
 type transmitRecorder struct {
-	w   *os.File
-	r   *os.File
+	t   *testing.T
+	f   *os.File
 	buf bytes.Buffer
 }
 
 func newTransmitRecorder(t *testing.T) *transmitRecorder {
 	t.Helper()
-	r, w, err := os.Pipe()
+	f, err := os.CreateTemp(t.TempDir(), "tty-*")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { r.Close(); w.Close() }) //nolint:errcheck,gosec // test cleanup
-	return &transmitRecorder{w: w, r: r}
+	t.Cleanup(func() { f.Close() }) //nolint:errcheck,gosec // test cleanup
+	return &transmitRecorder{t: t, f: f}
 }
 
-// Len drains the pipe and returns the total bytes written so far. The model's
-// tty writes are synchronous, so once a transmit returns its bytes are already
-// in the pipe buffer — the deadline only bounds the final empty read. (A
-// drain-goroutine + Len() pair races: Len() can sample before the goroutine
-// has copied.)
+// Len returns the total bytes written so far, caching them in rec.buf.
 func (rec *transmitRecorder) Len() int {
-	_ = rec.r.SetReadDeadline(time.Now().Add(time.Millisecond))
-	var tmp [1 << 16]byte
-	for {
-		n, err := rec.r.Read(tmp[:])
-		rec.buf.Write(tmp[:n])
-		if err != nil {
-			break
-		}
+	b, err := os.ReadFile(rec.f.Name())
+	if err != nil {
+		rec.t.Helper()
+		rec.t.Fatal(err)
 	}
-	_ = rec.r.SetReadDeadline(time.Time{})
+	rec.buf.Reset()
+	rec.buf.Write(b)
 	return rec.buf.Len()
 }
 
@@ -542,7 +538,7 @@ func newTransmitModel(t *testing.T, rec *transmitRecorder, n int) *galleryModel 
 	m := &galleryModel{
 		pane:    "%41",
 		backend: backendKitty,
-		tty:     rec.w,
+		tty:     rec.f,
 		ready:   true,
 		width:   100,
 		height:  40,

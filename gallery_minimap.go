@@ -195,9 +195,12 @@ func (m *galleryModel) overlayStore(w minimapStamp) string {
 // when the base thumb can't be read. The frame is reused across calls.
 func (m *galleryModel) minimapFrame(w minimapStamp) *image.RGBA {
 	if key := w.baseKey(); key != m.mini.baseKey {
+		if key == m.mini.failedKey {
+			return nil
+		}
 		thumb, ok := m.cachedPNGOrMiss(w.path, m.l.stripW, m.l.stripH)
 		if !ok {
-			return ""
+			return nil
 		}
 		base := m.minimapBase(thumb, w.fit)
 		if base == nil {

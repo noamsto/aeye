@@ -685,3 +685,96 @@ func TestArmDecodeOncePerGen(t *testing.T) {
 		t.Error("armed for an unreadable header")
 	}
 }
+
+func TestUndecodableSelectionRetries(t *testing.T) {
+	t.Run("truncated body is re-requested after the failure", func(t *testing.T) {
+		m := newDecodeModel(t, sizeA)
+		p := m.images[0].Path
+		full, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, full[:len(full)/2], 0o600); err != nil {
+			t.Fatal(err)
+		}
+		m.curImgPath = "" // force a fresh selection over the half-written file
+		m.ensureDecoded()
+		m.armDecode()
+		m = land(t, m)
+		if m.curImg != nil || m.curImgPath != "" {
+			t.Fatalf("failed decode kept state: img=%v path=%q", m.curImg != nil, m.curImgPath)
+		}
+		gen := m.decodeGen
+		m.ensureDecoded()
+		if m.decodeGen == gen {
+			t.Error("ensureDecoded did not re-request the decode")
+		}
+	})
+	t.Run("A B unreadable A leaves A decodable", func(t *testing.T) {
+		m := newDecodeModel(t, sizeA, sizeB)
+		a := m.images[0].Path
+		if err := os.WriteFile(m.images[1].Path, []byte("not an image"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		m, _ = send(t, m, keyNext)
+		if m.curImgPath != "" {
+			t.Fatalf("curImgPath = %q while on unreadable B, want empty", m.curImgPath)
+		}
+		m, _ = send(t, m, keyPrev)
+		if m.curImgPath != a {
+			t.Fatal("did not return to A")
+		}
+		if m = land(t, m); m.curImg == nil {
+			t.Error("A did not decode after returning from B")
+		}
+	})
+	t.Run("completed file decodes on reload", func(t *testing.T) {
+		m := newDecodeModel(t, sizeA)
+		p := m.images[0].Path
+		full, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, full[:len(full)/2], 0o600); err != nil {
+			t.Fatal(err)
+		}
+		m.curImgPath = ""
+		m.ensureDecoded()
+		m.armDecode()
+		if m = land(t, m); m.curImg != nil {
+			t.Fatal("truncated file decoded")
+		}
+		if err := os.WriteFile(p, full, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		m.ensureDecoded()
+		m.armDecode()
+		if m = land(t, m); m.curImg == nil {
+			t.Error("completed file did not decode on reload")
+		}
+	})
+	t.Run("header not yet written is retried once complete", func(t *testing.T) {
+		m := newDecodeModel(t, sizeA)
+		p := m.images[0].Path
+		full, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		m.curImgPath = ""
+		m.ensureDecoded()
+		if m.curImgPath != "" || m.armDecode() != nil {
+			t.Fatal("unreadable header was recorded or armed a decode")
+		}
+		if err := os.WriteFile(p, full, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		m.ensureDecoded()
+		m.armDecode()
+		if m = land(t, m); m.curImg == nil {
+			t.Error("completed file did not decode on reload")
+		}
+	})
+}

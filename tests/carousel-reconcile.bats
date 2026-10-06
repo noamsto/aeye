@@ -103,3 +103,13 @@ T
 	run grep -q 'launch --type=tab' "$KITTY_LOG"
 	[ "$status" -ne 0 ] # no stash tab created
 }
+
+@test "reconcile succeeds before the state dir exists (fresh boot)" {
+	export AEYE_HOST=kitty
+	rmdir "$CLAUDE_STATUS_DIR"
+	cp "$FIX/kitty-ls-active-9.json" "$KITTY_LS_JSON"
+	printf '%%5\n' >"$VISIBLE_PANES"
+	run bash "$APP" --reconcile
+	[ "$status" -eq 0 ]
+	grep -q 'detach-window --match var:claude_img_src=%9' "$KITTY_LOG"
+}

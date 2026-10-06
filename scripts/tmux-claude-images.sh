@@ -573,7 +573,9 @@ reconcile() {
 	command -v kitty >/dev/null 2>&1 || return 0
 	kitty @ ls >/dev/null 2>&1 || return 0
 	# Serialize overlapping hook firings; a run that can't take the lock is
-	# redundant — the holder reconciles the same state.
+	# redundant — the holder reconciles the same state. Focus hooks can fire
+	# before any agent has created the state dir (e.g. right after a reboot).
+	mkdir -p "$STATE_DIR"
 	exec 9>"$STATE_DIR/.carousel-reconcile.lock"
 	flock -n 9 2>/dev/null || return 0
 	_reconcile_apply

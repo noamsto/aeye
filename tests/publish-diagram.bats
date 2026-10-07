@@ -101,3 +101,31 @@ STUB
 	jq -e . "$MANIFEST" >/dev/null
 	[ -f "$(jq -r .path "$MANIFEST")" ]
 }
+
+@test "outside tmux, --pane resolves the server pid from the pane" {
+	unset TMUX
+	printf '#!/usr/bin/env bash\necho 4242\n' >"$STUB_BIN/tmux"
+	chmod +x "$STUB_BIN/tmux"
+	run bash "$APP" "$SRC/flow.d2" %5
+	[ "$status" -eq 0 ]
+	[ -f "$CLAUDE_STATUS_DIR/images/4242-5.jsonl" ]
+}
+
+@test "outside tmux with an unknown pane fails instead of writing an unreadable key" {
+	unset TMUX
+	printf '#!/usr/bin/env bash\nexit 1\n' >"$STUB_BIN/tmux"
+	chmod +x "$STUB_BIN/tmux"
+	run bash "$APP" "$SRC/flow.d2" %5
+	[ "$status" -ne 0 ]
+	[ -z "$(ls "$CLAUDE_STATUS_DIR"/images/*.jsonl 2>/dev/null)" ]
+}
+
+@test "replacing one entry keeps the render a same-content sibling still uses" {
+	cp "$SRC/flow.d2" "$SRC/twin.d2"
+	bash "$APP" "$SRC/flow.d2"
+	bash "$APP" "$SRC/twin.d2"
+	shared="$(jq -r 'select(.name=="twin") | .path' "$MANIFEST")"
+	printf 'a -> z\n' >"$SRC/flow.d2"
+	bash "$APP" "$SRC/flow.d2"
+	[ -f "$shared" ]
+}

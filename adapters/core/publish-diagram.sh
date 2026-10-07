@@ -32,6 +32,16 @@ TMUX_PANE="${pane:-${TMUX_PANE:-}}"
 	exit 1
 }
 export TMUX_PANE
+# The manifest key carries the tmux server pid. A caller outside tmux (a cron job,
+# a systemd unit) has no $TMUX, so ask the server that owns the pane; a pane no
+# server knows is an error rather than a manifest nothing reads.
+if [[ -z ${TMUX:-} ]]; then
+	srv="$(tmux display-message -p -t "$TMUX_PANE" '#{pid}' 2>/dev/null)" && [[ $srv =~ ^[0-9]+$ ]] || {
+		echo "aeye publish-diagram: pane $TMUX_PANE not found: run inside tmux or point TMUX at its server" >&2
+		exit 1
+	}
+	export TMUX=",$srv,"
+fi
 pane_file="$(resolve_pane_key "")"
 valid_pane_file "$pane_file" || {
 	echo "aeye publish-diagram: invalid pane '$TMUX_PANE'" >&2
@@ -64,5 +74,6 @@ printf -v now '%(%FT%T%z)T' -1
 diagram_replace_entry "$MANIFEST" "$png" "$svg" "$(basename "$file" .d2)" "$now"
 
 if [[ -n $open ]]; then
-	"${AEYE_TOGGLE:-tmux-claude-images}" --ensure-open >/dev/null 2>&1 || true
+	"${AEYE_TOGGLE:-tmux-claude-images}" --ensure-open >/dev/null 2>&1 ||
+		echo "aeye publish-diagram: --open failed: is tmux-claude-images on PATH?" >&2
 fi

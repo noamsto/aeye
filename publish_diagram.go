@@ -52,13 +52,15 @@ func runPublishDiagram(file, pane string, open bool) (int, error) {
 	cmd.Stderr = os.Stderr
 	cmd.Env = os.Environ()
 	if os.Getenv("AEYE_BIN") == "" {
-		if self, err := os.Executable(); err == nil {
-			cmd.Env = append(cmd.Env, "AEYE_BIN="+self)
+		self, err := os.Executable()
+		if err != nil {
+			return 1, err
 		}
+		cmd.Env = append(cmd.Env, "AEYE_BIN="+self)
 	}
 	err = cmd.Run()
 	if ee, ok := errors.AsType[*exec.ExitError](err); ok {
-		return ee.ExitCode(), nil
+		return max(ee.ExitCode(), 1), nil // -1: killed by a signal
 	}
 	if err != nil {
 		return 1, err

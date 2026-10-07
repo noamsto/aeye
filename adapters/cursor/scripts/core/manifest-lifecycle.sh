@@ -176,7 +176,7 @@ diagram_replace_entry() {
 		printf '%s\n' "$entry" >"$manifest"
 		return 0
 	fi
-	tmp="$manifest.tmp"
+	tmp="$(mktemp "$manifest.XXXXXX")"
 	jq -c -s --arg n "$name" --argjson new "$entry" '
 		reduce .[] as $e ({out: [], done: false};
 			if $e.name != $n then .out += [$e]
@@ -187,19 +187,25 @@ diagram_replace_entry() {
 		rm -f "$tmp"
 		return 1
 	}
-	while IFS= read -r stale; do
+	# Collect the superseded renders before the rewrite hides them, but delete only
+	# after it lands. Panes share the content-hashed dir; a render another manifest
+	# references survives, this pane's other entries included (a hook racing in a
+	# new reference can still lose it).
+	local -a old
+	mapfile -t old < <(jq -r --arg n "$name" 'select(.name == $n) | .path' "$manifest")
+	mv "$tmp" "$manifest"
+	for stale in "${old[@]}"; do
 		[[ -n $stale && $stale != "$png" ]] || continue
 		keep=
 		for other in "$IMAGES_DIR"/*.jsonl; do
-			[[ $other == "$manifest" || ! -e $other ]] && continue
+			[[ -e $other ]] || continue
 			grep -qF "$stale" "$other" && {
 				keep=1
 				break
 			}
 		done
 		[[ -n $keep ]] || d2_rm_render_set "$stale"
-	done < <(jq -r --arg n "$name" 'select(.name == $n) | .path' "$manifest")
-	mv "$tmp" "$manifest"
+	done
 }
 
 # _gc_rm BASE -> drop a key's manifest and both sidecars.

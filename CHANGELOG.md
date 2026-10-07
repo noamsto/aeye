@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.0](https://github.com/noamsto/aeye/compare/v1.8.0...v1.9.0) (2026-10-07)
+
+
+### Features
+
+* aeye flock-fd for portable manifest locking (macOS) ([#332](https://github.com/noamsto/aeye/issues/332)) ([41dca39](https://github.com/noamsto/aeye/commit/41dca3933b1235c7ff56e3bfd77c0ef6b0c9bfd3))
+* aeye publish-diagram renders a .d2 into a pane's carousel ([#330](https://github.com/noamsto/aeye/issues/330)) ([ab9d5bf](https://github.com/noamsto/aeye/commit/ab9d5bf91573d2dde48262f23d54bcc2fa9ffb2e))
+
 ## [1.8.0](https://github.com/noamsto/aeye/compare/v1.7.0...v1.8.0) (2026-10-05)
 
 

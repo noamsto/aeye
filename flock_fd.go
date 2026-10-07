@@ -14,7 +14,7 @@ import (
 // belong to the open file description, so the lock outlives this process and
 // stays held by the shell's fd — the same contract as util-linux `flock 9`,
 // which macOS lacks. Returns the exit code: 0 locked, 1 held elsewhere (with
-// nonBlock), 2 any other failure.
+// nonBlock), 2 any other runtime failure.
 func runFlockFD(fd int, nonBlock bool, stderr io.Writer) int {
 	how := unix.LOCK_EX
 	if nonBlock {

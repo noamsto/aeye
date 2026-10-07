@@ -16,7 +16,7 @@ setup() {
 	NOFLOCK="$BATS_TEST_TMPDIR/noflock"
 	mkdir -p "$NOFLOCK"
 	cp "$BATS_FILE_TMPDIR/aeye" "$NOFLOCK/aeye"
-	for t in bash sleep cat mkdir rm; do
+	for t in bash sleep cat mkdir rm ls wc; do
 		ln -s "$(command -v "$t")" "$NOFLOCK/$t"
 	done
 	LOCK="$BATS_TEST_TMPDIR/m.lock"
@@ -44,13 +44,15 @@ setup() {
 
 # Two writers each do read -> sleep -> write+1 on one counter file.
 race() { # $1 = 1 to take _manifest_lock first
-	rm -f "$COUNTER"
+	rm -f "$COUNTER" "$COUNTER".ready.*
 	printf 0 >"$COUNTER"
 	for _ in 1 2; do
 		PATH="$NOFLOCK" bash -c '
 			source "$1"
 			[[ $4 == 1 ]] && _manifest_lock "$2"
-			n=$(cat "$3"); sleep 0.3; printf %s $((n + 1)) >"$3"
+			n=$(cat "$3"); : >"$3.ready.$$"
+			until [[ $(ls "$3".ready.* 2>/dev/null | wc -l) -ge 2 || $4 == 1 ]]; do sleep 0.05; done
+			sleep 0.3; printf %s $((n + 1)) >"$3"
 		' _ "$LIB" "$LOCK" "$COUNTER" "$1" &
 	done
 	wait

@@ -150,12 +150,62 @@ append_image_line() {
 		'{type:"image", path:$path, source:$source, ts:$ts, mtime:$mtime}' >>"$manifest"
 }
 
-# append_diagram_line MANIFEST PNG SVG NAME TS -> append one diagram record.
-append_diagram_line() {
-	local manifest="$1" png="$2" svg="$3" name="$4" ts="$5" mtime
+# diagram_entry_json PNG SVG NAME TS -> one diagram record, the shared line format.
+diagram_entry_json() {
+	local png="$1" svg="$2" name="$3" ts="$4" mtime
 	mtime="$(_mtime "$png")"
 	jq -nc --arg path "$png" --arg vector "$svg" --arg source "d2" --arg name "$name" --arg ts "$ts" --argjson mtime "$mtime" \
-		'{type:"image", path:$path, vector:$vector, source:$source, name:$name, ts:$ts, mtime:$mtime}' >>"$manifest"
+		'{type:"image", path:$path, vector:$vector, source:$source, name:$name, ts:$ts, mtime:$mtime}'
+}
+
+# append_diagram_line MANIFEST PNG SVG NAME TS -> append one diagram record.
+append_diagram_line() {
+	local manifest="$1"
+	diagram_entry_json "${@:2}" >>"$manifest"
+}
+
+# diagram_replace_entry MANIFEST PNG SVG NAME TS -> put NAME's record in the
+# manifest at its existing slot (extra same-name records dropped), appending only
+# when NAME is new. Renders the old record pointed at are GC'd unless another
+# pane's manifest still references them (panes share the content-hashed dir).
+# Caller holds the manifest lock.
+diagram_replace_entry() {
+	local manifest="$1" png="$2" name="$4" entry tmp stale other keep
+	entry="$(diagram_entry_json "${@:2}")"
+	if [[ ! -f $manifest ]]; then
+		printf '%s\n' "$entry" >"$manifest"
+		return 0
+	fi
+	tmp="$(mktemp "$manifest.XXXXXX")"
+	jq -c -s --arg n "$name" --argjson new "$entry" '
+		reduce .[] as $e ({out: [], done: false};
+			if $e.name != $n then .out += [$e]
+			elif .done then .
+			else .out += [$new] | .done = true end)
+		| if .done then .out else .out + [$new] end
+		| .[]' "$manifest" >"$tmp" || {
+		rm -f "$tmp"
+		return 1
+	}
+	# Collect the superseded renders before the rewrite hides them, but delete only
+	# after it lands. Panes share the content-hashed dir; a render another manifest
+	# references survives, this pane's other entries included (a hook racing in a
+	# new reference can still lose it).
+	local -a old
+	mapfile -t old < <(jq -r --arg n "$name" 'select(.name == $n) | .path' "$manifest")
+	mv "$tmp" "$manifest"
+	for stale in "${old[@]}"; do
+		[[ -n $stale && $stale != "$png" ]] || continue
+		keep=
+		for other in "$IMAGES_DIR"/*.jsonl; do
+			[[ -e $other ]] || continue
+			grep -qF "$stale" "$other" && {
+				keep=1
+				break
+			}
+		done
+		[[ -n $keep ]] || d2_rm_render_set "$stale"
+	done
 }
 
 # _gc_rm BASE -> drop a key's manifest and both sidecars.

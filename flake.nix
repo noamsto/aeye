@@ -41,7 +41,7 @@
         # Runtime tools the binary execs: resvg rasterizes d2 SVGs (render-diagram
         # hook + the live sharp re-render); chafa paints the raster backend on
         # non-kitty terminals.
-        aeyeRuntimeDeps = [pkgs.resvg pkgs.chafa];
+        aeyeRuntimeDeps = [pkgs.resvg pkgs.chafa pkgs.jq];
       in {
         pre-commit.settings.hooks = {
           gofmt.enable = true;

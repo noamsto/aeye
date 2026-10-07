@@ -196,6 +196,26 @@ compiler).
 (Step 3), and `tmux-claude-images` opens the carousel after an image is captured
 (Step 4).
 
+## Publishing a diagram from a script
+
+A script can put a D2 diagram into a pane's carousel without an agent turn:
+
+```bash
+aeye publish-diagram "$AEYE_DIR/images/diagrams/src/status.d2" [--pane %7] [--open]
+```
+
+- The file must live under `<state dir>/images/diagrams/src/` (the state dir
+  resolves as above); anything else is refused, so a scratch copy never files a
+  second entry. `*-check.d2` / `*-test.d2` are refused too.
+- `--pane` defaults to `$TMUX_PANE`; the key matches the hooks', so the viewer
+  opened by the toggle in that pane shows it.
+- Both theme variants render; republishing the same file name replaces that
+  entry in place. A compile error exits non-zero with the d2 message on stderr
+  and keeps the previous render.
+- `--open` starts the viewer beside the pane without taking focus if none is
+  open (it never opens a second); without it, no viewer is opened.
+- Needs `jq` and `resvg` on PATH, and `tmux-claude-images` for `--open`.
+
 ## Reference — environment variables
 
 | Variable | Purpose |

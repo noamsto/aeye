@@ -49,6 +49,11 @@ var cli struct {
 		Open bool   `help:"Open the carousel beside the pane if no viewer is open, without moving focus."`
 	} `cmd:"" name:"publish-diagram" help:"Render a .d2 into a pane's carousel, replacing an earlier publish of the same file name."`
 
+	FlockFD struct {
+		FD       int  `arg:"" name:"fd" help:"File descriptor inherited from the calling shell."`
+		NonBlock bool `short:"n" help:"Exit 1 instead of waiting when the lock is held."`
+	} `cmd:"" name:"flock-fd" help:"Exclusively lock an inherited fd; the lock outlives this process. Fallback for hooks where flock(1) is missing."`
+
 	Render struct {
 		From string `enum:"d2,mermaid" default:"d2" help:"Source language: d2 or mermaid (converted to D2 first)."`
 		In   string `arg:"" help:"Input file, or - for stdin."`
@@ -70,6 +75,8 @@ func main() {
 		code, err := runPublishDiagram(cli.PublishDiagram.File, cli.PublishDiagram.Pane, cli.PublishDiagram.Open)
 		ctx.FatalIfErrorf(err)
 		os.Exit(code)
+	case "flock-fd <fd>":
+		os.Exit(runFlockFD(cli.FlockFD.FD, cli.FlockFD.NonBlock, os.Stderr))
 	case "render <in> <out>":
 		ctx.FatalIfErrorf(runRender(cli.Render.From, cli.Render.In, cli.Render.Out, os.Stdin))
 	default: // "open" or "open <key>"

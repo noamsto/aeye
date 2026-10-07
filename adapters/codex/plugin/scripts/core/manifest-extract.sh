@@ -29,11 +29,20 @@ is_d2_render_artifact() {
 # session-reset's clear). Without it, diagrams.sh's tmp+mv rewrite can clobber a
 # concurrent images.sh append (lost update) and a resume-time append can race the
 # backfill rebuild. Released when the script exits (fd 9 closes). Best-effort:
-# without flock on PATH the prior lock-free behavior stands.
+# flock(1) when present, else `aeye flock-fd 9` (macOS has no flock command; the
+# lock stays on the shell's fd after that child exits), else the prior lock-free
+# behavior stands.
 _manifest_lock() {
-	command -v flock >/dev/null 2>&1 || return 0
+	local locker
+	if command -v flock >/dev/null 2>&1; then
+		locker=(flock 9)
+	elif command -v aeye >/dev/null 2>&1; then
+		locker=(aeye flock-fd 9)
+	else
+		return 0
+	fi
 	exec 9>"$1" || return 0
-	flock 9 2>/dev/null || true
+	"${locker[@]}" 2>/dev/null || true
 }
 
 # scan_response_image_path PAYLOAD -> echoes a resolved, existing image path or

@@ -575,7 +575,17 @@ reconcile() {
 	# Serialize overlapping hook firings; a run that can't take the lock is
 	# redundant — the holder reconciles the same state.
 	exec 9>"$STATE_DIR/.carousel-reconcile.lock"
-	flock -n 9 2>/dev/null || return 0
+	if command -v flock >/dev/null 2>&1; then
+		flock -n 9 2>/dev/null || return 0
+	elif command -v aeye >/dev/null 2>&1; then
+		# Only exit 1 means another run holds the lock; any other failure (an
+		# aeye older than flock-fd) must not silently disable reconcile.
+		local rc=0
+		aeye flock-fd 9 -n 2>/dev/null || rc=$?
+		[[ $rc -eq 1 ]] && return 0
+	else
+		return 0
+	fi
 	_reconcile_apply
 }
 

@@ -103,3 +103,24 @@ T
 	run grep -q 'launch --type=tab' "$KITTY_LOG"
 	[ "$status" -ne 0 ] # no stash tab created
 }
+
+# With no flock(1) (macOS) reconcile serializes through `aeye flock-fd`.
+@test "reconcile without flock: aeye flock-fd -n skips while another run holds the lock" {
+	command -v go >/dev/null || skip "go not on PATH"
+	(cd "$(dirname "$BATS_TEST_DIRNAME")" && go build -o "$BATS_TEST_TMPDIR/bin/aeye" .)
+	NOFLOCK="$BATS_TEST_TMPDIR/noflock"
+	mkdir -p "$NOFLOCK"
+	for t in bash jq head cat tmux kitty aeye dirname basename mkdir env; do
+		ln -sf "$(PATH="$STUB:$PATH" command -v "$t")" "$NOFLOCK/$t"
+	done
+	export AEYE_HOST=kitty
+	cp "$FIX/kitty-ls-active-9.json" "$KITTY_LS_JSON"
+	printf '%%5\n' >"$VISIBLE_PANES"
+	lock="$CLAUDE_STATUS_DIR/.carousel-reconcile.lock"
+
+	# Held by another description: reconcile must not touch kitty.
+	# shellcheck disable=SC2016
+	run env PATH="$NOFLOCK" bash -c 'exec 8>"$1"; aeye flock-fd 8 && bash "$2" --reconcile' _ "$lock" "$APP"
+	[ "$status" -eq 0 ]
+	[ ! -s "$KITTY_LOG" ]
+}

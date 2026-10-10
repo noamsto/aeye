@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/noamsto/aeye/compare/v1.9.0...v1.10.0) (2026-10-10)
+
+
+### Features
+
+* **carousel:** keep a diagram's zoom across .d2 edits ([#338](https://github.com/noamsto/aeye/issues/338)) ([03016d1](https://github.com/noamsto/aeye/commit/03016d1fe13e7afc041e6cc5f4711802646bfa74))
+
 ## [1.9.0](https://github.com/noamsto/aeye/compare/v1.8.0...v1.9.0) (2026-10-07)
 
 

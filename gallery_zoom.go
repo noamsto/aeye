@@ -251,15 +251,45 @@ func stampOf(path string, size image.Point) imageStamp {
 	return imageStamp{mtime: mtime, size: size}
 }
 
-// cropKey is what an entry's remembered crop is filed under. A d2 diagram's two
-// theme renders are one image, so it is keyed by the canonical dark variant and a
-// theme switch keeps its crop; any other entry is keyed by its exact path, so a
-// raster named x-dark.png is never conflated with x-light.png.
+// cropKey is what an entry's remembered crop is filed under. A d2 diagram is
+// keyed by its source name, which the hook keeps across edits (every edit renders
+// to a new content-hashed path), so a theme switch or a re-render keeps its crop;
+// a nameless d2 entry falls back to its canonical dark render. Any other entry is
+// keyed by its exact path, so a raster named x-dark.png is never conflated with
+// x-light.png.
 func cropKey(e imageEntry) string {
-	if e.Source == "d2" {
-		return withTheme(e.Path, "dark")
+	if e.Source != "d2" {
+		return e.Path
 	}
-	return e.Path
+	if e.Name != "" {
+		return "d2:" + e.Name
+	}
+	return withTheme(e.Path, "dark")
+}
+
+// editSurvives reports whether e's crop outlives a re-render: only a diagram
+// keyed by its source name has an identity that an edit leaves intact.
+func editSurvives(e imageEntry) bool { return e.Source == "d2" && e.Name != "" }
+
+// sanitizeCrop makes a crop recalled for a re-rendered image valid for the new
+// one: finite, inside [0,1], with its longer side no tighter than the zoom floor.
+// The fractions are kept rather than re-anchored in pixels — the same share of
+// the diagram stays framed, which for a diagram that grows is the part the user
+// was looking at — so only an unusable crop falls back to fit.
+func sanitizeCrop(c cropFrac) cropFrac {
+	for _, v := range []float64{c.x0, c.y0, c.x1, c.y1} {
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return fullCrop()
+		}
+	}
+	w, h := clampF(c.w(), 0, 1), clampF(c.h(), 0, 1)
+	if w <= 0 || h <= 0 {
+		return fullCrop()
+	}
+	if c.x0 >= 0 && c.y0 >= 0 && c.x1 <= 1 && c.y1 <= 1 && max(w, h) >= 1/zoomMax {
+		return c
+	}
+	return scaleCropAbout(recenterScaled(c.cx(), c.cy(), w, h), 1, 1/zoomMax)
 }
 
 // cropStamp is the staleness stamp for e's remembered crop. A diagram is stamped
@@ -267,11 +297,14 @@ func cropKey(e imageEntry) string {
 // switch keeps the stamp while a re-render of that diagram changes it. liveSize
 // is the header size of e.Path.
 func cropStamp(e imageEntry, liveSize image.Point) imageStamp {
-	key := cropKey(e)
-	if key != e.Path {
-		liveSize = imageSize(key)
+	canon := withTheme(e.Path, "dark")
+	if e.Source == "d2" && canon != e.Path {
+		liveSize = imageSize(canon)
 	}
-	return stampOf(key, liveSize)
+	if e.Source != "d2" {
+		canon = e.Path
+	}
+	return stampOf(canon, liveSize)
 }
 
 // rememberCrop saves the leaving image's crop under curCropKey. A fit crop is the
@@ -293,13 +326,17 @@ func (m *galleryModel) rememberCrop() {
 }
 
 // recalledCrop is the crop remembered under key if its image is unchanged since
-// it was saved (curStamp matches), else fit (dropping the stale entry).
-func (m *galleryModel) recalledCrop(key string) cropFrac {
+// it was saved (curStamp matches), else fit (dropping the stale entry). With
+// survivesEdit a changed stamp keeps the crop, sanitized for the new image.
+func (m *galleryModel) recalledCrop(key string, survivesEdit bool) cropFrac {
 	sc, ok := m.crops[key]
 	if !ok {
 		return fullCrop()
 	}
 	if sc.stamp != m.curStamp {
+		if survivesEdit {
+			return sanitizeCrop(sc.crop)
+		}
 		delete(m.crops, key)
 		return fullCrop()
 	}
@@ -320,9 +357,9 @@ func (m *galleryModel) pruneCrops() {
 // header read or decode failed; the pixels arrive later as a decodedMsg. A changed selection saves
 // the leaving image's crop and restores the entering image's (or fit), and drops
 // the previous working copy before the new decode allocates. The identity key is
-// cropKey (the path, except that a diagram's theme variants share one), validated
-// by the mtime and header size captured at selection (cropStamp), so a diagram
-// re-rendered under the same key opens at fit; a content hash was rejected
+// cropKey (the path, except that a diagram is keyed by its source name), validated
+// by the mtime and header size captured at selection (cropStamp); a changed stamp
+// drops the crop except for a named diagram, whose re-render keeps it; a content hash was rejected
 // because it reads the whole file on every switch. A restored crop set while
 // pixels are pending lands with the decode, like any zoom pressed in the decode
 // window. An unchanged selection (e.g. an auto-refresh tick that appended a
@@ -351,7 +388,7 @@ func (m *galleryModel) ensureDecoded() {
 		m.curImgPath = p
 	}
 	m.curStamp = cropStamp(e, m.curSize)
-	m.crop = m.recalledCrop(m.curCropKey)
+	m.crop = m.recalledCrop(m.curCropKey, editSurvives(e))
 	m.requestDecode()
 }
 

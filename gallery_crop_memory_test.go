@@ -243,13 +243,19 @@ func writeCropManifest(t *testing.T, pane string, lines ...string) {
 // the manifest line of the d2 entry (recorded at its dark variant).
 func diagramPair(t *testing.T, dir, hash string, size image.Point) string {
 	t.Helper()
+	return diagramPairNamed(t, dir, "d", hash, size)
+}
+
+// diagramPairNamed is diagramPair for the diagram whose .d2 source is called name.
+func diagramPairNamed(t *testing.T, dir, name, hash string, size image.Point) string {
+	t.Helper()
 	for i, mode := range []string{"dark", "light"} {
 		p := filepath.Join(dir, hash+"-"+mode+".png")
 		if err := os.WriteFile(p, encode16BitPNG(t, size.X, size.Y, uint16(i+1)*0x3000), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	return `{"type":"image","path":"` + filepath.Join(dir, hash+"-dark.png") + `","source":"d2","name":"d","mtime":1}`
+	return `{"type":"image","path":"` + filepath.Join(dir, hash+"-dark.png") + `","source":"d2","name":"` + name + `","mtime":1}`
 }
 
 const (
@@ -291,7 +297,7 @@ func TestDiagramCropSurvivesThemeSwitch(t *testing.T) {
 
 func TestReloadKeepsDiagramCropAcrossThemeSwitch(t *testing.T) {
 	dir := cropDir(t)
-	m := newManifestCropModel(t, "dark", diagramPair(t, dir, hashA, sizeA), diagramPair(t, dir, hashB, sizeB))
+	m := newManifestCropModel(t, "dark", diagramPairNamed(t, dir, "a", hashA, sizeA), diagramPairNamed(t, dir, "b", hashB, sizeB))
 	m = sendAll(t, m, keyZoom, keyZoom, keyJ)
 	zoomed := m.crop
 	m = sendAll(t, m, key2)
@@ -309,7 +315,10 @@ func TestReloadKeepsDiagramCropAcrossThemeSwitch(t *testing.T) {
 	}
 }
 
-func TestDiagramCropDroppedWhenSourceChanges(t *testing.T) {
+// A diagram with no source name has only its render path to go by, so a change
+// to that render opens at fit.
+func TestNamelessDiagramCropDroppedWhenSourceChanges(t *testing.T) {
+	nameless := func(line string) string { return strings.Replace(line, `"name":"d",`, "", 1) }
 	for _, tc := range []struct {
 		name   string
 		change func(t *testing.T, dir string, m galleryModel) galleryModel
@@ -329,7 +338,7 @@ func TestDiagramCropDroppedWhenSourceChanges(t *testing.T) {
 			return flipTheme(m, "light")
 		}},
 		{"different hash", func(t *testing.T, dir string, m galleryModel) galleryModel {
-			writeCropManifest(t, m.pane, diagramPair(t, dir, hashB, sizeA))
+			writeCropManifest(t, m.pane, nameless(diagramPair(t, dir, hashB, sizeA)))
 			m = reloaded(m)
 			if len(m.crops) != 0 {
 				t.Errorf("crops = %v, want the replaced diagram's crop pruned", m.crops)
@@ -339,7 +348,7 @@ func TestDiagramCropDroppedWhenSourceChanges(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := cropDir(t)
-			m := newManifestCropModel(t, "dark", diagramPair(t, dir, hashA, sizeA))
+			m := newManifestCropModel(t, "dark", nameless(diagramPair(t, dir, hashA, sizeA)))
 			m = sendAll(t, m, keyZoom, keyZoom, keyJ)
 			if m.crop.isFull() {
 				t.Fatal("setup: diagram is not zoomed")

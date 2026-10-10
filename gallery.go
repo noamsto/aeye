@@ -560,8 +560,19 @@ func (m *galleryModel) selectIndex(idx int) {
 
 func (m *galleryModel) reload() {
 	m.mtime = manifestMtime(m.pane)
+	var selected imageEntry
+	if m.cursor < len(m.images) {
+		selected = m.images[m.cursor]
+	}
 	m.images = loadManifest(m.pane, m.theme)
 	m.cursor = clamp(m.cursor, 0, max(0, len(m.images)-1))
+	// The hook re-appends an edited diagram, so follow it to its new slot rather
+	// than let the cursor index land on a neighbour.
+	if editSurvives(selected) {
+		if i := slices.IndexFunc(m.images, func(e imageEntry) bool { return cropKey(e) == cropKey(selected) }); i >= 0 {
+			m.cursor = i
+		}
+	}
 	if m.pinned {
 		m.cursor = max(0, len(m.images)-1)
 	}

@@ -286,6 +286,9 @@ func sanitizeCrop(c cropFrac) cropFrac {
 	if w <= 0 || h <= 0 {
 		return fullCrop()
 	}
+	if c.x0 >= 0 && c.y0 >= 0 && c.x1 <= 1 && c.y1 <= 1 && max(w, h) >= 1/zoomMax {
+		return c
+	}
 	return scaleCropAbout(recenterScaled(c.cx(), c.cy(), w, h), 1, 1/zoomMax)
 }
 

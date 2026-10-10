@@ -34,10 +34,13 @@ func TestSelectedDiagramCropSurvivesRewrite(t *testing.T) {
 	if zoomed.isFull() {
 		t.Fatal("setup: diagram is not zoomed")
 	}
+	if len(m.images) == 0 {
+		t.Fatal("setup: no images")
+	}
 	oldPath := m.images[0].Path
 
 	m = rewriteDiagram(t, dir, m, "roster", hashB, sizeA)
-	if m.images[0].Path == oldPath {
+	if len(m.images) == 0 || m.images[0].Path == oldPath {
 		t.Fatal("setup: rewrite kept the render path")
 	}
 	if m.crop != zoomed {
@@ -165,6 +168,9 @@ func TestReloadFollowsEditedDiagramToNewSlot(t *testing.T) {
 	const hashC = "00112233445566ff"
 	writeCropManifest(t, m.pane, diagramPairNamed(t, dir, "b", hashB, sizeB), diagramPairNamed(t, dir, "a", hashC, sizeA))
 	m = land(t, reloaded(m))
+	if len(m.images) == 0 {
+		t.Fatal("no images after reload")
+	}
 	if got := m.images[m.cursor].Name; got != "a" {
 		t.Fatalf("cursor on %q, want the edited diagram a", got)
 	}

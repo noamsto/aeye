@@ -105,6 +105,22 @@ run_app() { # $1 = fixture name
 	[ ! -f "$old" ]
 }
 
+@test "editing a .d2 keeps its manifest slot; a new diagram appends (#339)" {
+	run_app apply-patch-d2.json
+	OTHER="$DOTD2B"
+	sed "s#D2PATH#$OTHER#g" "$FIXTURES/apply-patch-d2.json" | bash "$APP"
+	# the new diagram appended at the end
+	run jq -r '.name' "$MANIFEST"
+	[ "$output" = $'flow\nother' ]
+	# edit flow: it must keep slot 0 rather than moving to the end
+	printf 'a -> b -> c\n' >"$DOTD2"
+	run_app apply-patch-d2.json
+	run jq -r '.name' "$MANIFEST"
+	[ "$output" = $'flow\nother' ]
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 2 ]
+}
+
 @test "an apply_patch of a .png is ignored (that's images.sh's job)" {
 	PNG="$BATS_TEST_TMPDIR/pic.png"
 	printf 'x' >"$PNG"

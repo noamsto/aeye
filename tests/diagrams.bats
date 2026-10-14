@@ -122,6 +122,23 @@ run_app() { # $1 = fixture name
 	[ ! -f "${old%-dark.png}-light.png" ]
 }
 
+@test "editing a .d2 keeps its manifest slot; a new diagram appends (#339)" {
+	run_app hook-write-d2.json
+	OTHER="$SRC/other.d2"
+	printf 'x -> y\n' >"$OTHER"
+	sed "s#DOTD2#$OTHER#g" "$BATS_TEST_DIRNAME/fixtures/hook-write-d2.json" | bash "$APP"
+	# the new diagram appended at the end
+	run jq -r '.name' "$MANIFEST"
+	[ "$output" = $'flow\nother' ]
+	# edit flow: it must keep slot 0 rather than moving to the end
+	printf 'a -> b -> c\n' >"$DOTD2"
+	run_app hook-edit-d2.json
+	run jq -r '.name' "$MANIFEST"
+	[ "$output" = $'flow\nother' ]
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 2 ]
+}
+
 @test "a render still referenced by another pane's manifest survives pruning" {
 	run_app hook-write-d2.json
 	old="$(jq -r '.path' "$MANIFEST")"

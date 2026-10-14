@@ -30,8 +30,9 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v23
       - id: go-paths
         run: |
-          echo "gocache=$(nix develop -c go env GOCACHE)" >> "$GITHUB_OUTPUT"
-          echo "gomodcache=$(nix develop -c go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+          # The devshell hook prints to stdout; go env's value is the last line.
+          echo "gocache=$(nix develop -c go env GOCACHE | tail -n 1)" >> "$GITHUB_OUTPUT"
+          echo "gomodcache=$(nix develop -c go env GOMODCACHE | tail -n 1)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v6
         with:
           path: |

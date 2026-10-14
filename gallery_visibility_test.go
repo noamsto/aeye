@@ -191,3 +191,59 @@ func stubPaneVisible(t *testing.T, visible bool) {
 	paneVisible = func() bool { return visible }
 	t.Cleanup(func() { paneVisible = prev })
 }
+
+// collectMsgs runs cmd and any batched children, returning every message.
+func collectMsgs(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		var out []tea.Msg
+		for _, c := range batch {
+			out = append(out, collectMsgs(c)...)
+		}
+		return out
+	}
+	return []tea.Msg{msg}
+}
+
+// TestRestoreRoutesKeepSharpD2 is the #325 regression: restoreView re-stores the
+// bitmap over any sharp resvg frame, so every route that calls it on a d2 entry
+// must also re-kick the vector render or the frame stays soft until the next key.
+func TestRestoreRoutesKeepSharpD2(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		msg  tea.Msg
+	}{
+		{"FocusMsg", tea.FocusMsg{}},
+		{"settleMsg", settleMsg{}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			script := filepath.Join(dir, "resvg")
+			// Stand-in rasterizer: copies a fixture PNG to the output path (last arg).
+			body := fmt.Sprintf("#!/bin/sh\nfor a; do out=$a; done\ncp %q \"$out\"\n", writeTestPNG(t))
+			if err := os.WriteFile(script, []byte(body), 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
+				t.Fatal(err)
+			}
+			t.Setenv("AEYE_RESVG", script)
+			svg := filepath.Join(dir, "d.svg")
+			if err := os.WriteFile(svg, []byte(`<svg viewBox="0 0 10 10"/>`), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+				t.Fatal(err)
+			}
+
+			m, _ := newVisibilityModel(t)
+			m.images[0].Vector = svg
+
+			_, cmd := m.Update(tt.msg)
+
+			for _, got := range collectMsgs(cmd) {
+				if _, ok := got.(vectorReadyMsg); ok {
+					return
+				}
+			}
+			t.Fatalf("%s on a d2 entry issued no vector render cmd; sharp frame stays replaced by the bitmap", tt.name)
+		})
+	}
+}

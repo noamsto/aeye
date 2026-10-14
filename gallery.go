@@ -977,14 +977,14 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (e.g. a ghostty window outside tmux) the initial store doesn't stick.
 		// Re-storing here — now that the alt-screen is active — is what a resize
 		// would otherwise have to do.
-		return m, m.restoreView()
+		return m, tea.Batch(m.restoreView(), m.kickVector())
 	case tea.FocusMsg:
 		// Focus back on a pane whose store may have been dropped while its window
 		// was off screen. The tick catches this too, but only up to 1.5s later —
 		// long enough to watch the boxes sit blank.
 		tracef("focus re-store")
 		m.visible = true
-		return m, m.restoreView()
+		return m, tea.Batch(m.restoreView(), m.kickVector())
 	case rasterPaintMsg:
 		if msg.gen == m.rasterGen {
 			m.paintRaster()

@@ -110,9 +110,6 @@ for candidate in "${candidates[@]}"; do
 	name="$(basename "$candidate" .d2)"
 
 	printf -v now '%(%FT%T%z)T' -1
-	# Replace this name's record in place under the lock: an edit keeps its
-	# manifest slot and never exposes a manifest without the record, appending
-	# only when the name is new. Superseded renders are GC'd there.
 	diagram_replace_entry "$manifest" "$png" "$svg" "$name" "$now"
 
 	# Proactively surface the carousel on every new or edited diagram. Reached

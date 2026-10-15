@@ -464,8 +464,8 @@ func (m *galleryModel) renderZoom(cols, rows int) string {
 // storePreviewCrop emits the store for the preview at the current crop, skipping
 // the PNG encode: kitty reads raw RGBA straight from the file, which measured 2.5x
 // faster per frame than a fast PNG encode (6.7ms -> 2.6ms on a 1220x814 box) and is
-// the dominant per-pan cost. Falls back to storing the original file when there is
-// nothing to crop (unzoomed) or the raw write fails.
+// the dominant per-pan cost. Unzoomed, it stores the rest frame; a failed raw write
+// falls back to the PNG encode.
 func (m *galleryModel) storePreviewCrop() string {
 	if len(m.images) == 0 {
 		return ""
@@ -473,7 +473,15 @@ func (m *galleryModel) storePreviewCrop() string {
 	orig := m.images[m.cursor].Path
 	dst := m.cropRaster(m.curImg, m.l.previewW, m.l.previewH)
 	if dst == nil {
-		return transmitVirtual(m.previewID(), orig, m.l.previewW, m.l.previewH)
+		// The rest frame transmitView stores: the preview-sized cache PNG, not the
+		// original file (transmitVirtual sends f=100, which kitty rejects for a
+		// JPEG/WebP original). A miss stores nothing: the flagged fill re-stores
+		// the view.
+		src, ok := m.cachedPNGOrMiss(orig, m.l.previewW, m.l.previewH)
+		if !ok {
+			return ""
+		}
+		return transmitVirtual(m.previewID(), src, m.l.previewW, m.l.previewH)
 	}
 	b := dst.Bounds()
 	if !preferEncodedFrame(m.bridged) {
@@ -494,9 +502,8 @@ func (m *galleryModel) transmitPreviewOnly() {
 		return
 	}
 	m.syncMinimap()
-	// Pixels pending: the only frame this could produce is the unzoomed original,
-	// which transmitView already stored (and storing the file itself makes kitty
-	// decode it at full size). A full crop still re-stores: on a d2 entry a sharp
+	// Pixels pending: the only frame this could produce is the rest frame, which
+	// transmitView already stored. A full crop still re-stores: on a d2 entry a sharp
 	// zoomed vector frame may be up and must be replaced on zoom-out.
 	if m.curImg == nil && !m.crop.isFull() {
 		return

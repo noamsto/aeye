@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"golang.org/x/image/draw"
 
@@ -130,32 +129,6 @@ func cachedPNGWrite(out string, img image.Image, fallback string) (string, cache
 		return out, cacheOK
 	}
 	return fallback, cacheTransientFail
-}
-
-// warmGate serializes warm passes so overlapping reloads don't transcode the
-// same image concurrently. Queued passes are near-instant (already-warm sizes
-// short-circuit), so this bounds duplicate work without dropping the latest.
-var warmGate sync.Mutex
-
-// warmCacheAsync runs warmCache in a goroutine, off the bubbletea loop.
-func warmCacheAsync(paths []string, previewW, previewH, stripW, stripH int) {
-	go func() {
-		warmGate.Lock()
-		defer warmGate.Unlock()
-		warmCache(paths, previewW, previewH, stripW, stripH)
-	}()
-}
-
-// warmCache transcodes each path at the preview and strip cell sizes so a
-// post-capture navigation hits the cache instead of decoding the full-resolution
-// original on the bubbletea loop. cachedPNG is idempotent and concurrency-safe
-// (atomic temp+rename), so already-warm sizes short-circuit and a warm racing a
-// concurrent transmitView is harmless.
-func warmCache(paths []string, previewW, previewH, stripW, stripH int) {
-	for _, p := range paths {
-		cachedPNG(p, previewW, previewH)
-		cachedPNG(p, stripW, stripH)
-	}
 }
 
 // fastPNG trades file size for encode speed — used for the interactive zoom

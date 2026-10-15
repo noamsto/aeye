@@ -85,31 +85,34 @@ func (m *galleryModel) cancelCache() {
 }
 
 // armCache returns the kick for a fill the last update called for, once per
-// request: a loop-side cache miss, or a layout change (prev is the layout before
+// request: a loop-side cache miss, a reload (new images to warm), or a layout change (prev is the layout before
 // the update) that left every thumbnail cold. A new request supersedes the
 // running one — its kick and result arrive stale — and a layout change waits out
 // warmDebounce so a resize storm transcodes only the size it settles on. The
 // first sizing doesn't wait: nothing is on screen yet.
 func (m *galleryModel) armCache(prev layout) tea.Cmd {
-	miss := m.cacheMiss
-	m.cacheMiss = false
+	miss, reload := m.cacheMiss, m.cacheReload
+	m.cacheMiss, m.cacheReload = false, false
 	if (m.backend != backendKitty && m.backend != backendRaster) || !m.ready || len(m.images) == 0 {
 		return nil
 	}
 	resized := m.l != prev
 	target := m.cacheTarget()
-	if !resized && miss && m.cachePending && m.cacheFor == target {
+	if !resized && (miss || reload) && m.cachePending && m.cacheFor == target {
 		// The pending kick is still waiting out its debounce: let it carry this miss
 		// rather than superseding it with an undebounced one.
-		m.cacheBusy = true
+		m.cacheBusy = m.cacheBusy || miss
 		return nil
 	}
-	if !resized && (!miss || (m.cacheBusy && m.cacheFor == target)) {
+	if !resized && !reload && (!miss || (m.cacheBusy && m.cacheFor == target)) {
 		return nil
 	}
+	// A reload restarts the fill so its rest pass covers the new image list, but a
+	// running notifying fill for the same target keeps notifying.
+	busy := miss || (m.cacheBusy && m.cacheFor == target)
 	m.cancelCache()
 	m.cacheGen++
-	m.cacheBusy, m.cachePending, m.cacheFor = miss, true, target
+	m.cacheBusy, m.cachePending, m.cacheFor = busy, true, target
 	g := m.cacheGen
 	delay := time.Duration(0)
 	if resized && prev != (layout{}) {

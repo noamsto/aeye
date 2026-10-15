@@ -192,12 +192,14 @@ type galleryModel struct {
 	// cacheGen supersedes an earlier fill's kick and result. cacheBusy/cacheFor mark
 	// a notifying fill (it re-stores the view when it lands) for that target, so a
 	// repeat miss on it doesn't restart the fill; a miss that arrives while the kick
-	// is still pending (cachePending) sets cacheBusy to join it. cacheFailed holds
+	// is still pending (cachePending) sets cacheBusy to join it. A reload sets
+	// cacheReload, which restarts the fill so its rest pass covers the new list. cacheFailed holds
 	// the cache files that could not be produced, classified (see noteCacheFailed):
 	// a decode failure answers with the source for the session, any other failure
 	// is retried after a backoff.
 	cacheGen     uint64
 	cacheMiss    bool
+	cacheReload  bool
 	cacheBusy    bool
 	cachePending bool
 	cacheFor     cacheTarget
@@ -581,16 +583,9 @@ func (m *galleryModel) reload() {
 		m.l = computeLayout(m.width, m.height)
 		m.ensureDecoded()
 		m.transmitView()
-		// Pre-warm transcodes for every image so navigating to a freshly
-		// captured one is a cache hit, not a full-resolution decode on the loop.
-		// Raster paints from the same cachedPNG path, so it benefits too.
-		if m.backend == backendKitty || m.backend == backendRaster {
-			paths := make([]string, len(m.images))
-			for i, im := range m.images {
-				paths[i] = im.Path
-			}
-			warmCacheAsync(paths, m.l.previewW, m.l.previewH, m.l.stripW, m.l.stripH)
-		}
+		// Pre-warm every image's thumbnails so navigating to a freshly captured
+		// one is a cache hit: the fill's rest pass does it (see armCache).
+		m.cacheReload = true
 	}
 	m.pruneCrops()
 	if m.pending != nil {

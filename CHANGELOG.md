@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.10.1](https://github.com/noamsto/aeye/compare/v1.10.0...v1.10.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **carousel:** store the rest frame when zooming out to full ([#350](https://github.com/noamsto/aeye/issues/350)) ([42ec552](https://github.com/noamsto/aeye/commit/42ec5521688b0cd82f62c9454663a7f989ae9a24))
+* **diagrams:** replace a diagram record in place on edit ([#339](https://github.com/noamsto/aeye/issues/339)) ([#344](https://github.com/noamsto/aeye/issues/344)) ([5b8bb69](https://github.com/noamsto/aeye/commit/5b8bb69aa063ce1d4df1a59e08eccb84a82fc9c0))
+* **gallery:** fold the reload cache warm into the fill's rest pass ([#354](https://github.com/noamsto/aeye/issues/354)) ([57667f9](https://github.com/noamsto/aeye/commit/57667f90657e7b4baece555d4ccf3b8e02ce8e8f))
+* **gallery:** re-kick sharp d2 render on settle and focus ([#342](https://github.com/noamsto/aeye/issues/342)) ([b6c3fec](https://github.com/noamsto/aeye/commit/b6c3fec9ec466ae87a8f736a017f249a5258ce99))
+
 ## [1.10.0](https://github.com/noamsto/aeye/compare/v1.9.0...v1.10.0) (2026-10-10)
 
 

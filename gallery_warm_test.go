@@ -649,3 +649,32 @@ func testReloadTranscodesNewImage(t *testing.T, existing int) {
 		t.Errorf("one image was decoded by %d transcodes at once, want 1", probeDecodes.maxSame)
 	}
 }
+
+// TestReloadOfUnchangedListKeepsRunningFill: a reload that finds the same images
+// (the r key, a window switch back) has nothing new to warm, so it must not
+// restart the fill and throw away its in-flight decodes.
+func TestReloadOfUnchangedListKeepsRunningFill(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AEYE_DIR", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "images"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "x.png")
+	writeTestImage(t, p, 8, 8)
+	line := `{"type":"image","path":"` + p + `","name":"x","mtime":1}` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "images", "p1.jsonl"), []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rec := newTransmitRecorder(t)
+	coldCache(t)
+	m := &galleryModel{pane: "p1", backend: backendKitty, tty: rec.f, ready: true, width: 100, height: 40}
+	m.reload()
+	if !m.cacheReload {
+		t.Fatal("the first load of a list did not ask for a warm")
+	}
+	m.cacheReload = false
+	m.reload()
+	if m.cacheReload {
+		t.Error("reloading an unchanged list asked for a fill restart")
+	}
+}

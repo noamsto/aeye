@@ -28,4 +28,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v23
+      - id: go-paths
+        run: |
+          # The devshell hook prints to stdout; go env's value is the last line.
+          echo "gocache=$(nix develop -c go env GOCACHE | tail -n 1)" >> "$GITHUB_OUTPUT"
+          echo "gomodcache=$(nix develop -c go env GOMODCACHE | tail -n 1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ${{ steps.go-paths.outputs.gocache }}
+            ${{ steps.go-paths.outputs.gomodcache }}
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-
       - run: nix develop -c bats --recursive tests/ # adapter/hook/diagram integration tests

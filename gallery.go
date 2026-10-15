@@ -194,8 +194,8 @@ type galleryModel struct {
 	// repeat miss on it doesn't restart the fill; a miss that arrives while the kick
 	// is still pending (cachePending) sets cacheBusy to join it. cacheFailed holds
 	// the cache files that could not be produced, classified (see noteCacheFailed):
-	// a decode failure answers with the source for the session, a write failure is
-	// retried after a backoff.
+	// a decode failure answers with the source for the session, any other failure
+	// is retried after a backoff.
 	cacheGen     uint64
 	cacheMiss    bool
 	cacheBusy    bool

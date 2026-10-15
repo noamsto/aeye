@@ -55,15 +55,16 @@ func pngCacheName(srcPath string, cols, rows int) (out string, ok bool) {
 }
 
 // cacheFailKind classifies why a thumbnail transcode did not yield its cache
-// file. A decode failure is a fact about the source bytes at their stamp (they
-// don't change until the stamp does), so it stays sticky for the session; a write
-// failure (full disk, EMFILE) is transient and retried after a backoff.
+// file. Only a decode failure is sticky: it is a fact about the source bytes at
+// their stamp (they don't change until the stamp does). Every other failure is
+// access or resource exhaustion (EACCES/EMFILE/EIO opening the source, ENOSPC
+// writing the cache file), which is transient and retried after a backoff.
 type cacheFailKind int
 
 const (
 	cacheOK cacheFailKind = iota
 	cacheDecodeFail
-	cacheWriteFail
+	cacheTransientFail
 )
 
 // cachedPNGCtx is cachedPNG that gives up once ctx is cancelled — before the
@@ -80,7 +81,7 @@ func cachedPNGCtx(ctx context.Context, srcPath string, cols, rows int) string {
 func cachedPNGCtxKind(ctx context.Context, srcPath string, cols, rows int) (string, cacheFailKind) {
 	out, ok := pngCacheName(srcPath, cols, rows)
 	if !ok {
-		return srcPath, cacheDecodeFail
+		return srcPath, cacheTransientFail
 	}
 	if _, err := os.Stat(out); err == nil {
 		return out, cacheOK
@@ -91,7 +92,10 @@ func cachedPNGCtxKind(ctx context.Context, srcPath string, cols, rows int) (stri
 
 	f, err := os.Open(srcPath) //nolint:gosec // path is the user's own image file
 	if err != nil {
-		return srcPath, cacheDecodeFail
+		// A source that stats but can't be opened is an access failure (EACCES,
+		// EMFILE, EIO), not a fact about its bytes: retry it like any other
+		// transient failure.
+		return srcPath, cacheTransientFail
 	}
 	defer f.Close() //nolint:errcheck // read-only file; close error is irrelevant
 	src, _, err := image.Decode(ctxReader{ctx, f})
@@ -128,7 +132,7 @@ func cachedPNGWrite(out string, img image.Image, fallback string) (string, cache
 	if got := writePNG(out, img, fallback); got == out {
 		return out, cacheOK
 	}
-	return fallback, cacheWriteFail
+	return fallback, cacheTransientFail
 }
 
 // warmGate serializes warm passes so overlapping reloads don't transcode the

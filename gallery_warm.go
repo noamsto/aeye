@@ -63,7 +63,7 @@ func (m *galleryModel) cachedPNGOrMiss(srcPath string, cols, rows int) (string, 
 		if f.decode || time.Now().Before(f.retryAt) {
 			return srcPath, true
 		}
-		// A transient write failure past its backoff: fall through to a miss so the
+		// A transient failure past its backoff: fall through to a miss so the
 		// update arms a refill, which is how a disk that recovered gets its thumb back.
 	}
 	m.cacheMiss = true
@@ -163,13 +163,14 @@ type cacheFailure struct {
 }
 
 const (
-	// cacheWriteRetryBase and cacheWriteRetryMax bound the backoff after a cache
-	// write fails, so a full disk (or EMFILE) is retried without being spun on.
+	// cacheWriteRetryBase and cacheWriteRetryMax bound the backoff after a
+	// transient cache failure, so a full disk (or EMFILE) is retried without being
+	// spun on.
 	cacheWriteRetryBase = 500 * time.Millisecond
 	cacheWriteRetryMax  = 30 * time.Second
 )
 
-// cacheWriteRetryDelay doubles cacheWriteRetryBase per consecutive write
+// cacheWriteRetryDelay doubles cacheWriteRetryBase per consecutive transient
 // failure, up to cacheWriteRetryMax.
 func cacheWriteRetryDelay(tries int) time.Duration {
 	return min(cacheWriteRetryBase<<min(max(tries, 1)-1, 8), cacheWriteRetryMax)
@@ -177,8 +178,9 @@ func cacheWriteRetryDelay(tries int) time.Duration {
 
 // noteCacheFailed remembers transcodes that did not yield their cache file. A
 // decode failure is sticky: the source bytes won't change at its stamp, so
-// cachedPNGOrMiss keeps answering with the source. A write failure is transient,
-// so it carries a backoff deadline after which the thumbnail is requested again.
+// cachedPNGOrMiss keeps answering with the source. Any other failure is
+// transient, so it carries a backoff deadline after which the thumbnail is
+// requested again.
 func (m *galleryModel) noteCacheFailed(failed map[string]cacheFailKind) {
 	for out, kind := range failed {
 		if m.cacheFailed == nil {
@@ -235,7 +237,7 @@ func nearestFirst(c, n int) []int {
 // cancelled. It returns the cache files of the jobs that failed, classified,
 // which cachedPNGOrMiss then answers with the source instead of asking again.
 // Cancelled work is dropped, never recorded: the classifier answers cacheOK for
-// a cancelled ctx, which noteCacheFailed must not read as a write failure.
+// a cancelled ctx, which noteCacheFailed must not read as a transient failure.
 func runCacheJobs(ctx context.Context, jobs []cacheJob) (failed map[string]cacheFailKind) {
 	for _, j := range jobs {
 		out, ok := pngCacheName(j.path, j.cols, j.rows)

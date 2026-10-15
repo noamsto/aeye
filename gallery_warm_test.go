@@ -464,6 +464,42 @@ func TestDecodeFailureStaysSticky(t *testing.T) {
 	}
 }
 
+// TestUnopenableSourceRetried: a source that stats but can't be opened (EACCES
+// here; EMFILE/ENFILE/EIO in the field) is an access failure, not a fact about
+// its bytes, so it is retried like a write failure instead of staying sticky.
+func TestUnopenableSourceRetried(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the mode bits that make the source unopenable")
+	}
+	rec := newTransmitRecorder(t)
+	m := newColdModel(t, rec, 1)
+	src := filepath.Join(t.TempDir(), "locked.png")
+	writeTestImage(t, src, 200, 150)
+	if err := os.Chmod(src, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	setImagePath(m, 0, src)
+
+	next, cmd := m.Update(tea.WindowSizeMsg{Width: 90, Height: 40})
+	cur := next.(galleryModel)
+	filled := runFill(t, &cur, cmd)
+	next, _ = cur.Update(filled)
+	cur = next.(galleryModel)
+
+	if got, ok := cur.cachedPNGOrMiss(src, cur.l.previewW, cur.l.previewH); !ok || got != src {
+		t.Fatalf("during backoff = (%q, %v), want the source and ok", got, ok)
+	}
+
+	// Past the backoff the open is attempted again.
+	time.Sleep(700 * time.Millisecond)
+	if got, ok := cur.cachedPNGOrMiss(src, cur.l.previewW, cur.l.previewH); ok || got != "" {
+		t.Fatalf("after backoff = (%q, %v), want a miss", got, ok)
+	}
+	if !cur.cacheMiss {
+		t.Error("an unopenable source was not retried")
+	}
+}
+
 // TestCacheWriteRetryBackoffBounded: a persistent write failure backs off up to
 // cacheWriteRetryMax rather than spinning at a fixed short interval.
 func TestCacheWriteRetryBackoffBounded(t *testing.T) {

@@ -419,7 +419,11 @@ func TestZoomDuringDecodeWindowApplies(t *testing.T) {
 // Zooming back out while pending must re-store the full frame: on a d2 entry a
 // sharp zoomed vector frame may be up.
 func TestZoomOutToFullWhilePendingRestores(t *testing.T) {
+	coldCache(t)
 	m := land(t, newDecodeModel(t, sizeA, sizeB))
+	for _, im := range m.images {
+		cachedPNG(im.Path, m.l.previewW, m.l.previewH)
+	}
 	m, _ = send(t, m, keyNext)
 	m, _ = send(t, m, keyZoom)
 	before := ttyLen(t, m)

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
 	"os"
 	"os/exec"
@@ -638,4 +640,70 @@ func TestBridgedFramePolicy(t *testing.T) {
 	if preferEncodedFrame(false) {
 		t.Fatal("local must keep the raw RGBA fast path")
 	}
+}
+
+// Zooming out to the full crop must store the same frame the rest view does —
+// the preview-sized cache PNG — not the original file: transmitVirtual sends
+// f=100 (PNG), which kitty silently rejects for a JPEG original, leaving the
+// preview empty.
+func TestZoomOutToFullStoresRestFrame(t *testing.T) {
+	t.Setenv("TMUX", "")
+	zoomedOut := func(t *testing.T, jpg, warm bool, out tea.KeyPressMsg) (galleryModel, []kittyStore, string) {
+		coldCache(t)
+		m := newDecodeModel(t, sizeA)
+		if jpg {
+			p := strings.TrimSuffix(m.images[0].Path, ".png") + ".jpg"
+			f, err := os.Create(p) //nolint:gosec // test fixture path
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := jpeg.Encode(f, image.NewRGBA(image.Rect(0, 0, sizeA.X, sizeA.Y)), nil); err != nil {
+				t.Fatal(err)
+			}
+			f.Close() //nolint:errcheck,gosec // test fixture
+			m.images[0].Path = p
+		}
+		m = land(t, m)
+		want := ""
+		if warm {
+			want = cachedPNG(m.images[0].Path, m.l.previewW, m.l.previewH)
+		}
+		m, _ = send(t, m, keyZoom)
+		before := ttyLen(t, m)
+		for range 10 {
+			m, _ = send(t, m, out)
+		}
+		if !m.crop.isFull() {
+			t.Fatalf("crop = %+v, want full", m.crop)
+		}
+		buf, err := os.ReadFile(m.tty.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m, storesFor(t, buf[before:], m.previewID()), want
+	}
+	for _, jpg := range []bool{false, true} {
+		for name, out := range map[string]tea.KeyPressMsg{"key 0": keyUnzoom, "key Z": keyOut} {
+			t.Run(fmt.Sprintf("jpeg=%v/%s", jpg, name), func(t *testing.T) {
+				_, stores, want := zoomedOut(t, jpg, true, out)
+				if len(stores) == 0 {
+					t.Fatal("no preview store")
+				}
+				if got := stores[len(stores)-1].path; got != want {
+					t.Errorf("full-crop store = %s, want rest frame %s", got, want)
+				}
+			})
+		}
+	}
+	t.Run("cold cache stores nothing and arms the fill", func(t *testing.T) {
+		m, stores, _ := zoomedOut(t, true, false, keyUnzoom)
+		for _, s := range stores {
+			if s.path == m.images[0].Path {
+				t.Errorf("stored the original %s on a cache miss", s.path)
+			}
+		}
+		if !m.cacheMiss && !m.cacheBusy {
+			t.Error("cache miss did not arm a fill")
+		}
+	})
 }

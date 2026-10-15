@@ -63,8 +63,7 @@ func (m *galleryModel) cachedPNGOrMiss(srcPath string, cols, rows int) (string, 
 		if f.decode || time.Now().Before(f.retryAt) {
 			return srcPath, true
 		}
-		// A transient failure past its backoff: fall through to a miss so the
-		// update arms a refill, which is how a disk that recovered gets its thumb back.
+		// Past its backoff: miss so the update arms a refill (see armCache).
 	}
 	m.cacheMiss = true
 	return "", false
@@ -176,11 +175,8 @@ func cacheWriteRetryDelay(tries int) time.Duration {
 	return min(cacheWriteRetryBase<<min(max(tries, 1)-1, 8), cacheWriteRetryMax)
 }
 
-// noteCacheFailed remembers transcodes that did not yield their cache file. A
-// decode failure is sticky: the source bytes won't change at its stamp, so
-// cachedPNGOrMiss keeps answering with the source. Any other failure is
-// transient, so it carries a backoff deadline after which the thumbnail is
-// requested again.
+// noteCacheFailed records transcodes that did not yield their cache file: a
+// decode failure sticky, anything else carrying a backoff deadline.
 func (m *galleryModel) noteCacheFailed(failed map[string]cacheFailKind) {
 	for out, kind := range failed {
 		if m.cacheFailed == nil {

@@ -58,7 +58,7 @@ func pngCacheName(srcPath string, cols, rows int) (out string, ok bool) {
 // file. Only a decode failure is sticky: it is a fact about the source bytes at
 // their stamp (they don't change until the stamp does). Every other failure is
 // access or resource exhaustion (EACCES/EMFILE/EIO opening the source, ENOSPC
-// writing the cache file), which is transient and retried after a backoff.
+// writing the file), which is transient and retried after a backoff.
 type cacheFailKind int
 
 const (
@@ -92,10 +92,7 @@ func cachedPNGCtxKind(ctx context.Context, srcPath string, cols, rows int) (stri
 
 	f, err := os.Open(srcPath) //nolint:gosec // path is the user's own image file
 	if err != nil {
-		// A source that stats but can't be opened is an access failure (EACCES,
-		// EMFILE, EIO), not a fact about its bytes: retry it like any other
-		// transient failure.
-		return srcPath, cacheTransientFail
+		return srcPath, cacheTransientFail // access failure, not a fact about the bytes
 	}
 	defer f.Close() //nolint:errcheck // read-only file; close error is irrelevant
 	src, _, err := image.Decode(ctxReader{ctx, f})

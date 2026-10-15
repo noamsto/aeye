@@ -40,12 +40,12 @@ type cacheFilledMsg struct {
 	gen    uint64
 	notify bool
 	target cacheTarget
-	failed []string
+	failed map[string]cacheFailKind
 	ctx    context.Context
 	rest   []cacheJob
 }
 
-type cacheWarmedMsg struct{ failed []string }
+type cacheWarmedMsg struct{ failed map[string]cacheFailKind }
 
 // cachedPNGOrMiss is the loop-side cachedPNG: it only looks. A miss reports
 // ok=false and asks for a fill, which re-stores the view once it lands. A source
@@ -56,10 +56,14 @@ func (m *galleryModel) cachedPNGOrMiss(srcPath string, cols, rows int) (string, 
 		return srcPath, true
 	}
 	if _, err := os.Stat(out); err == nil {
+		delete(m.cacheFailed, out) // a retry that landed clears its backoff record
 		return out, true
 	}
-	if m.cacheFailed[out] {
-		return srcPath, true
+	if f, ok := m.cacheFailed[out]; ok {
+		if f.decode || time.Now().Before(f.retryAt) {
+			return srcPath, true
+		}
+		// Past its backoff: miss so the update arms a refill (see armCache).
 	}
 	m.cacheMiss = true
 	return "", false
@@ -147,12 +151,45 @@ func (m *galleryModel) cacheFilled(msg cacheFilledMsg) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (m *galleryModel) noteCacheFailed(outs []string) {
-	for _, out := range outs {
+// cacheFailure records a thumbnail the cache could not produce. decode marks a
+// fact about the source (its bytes won't change at the stamp), which stays sticky
+// for the session; otherwise the file is requested again once retryAt passes,
+// tries setting the next backoff.
+type cacheFailure struct {
+	decode  bool
+	retryAt time.Time
+	tries   int
+}
+
+const (
+	// cacheWriteRetryBase and cacheWriteRetryMax bound the backoff after a
+	// transient cache failure, so a full disk (or EMFILE) is retried without being
+	// spun on.
+	cacheWriteRetryBase = 500 * time.Millisecond
+	cacheWriteRetryMax  = 30 * time.Second
+)
+
+// cacheWriteRetryDelay doubles cacheWriteRetryBase per consecutive transient
+// failure, up to cacheWriteRetryMax.
+func cacheWriteRetryDelay(tries int) time.Duration {
+	return min(cacheWriteRetryBase<<min(max(tries, 1)-1, 8), cacheWriteRetryMax)
+}
+
+// noteCacheFailed records transcodes that did not yield their cache file: a
+// decode failure sticky, anything else carrying a backoff deadline.
+func (m *galleryModel) noteCacheFailed(failed map[string]cacheFailKind) {
+	for out, kind := range failed {
 		if m.cacheFailed == nil {
-			m.cacheFailed = map[string]bool{}
+			m.cacheFailed = map[string]cacheFailure{}
 		}
-		m.cacheFailed[out] = true
+		if kind == cacheDecodeFail {
+			m.cacheFailed[out] = cacheFailure{decode: true}
+			continue
+		}
+		f := m.cacheFailed[out]
+		f.tries++
+		f.retryAt = time.Now().Add(cacheWriteRetryDelay(f.tries))
+		m.cacheFailed[out] = f
 	}
 }
 
@@ -193,9 +230,11 @@ func nearestFirst(c, n int) []int {
 }
 
 // runCacheJobs transcodes each missing thumbnail, stopping once ctx is
-// cancelled. It returns the cache files of the jobs that failed, which
-// cachedPNGOrMiss then answers with the source instead of asking again.
-func runCacheJobs(ctx context.Context, jobs []cacheJob) (failed []string) {
+// cancelled. It returns the cache files of the jobs that failed, classified,
+// which cachedPNGOrMiss then answers with the source instead of asking again.
+// Cancelled work is dropped, never recorded: the classifier answers cacheOK for
+// a cancelled ctx, which noteCacheFailed must not read as a transient failure.
+func runCacheJobs(ctx context.Context, jobs []cacheJob) (failed map[string]cacheFailKind) {
 	for _, j := range jobs {
 		out, ok := pngCacheName(j.path, j.cols, j.rows)
 		if !ok {
@@ -209,13 +248,16 @@ func runCacheJobs(ctx context.Context, jobs []cacheJob) (failed []string) {
 		case <-ctx.Done():
 			return failed
 		}
-		got := cachedPNGCtx(ctx, j.path, j.cols, j.rows)
+		got, kind := cachedPNGCtxKind(ctx, j.path, j.cols, j.rows)
 		<-transcodeSlots
 		if ctx.Err() != nil {
 			return failed
 		}
 		if got != out {
-			failed = append(failed, out)
+			if failed == nil {
+				failed = map[string]cacheFailKind{}
+			}
+			failed[out] = kind
 		}
 	}
 	return failed

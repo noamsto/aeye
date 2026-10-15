@@ -193,15 +193,16 @@ type galleryModel struct {
 	// a notifying fill (it re-stores the view when it lands) for that target, so a
 	// repeat miss on it doesn't restart the fill; a miss that arrives while the kick
 	// is still pending (cachePending) sets cacheBusy to join it. cacheFailed holds
-	// the cache files that could not be written, so their source is used as-is
-	// instead of asking again.
+	// the cache files that could not be produced, classified (see noteCacheFailed):
+	// a decode failure answers with the source for the session, any other failure
+	// is retried after a backoff.
 	cacheGen     uint64
 	cacheMiss    bool
 	cacheBusy    bool
 	cachePending bool
 	cacheFor     cacheTarget
 	cacheCancel  context.CancelFunc
-	cacheFailed  map[string]bool
+	cacheFailed  map[string]cacheFailure
 	// Terminal cell size in pixels, measured once at startup (CSI 16 t), with the
 	// cellPxW/cellPxH estimates as fallback. Load-bearing for crop geometry: the
 	// estimates assume a 1:2 cell, so a real 10x22 cell skews every crop shaped

@@ -548,10 +548,10 @@ func TestMinimapBrokenBaseNotRetried(t *testing.T) {
 	m.images[1].Path, m.curImgPath = bad, bad
 	// The state after a fill found the file undecodable: its thumbs resolve to the
 	// source itself.
-	m.cacheFailed = map[string]bool{}
+	m.cacheFailed = map[string]cacheFailure{}
 	for _, sz := range [][2]int{{m.l.previewW, m.l.previewH}, {m.l.stripW, m.l.stripH}} {
 		out, _ := pngCacheName(bad, sz[0], sz[1])
-		m.cacheFailed[out] = true
+		m.cacheFailed[out] = cacheFailure{decode: true}
 	}
 	m.transmitView()
 

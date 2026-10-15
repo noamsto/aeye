@@ -248,7 +248,7 @@ func TestStripSlotPNGFailedTranscodeSkipsOverlay(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.Remove(m.minimapPNGPath()) //nolint:errcheck,gosec // scratch from an earlier slot paint
-	m.cacheFailed = map[string]bool{out: true}
+	m.cacheFailed = map[string]cacheFailure{out: {decode: true}}
 	if got := slotPNG(t, m, m.cursor); got != src {
 		t.Errorf("slot = %s, want the source %s", got, src)
 	}

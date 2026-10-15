@@ -54,29 +54,52 @@ func pngCacheName(srcPath string, cols, rows int) (out string, ok bool) {
 	return filepath.Join(imgCacheDir, hex.EncodeToString(sum[:])+".png"), true
 }
 
+// cacheFailKind classifies why a thumbnail transcode did not yield its cache
+// file. A decode failure is a fact about the source bytes at their stamp (they
+// don't change until the stamp does), so it stays sticky for the session; a write
+// failure (full disk, EMFILE) is transient and retried after a backoff.
+type cacheFailKind int
+
+const (
+	cacheOK cacheFailKind = iota
+	cacheDecodeFail
+	cacheWriteFail
+)
+
 // cachedPNGCtx is cachedPNG that gives up once ctx is cancelled — before the
 // decode, and again before the scale and encode that follow it — returning srcPath
 // like any other failure.
 func cachedPNGCtx(ctx context.Context, srcPath string, cols, rows int) string {
+	out, _ := cachedPNGCtxKind(ctx, srcPath, cols, rows)
+	return out
+}
+
+// cachedPNGCtxKind is cachedPNGCtx with the failure classified: cacheOK when the
+// returned path is the cache file, else why it fell back to srcPath. A cancelled
+// ctx is cacheOK — the caller drops it instead of recording a failure.
+func cachedPNGCtxKind(ctx context.Context, srcPath string, cols, rows int) (string, cacheFailKind) {
 	out, ok := pngCacheName(srcPath, cols, rows)
 	if !ok {
-		return srcPath
+		return srcPath, cacheDecodeFail
 	}
 	if _, err := os.Stat(out); err == nil {
-		return out
+		return out, cacheOK
 	}
 	if ctx.Err() != nil {
-		return srcPath
+		return srcPath, cacheOK
 	}
 
 	f, err := os.Open(srcPath) //nolint:gosec // path is the user's own image file
 	if err != nil {
-		return srcPath
+		return srcPath, cacheDecodeFail
 	}
 	defer f.Close() //nolint:errcheck // read-only file; close error is irrelevant
 	src, _, err := image.Decode(ctxReader{ctx, f})
-	if err != nil || ctx.Err() != nil {
-		return srcPath
+	if err != nil {
+		return srcPath, cacheDecodeFail
+	}
+	if ctx.Err() != nil {
+		return srcPath, cacheOK
 	}
 
 	b := src.Bounds()
@@ -88,15 +111,24 @@ func cachedPNGCtx(ctx context.Context, srcPath string, cols, rows int) string {
 		// re-rendering that file (a d2 prune, GC, or an edited diagram) before the
 		// fetch lands — which paints an empty cell. The cache dir is ours; the
 		// capture hooks never sweep it.
-		return writePNG(out, src, srcPath)
+		return cachedPNGWrite(out, src, srcPath)
 	}
 
 	dst := image.NewRGBA(image.Rect(0, 0, int(float64(b.Dx())*scale), int(float64(b.Dy())*scale)))
 	draw.CatmullRom.Scale(dst, dst.Bounds(), src, b, draw.Src, nil)
 	if ctx.Err() != nil {
-		return srcPath
+		return srcPath, cacheOK
 	}
-	return writePNG(out, dst, srcPath)
+	return cachedPNGWrite(out, dst, srcPath)
+}
+
+// cachedPNGWrite writes img to out and classifies a miss: a write that did not
+// land is transient, not a fact about the source.
+func cachedPNGWrite(out string, img image.Image, fallback string) (string, cacheFailKind) {
+	if got := writePNG(out, img, fallback); got == out {
+		return out, cacheOK
+	}
+	return fallback, cacheWriteFail
 }
 
 // warmGate serializes warm passes so overlapping reloads don't transcode the

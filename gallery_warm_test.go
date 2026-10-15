@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -371,6 +372,107 @@ func TestFillLandingOnEmptyListDoesNotPanic(t *testing.T) {
 
 	cur.images = nil
 	cur.Update(filled)
+}
+
+// TestTransientWriteFailureRetried: a thumbnail the cache can't write (a full
+// disk, EMFILE) is not remembered for the session the way a decode failure is.
+// Once the write path recovers, the next lookup asks for a refill and the
+// transcode lands.
+func TestTransientWriteFailureRetried(t *testing.T) {
+	rec := newTransmitRecorder(t)
+	m := newColdModel(t, rec, 1)
+	// The cache dir path is a regular file, so every write under it fails like a
+	// full disk while the source still decodes. Recovery replaces the file with an
+	// empty dir at the same path, keeping the cache file name identical.
+	dir := filepath.Join(t.TempDir(), "cache")
+	if err := os.WriteFile(dir, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	imgCacheDir = dir
+
+	src := imagePath(m, 0)
+
+	next, cmd := m.Update(tea.WindowSizeMsg{Width: 90, Height: 40})
+	cur := next.(galleryModel)
+	out, ok := pngCacheName(src, cur.l.previewW, cur.l.previewH)
+	if !ok {
+		t.Fatal("no cache name for the selected image")
+	}
+	filled := runFill(t, &cur, cmd)
+	next, _ = cur.Update(filled)
+	cur = next.(galleryModel)
+
+	if got, ok := cur.cachedPNGOrMiss(src, cur.l.previewW, cur.l.previewH); !ok || got != src {
+		t.Fatalf("during backoff = (%q, %v), want the source and ok", got, ok)
+	}
+
+	// Past the first backoff (cacheWriteRetryBase is 500ms) and with the write
+	// path recovered, the cache file is requested again.
+	time.Sleep(700 * time.Millisecond)
+	if err := os.Remove(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := cur.cachedPNGOrMiss(src, cur.l.previewW, cur.l.previewH); ok || got != "" {
+		t.Fatalf("after backoff = (%q, %v), want a miss", got, ok)
+	}
+	if !cur.cacheMiss {
+		t.Error("a retryable cache file did not raise a fill request")
+	}
+
+	if failed := runCacheJobs(context.Background(), []cacheJob{{src, cur.l.previewW, cur.l.previewH}}); len(failed) != 0 {
+		t.Fatalf("refill after the write path recovered failed: %v", failed)
+	}
+	if _, err := os.Stat(out); err != nil {
+		t.Fatalf("the retried transcode wrote no cache file: %v", err)
+	}
+	cur.cacheMiss = false
+	if got, ok := cur.cachedPNGOrMiss(src, cur.l.previewW, cur.l.previewH); !ok || got != out {
+		t.Fatalf("after the retry = (%q, %v), want the cache file %q", got, ok, out)
+	}
+}
+
+// TestDecodeFailureStaysSticky: a source that can't be decoded is remembered for
+// the session (the bytes won't change at its stamp), unlike a write failure: even
+// after the write-failure backoff would have passed, it keeps answering with the
+// source instead of asking for another fill.
+func TestDecodeFailureStaysSticky(t *testing.T) {
+	rec := newTransmitRecorder(t)
+	m := newColdModel(t, rec, 1)
+	bad := filepath.Join(t.TempDir(), "bad.png")
+	if err := os.WriteFile(bad, []byte("not a png"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	setImagePath(m, 0, bad)
+
+	next, cmd := m.Update(tea.WindowSizeMsg{Width: 90, Height: 40})
+	cur := next.(galleryModel)
+	filled := runFill(t, &cur, cmd)
+	next, _ = cur.Update(filled)
+	cur = next.(galleryModel)
+
+	// Long enough that a transient failure would have been retried.
+	time.Sleep(700 * time.Millisecond)
+	cur.cacheMiss = false
+	if got, ok := cur.cachedPNGOrMiss(bad, cur.l.previewW, cur.l.previewH); !ok || got != bad {
+		t.Fatalf("after backoff = (%q, %v), want the undecodable source and ok", got, ok)
+	}
+	if cur.cacheMiss {
+		t.Error("a decode failure asked for another fill")
+	}
+}
+
+// TestCacheWriteRetryBackoffBounded: a persistent write failure backs off up to
+// cacheWriteRetryMax rather than spinning at a fixed short interval.
+func TestCacheWriteRetryBackoffBounded(t *testing.T) {
+	if got := cacheWriteRetryDelay(1); got != cacheWriteRetryBase {
+		t.Errorf("first backoff = %v, want %v", got, cacheWriteRetryBase)
+	}
+	if got := cacheWriteRetryDelay(1000); got != cacheWriteRetryMax {
+		t.Errorf("capped backoff = %v, want %v", got, cacheWriteRetryMax)
+	}
 }
 
 // imagePath and setImagePath range rather than index so the nil-flow analysis

@@ -648,7 +648,6 @@ func TestBridgedFramePolicy(t *testing.T) {
 // preview empty.
 func TestZoomOutToFullStoresRestFrame(t *testing.T) {
 	t.Setenv("TMUX", "")
-	zoomOut := tea.KeyPressMsg{Text: "Z", Code: 'Z'}
 	zoomedOut := func(t *testing.T, jpg, warm bool, out tea.KeyPressMsg) (galleryModel, []kittyStore, string) {
 		coldCache(t)
 		m := newDecodeModel(t, sizeA)
@@ -684,7 +683,7 @@ func TestZoomOutToFullStoresRestFrame(t *testing.T) {
 		return m, storesFor(t, buf[before:], m.previewID()), want
 	}
 	for _, jpg := range []bool{false, true} {
-		for name, out := range map[string]tea.KeyPressMsg{"key 0": keyUnzoom, "key Z": zoomOut} {
+		for name, out := range map[string]tea.KeyPressMsg{"key 0": keyUnzoom, "key Z": keyOut} {
 			t.Run(fmt.Sprintf("jpeg=%v/%s", jpg, name), func(t *testing.T) {
 				_, stores, want := zoomedOut(t, jpg, true, out)
 				if len(stores) == 0 {

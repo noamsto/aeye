@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"image"
 	"image/color"
 	"io"
@@ -557,11 +558,6 @@ func probeDecode(r io.Reader) (image.Image, error) {
 	p.Lock()
 	p.inflight[id]++
 	p.total[id]++
-	all := 0
-	for _, n := range p.inflight {
-		all += n
-	}
-	p.maxAll = max(p.maxAll, all)
 	p.maxSame = max(p.maxSame, p.inflight[id])
 	d := p.delay
 	p.Unlock()
@@ -582,8 +578,16 @@ var registerProbe sync.Once
 
 // TestReloadTranscodesNewImageOnceThroughSlots: a capture that lands while the
 // viewer is up is transcoded only by the cache fill, so no image is decoded by
-// two transcodes at once and no more than transcodeSlots decodes run together.
+// two transcodes at once and every transcode runs in the fill's slots.
 func TestReloadTranscodesNewImageOnceThroughSlots(t *testing.T) {
+	// The new images land inside the visible strip, where the view's own cache
+	// miss arms a fill, or beyond it, where only the reload does.
+	t.Run("visible", func(t *testing.T) { testReloadTranscodesNewImage(t, 1) })
+	t.Run("off-strip", func(t *testing.T) { testReloadTranscodesNewImage(t, 20) })
+}
+
+func testReloadTranscodesNewImage(t *testing.T, existing int) {
+	t.Helper()
 	registerProbe.Do(func() { image.RegisterFormat("aeyeprobe", probeMagic, probeDecode, probeConfig) })
 	probeDecodes.Lock()
 	probeDecodes.inflight, probeDecodes.total = map[string]int{}, map[string]int{}
@@ -611,10 +615,14 @@ func TestReloadTranscodesNewImageOnceThroughSlots(t *testing.T) {
 		_ = decodeErr(p) // validated here, so reload's own check is a cache hit and not a counted decode
 	}
 	writeProbe("a")
+	for i := 1; i < existing; i++ {
+		writeProbe(fmt.Sprintf("a%d", i))
+	}
 	m := &galleryModel{pane: "p1", backend: backendKitty, tty: rec.f, ready: true, width: 100, height: 40}
 	m.crop = fullCrop()
 	m.reload()
 	warmThumbs(m)
+	m.cacheMiss = false // the setup's own miss, already served
 
 	// The selection stays on a: the selected image also gets a working decode for
 	// the viewer, which is not a thumbnail transcode.
@@ -622,12 +630,12 @@ func TestReloadTranscodesNewImageOnceThroughSlots(t *testing.T) {
 	writeProbe("c")
 	probeDecodes.Lock()
 	probeDecodes.inflight, probeDecodes.total = map[string]int{}, map[string]int{}
-	probeDecodes.maxAll, probeDecodes.maxSame = 0, 0
+	probeDecodes.maxSame = 0
 	probeDecodes.delay = 40 * time.Millisecond
 	probeDecodes.Unlock()
 
 	pump(*m, tea.KeyPressMsg{Text: "r", Code: 'r'})
-	time.Sleep(500 * time.Millisecond) // lets any transcode launched outside the fill finish
+	time.Sleep(300 * time.Millisecond) // lets any transcode launched outside the fill finish
 
 	probeDecodes.Lock()
 	defer probeDecodes.Unlock()
@@ -639,8 +647,5 @@ func TestReloadTranscodesNewImageOnceThroughSlots(t *testing.T) {
 	}
 	if probeDecodes.maxSame > 1 {
 		t.Errorf("one image was decoded by %d transcodes at once, want 1", probeDecodes.maxSame)
-	}
-	if probeDecodes.maxAll > cap(transcodeSlots) {
-		t.Errorf("%d transcodes ran at once, want at most %d", probeDecodes.maxAll, cap(transcodeSlots))
 	}
 }

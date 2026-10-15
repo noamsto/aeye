@@ -567,6 +567,7 @@ func (m *galleryModel) reload() {
 	if m.cursor < len(m.images) {
 		selected = m.images[m.cursor]
 	}
+	prev := m.images
 	m.images = loadManifest(m.pane, m.theme)
 	m.cursor = clamp(m.cursor, 0, max(0, len(m.images)-1))
 	// The hook re-appends an edited diagram, so follow it to its new slot rather
@@ -584,8 +585,11 @@ func (m *galleryModel) reload() {
 		m.ensureDecoded()
 		m.transmitView()
 		// Pre-warm every image's thumbnails so navigating to a freshly captured
-		// one is a cache hit: the fill's rest pass does it (see armCache).
-		m.cacheReload = true
+		// one is a cache hit: the fill's rest pass does it (see armCache). An
+		// unchanged list has nothing new to warm, so it keeps a running fill.
+		m.cacheReload = !slices.EqualFunc(prev, m.images, func(a, b imageEntry) bool {
+			return a.Path == b.Path && a.Mtime == b.Mtime
+		})
 	}
 	m.pruneCrops()
 	if m.pending != nil {

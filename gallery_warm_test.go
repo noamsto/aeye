@@ -1,9 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"image"
+	"image/color"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -527,5 +534,147 @@ func setImagePath(m *galleryModel, i int, p string) {
 		if j == i {
 			m.images[j].Path = p
 		}
+	}
+}
+
+// probeDecodes records the decodes of probe-format images: how many ran at once
+// overall and for one image. It sees every image.Decode of such a file, so it
+// counts the transcodes however they are launched.
+var probeDecodes struct {
+	sync.Mutex
+	inflight        map[string]int
+	maxAll, maxSame int
+	total           map[string]int
+	delay           time.Duration
+}
+
+func probeDecode(r io.Reader) (image.Image, error) {
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	id := string(bytes.TrimPrefix(b, []byte(probeMagic)))
+	p := &probeDecodes
+	p.Lock()
+	p.inflight[id]++
+	p.total[id]++
+	p.maxSame = max(p.maxSame, p.inflight[id])
+	d := p.delay
+	p.Unlock()
+	time.Sleep(d)
+	p.Lock()
+	p.inflight[id]--
+	p.Unlock()
+	return image.NewRGBA(image.Rect(0, 0, 4, 4)), nil
+}
+
+func probeConfig(r io.Reader) (image.Config, error) {
+	return image.Config{ColorModel: color.RGBAModel, Width: 4, Height: 4}, nil
+}
+
+const probeMagic = "AEYEPROBE"
+
+var registerProbe sync.Once
+
+// TestReloadTranscodesNewImageOnceThroughSlots: a capture that lands while the
+// viewer is up is transcoded only by the cache fill, so no image is decoded by
+// two transcodes at once and every transcode runs in the fill's slots.
+func TestReloadTranscodesNewImageOnceThroughSlots(t *testing.T) {
+	// The new images land inside the visible strip, where the view's own cache
+	// miss arms a fill, or beyond it, where only the reload does.
+	t.Run("visible", func(t *testing.T) { testReloadTranscodesNewImage(t, 1) })
+	t.Run("off-strip", func(t *testing.T) { testReloadTranscodesNewImage(t, 20) })
+}
+
+func testReloadTranscodesNewImage(t *testing.T, existing int) {
+	t.Helper()
+	registerProbe.Do(func() { image.RegisterFormat("aeyeprobe", probeMagic, probeDecode, probeConfig) })
+	probeDecodes.Lock()
+	probeDecodes.inflight, probeDecodes.total = map[string]int{}, map[string]int{}
+	probeDecodes.Unlock()
+	rec := newTransmitRecorder(t)
+	t.Setenv("TMUX", "")
+	dir := t.TempDir()
+	t.Setenv("AEYE_DIR", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "images"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	coldCache(t)
+
+	var lines []string
+	writeProbe := func(id string) {
+		p := filepath.Join(dir, id+".aeyeprobe")
+		if err := os.WriteFile(p, []byte(probeMagic+id), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, `{"type":"image","path":"`+p+`","name":"`+id+`","mtime":1}`)
+		manifest := filepath.Join(dir, "images", "p1.jsonl")
+		if err := os.WriteFile(manifest, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_ = decodeErr(p) // validated here, so reload's own check is a cache hit and not a counted decode
+	}
+	writeProbe("a")
+	for i := 1; i < existing; i++ {
+		writeProbe(fmt.Sprintf("a%d", i))
+	}
+	m := &galleryModel{pane: "p1", backend: backendKitty, tty: rec.f, ready: true, width: 100, height: 40}
+	m.crop = fullCrop()
+	m.reload()
+	warmThumbs(m)
+	m.cacheMiss = false // the setup's own miss, already served
+
+	// The selection stays on a: the selected image also gets a working decode for
+	// the viewer, which is not a thumbnail transcode.
+	writeProbe("b")
+	writeProbe("c")
+	probeDecodes.Lock()
+	probeDecodes.inflight, probeDecodes.total = map[string]int{}, map[string]int{}
+	probeDecodes.maxSame = 0
+	probeDecodes.delay = 40 * time.Millisecond
+	probeDecodes.Unlock()
+
+	pump(*m, tea.KeyPressMsg{Text: "r", Code: 'r'})
+	time.Sleep(300 * time.Millisecond) // lets any transcode launched outside the fill finish
+
+	probeDecodes.Lock()
+	defer probeDecodes.Unlock()
+	if probeDecodes.total["b"] == 0 || probeDecodes.total["c"] == 0 {
+		t.Fatalf("new images were never transcoded: %v", probeDecodes.total)
+	}
+	if probeDecodes.total["b"] != 2 || probeDecodes.total["c"] != 2 {
+		t.Errorf("want one transcode per size for each new image, got %v", probeDecodes.total)
+	}
+	if probeDecodes.maxSame > 1 {
+		t.Errorf("one image was decoded by %d transcodes at once, want 1", probeDecodes.maxSame)
+	}
+}
+
+// TestReloadOfUnchangedListKeepsRunningFill: a reload that finds the same images
+// (the r key, a window switch back) has nothing new to warm, so it must not
+// restart the fill and throw away its in-flight decodes.
+func TestReloadOfUnchangedListKeepsRunningFill(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("AEYE_DIR", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "images"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "x.png")
+	writeTestImage(t, p, 8, 8)
+	line := `{"type":"image","path":"` + p + `","name":"x","mtime":1}` + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "images", "p1.jsonl"), []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rec := newTransmitRecorder(t)
+	coldCache(t)
+	m := &galleryModel{pane: "p1", backend: backendKitty, tty: rec.f, ready: true, width: 100, height: 40}
+	m.reload()
+	if !m.cacheReload {
+		t.Fatal("the first load of a list did not ask for a warm")
+	}
+	m.cacheReload = false
+	m.reload()
+	if m.cacheReload {
+		t.Error("reloading an unchanged list asked for a fill restart")
 	}
 }

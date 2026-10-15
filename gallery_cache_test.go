@@ -88,33 +88,6 @@ func TestCachedPNGSmallPNGPinned(t *testing.T) {
 	}
 }
 
-// warmCache must populate the transcode cache for both the preview and strip
-// sizes so navigating to a freshly captured image is a hit, not a decode.
-func TestWarmCachePopulatesBothSizes(t *testing.T) {
-	imgCacheDir = t.TempDir()
-	src := filepath.Join(t.TempDir(), "big.jpeg")
-	writeTestImage(t, src, 400, 300)
-
-	warmCache([]string{src}, 20, 10, 8, 4)
-
-	entries, err := os.ReadDir(imgCacheDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 2 {
-		t.Fatalf("warmCache should cache 2 distinct sizes, got %d files", len(entries))
-	}
-	for _, dims := range [][2]int{{20, 10}, {8, 4}} {
-		got := cachedPNG(src, dims[0], dims[1])
-		if got == src {
-			t.Errorf("size %v not warmed: cachedPNG fell back to the original path", dims)
-		}
-		if _, err := os.Stat(got); err != nil {
-			t.Errorf("warmed cache file %q missing: %v", got, err)
-		}
-	}
-}
-
 // A missing file falls back to the original path (kitty will simply draw nothing).
 func TestCachedPNGMissingFile(t *testing.T) {
 	imgCacheDir = t.TempDir()

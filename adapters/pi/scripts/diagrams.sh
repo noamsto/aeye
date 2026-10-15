@@ -76,9 +76,9 @@ if ! d2_source_adoptable "$candidate" "$DIAGRAMS_DIR/src"; then
 	exit 0
 fi
 
-# Serialize the owner self-heal, the prune read-modify-write, and the append
-# below against a concurrent images.sh append of the same manifest. Taken after
-# the (slow) d2_render above so rendering never holds the lock.
+# Serialize the owner self-heal and the replace below against a concurrent
+# images.sh append of the same manifest. Taken after the (slow) d2_render above
+# so rendering never holds the lock.
 _manifest_lock "$LOCK_FILE"
 
 # Self-heal against tmux pane-id reuse: a manifest last written by a different
@@ -96,37 +96,11 @@ fi
 
 name="$(basename "$candidate" .d2)"
 
-# Prune renders this edit supersedes: an edited .d2 hashes to a new png, so the
-# prior hash would otherwise linger forever in the manifest and on disk. Drop
-# same-name/different-path entries from this manifest, then GC their files —
-# unless another pane's manifest still references the render (panes share the
-# content-hashed dir, so a file in use elsewhere must survive).
-if [[ -f $manifest ]]; then
-	while IFS= read -r stale; do
-		[[ -n $stale ]] || continue
-		keep=
-		for other in "$IMAGES_DIR"/*.jsonl; do
-			[[ $other == "$manifest" || ! -e $other ]] && continue
-			grep -qF "$stale" "$other" && {
-				keep=1
-				break
-			}
-		done
-		[[ -n $keep ]] || d2_rm_render_set "$stale"
-	done < <(jq -r --arg n "$name" --arg p "$png" \
-		'select(.name == $n and .path != $p) | .path' "$manifest" 2>/dev/null)
-
-	tmp="$manifest.tmp"
-	jq -c --arg n "$name" --arg p "$png" \
-		'select((.name == $n and .path != $p) | not)' "$manifest" >"$tmp" &&
-		mv "$tmp" "$manifest"
-fi
-
 printf -v now '%(%FT%T%z)T' -1
-append_diagram_line "$manifest" "$png" "$svg" "$name" "$now"
+diagram_replace_entry "$manifest" "$png" "$svg" "$name" "$now"
 
-# Proactively surface the carousel on every new diagram. Reached only when a
-# genuinely new diagram was appended above (the dedup guard exits early for ones
-# already in the manifest), so this re-opens after a manual close but never
-# re-fires for an unchanged redraw. --ensure-open is idempotent and never kills.
+# Proactively surface the carousel on every new or edited diagram. Reached only
+# when one was adopted above (the dedup guard exits early for ones already in the
+# manifest), so this re-opens after a manual close but never re-fires for an
+# unchanged redraw. --ensure-open is idempotent and never kills.
 "${AEYE_TOGGLE:-tmux-claude-images}" --ensure-open >/dev/null 2>&1 || true

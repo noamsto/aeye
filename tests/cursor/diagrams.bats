@@ -106,6 +106,23 @@ run_app() {
 	[ ! -f "$old" ]
 }
 
+@test "editing a .d2 keeps its manifest slot; a new diagram appends (#339)" {
+	run_app
+	OTHER="$SRC/other.d2"
+	printf 'x -> y\n' >"$OTHER"
+	write_d2_payload "$OTHER" | bash "$APP"
+	# the new diagram appended at the end
+	run jq -r '.name' "$MANIFEST"
+	[ "$output" = $'flow\nother' ]
+	# edit flow: it must keep slot 0 rather than moving to the end
+	printf 'a -> b -> c\n' >"$DOTD2"
+	run_app
+	run jq -r '.name' "$MANIFEST"
+	[ "$output" = $'flow\nother' ]
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 2 ]
+}
+
 @test "a Write of a .png is ignored (that's images.sh's job)" {
 	PNG="$BATS_TEST_TMPDIR/pic.png"
 	printf 'x' >"$PNG"

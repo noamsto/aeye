@@ -85,8 +85,9 @@ func (m *galleryModel) cancelCache() {
 }
 
 // armCache returns the kick for a fill the last update called for, once per
-// request: a loop-side cache miss, a reload (new images to warm), or a layout change (prev is the layout before
-// the update) that left every thumbnail cold. A new request supersedes the
+// request: a loop-side cache miss, a reload that changed the image list, or a
+// layout change (prev is the layout before the update) that left every thumbnail
+// cold. A new request supersedes the
 // running one — its kick and result arrive stale — and a layout change waits out
 // warmDebounce so a resize storm transcodes only the size it settles on. The
 // first sizing doesn't wait: nothing is on screen yet.

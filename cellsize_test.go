@@ -40,6 +40,9 @@ func TestParseCellPxEnv(t *testing.T) {
 		{"0x28", 0, 0, false},
 		{"axb", 0, 0, false},
 		{"15x28x3", 0, 0, false},
+		{"100000x100000", 0, 0, false},
+		{"1500x2800", 0, 0, false},
+		{"9223372036854775807x1", 0, 0, false},
 	} {
 		w, h, ok := parseCellPxEnv(tc.in)
 		if ok != tc.ok || w != tc.w || h != tc.h {
@@ -59,6 +62,7 @@ func TestParseClientCellPx(t *testing.T) {
 		{"skips clients that report no pixels", "0 0\n15 28\n", 15, 28, true},
 		{"unsupported format expands empty", " \n", 0, 0, false},
 		{"all unknown", "0 0\n0 0\n", 0, 0, false},
+		{"absurd size is skipped", "100000 100000\n15 28\n", 15, 28, true},
 		{"garbage", "x y\n", 0, 0, false},
 		{"empty", "", 0, 0, false},
 	} {

@@ -35,6 +35,15 @@ func parseCellPxReply(s string) (w, h int, ok bool) {
 	return ww, hh, true
 }
 
+// maxCellPx bounds a cell dimension taken from the override or from tmux: the
+// preview box is previewW*cell px wide, and an absurd value (a typo'd extra
+// zero) would ask fitToBox for a multi-terabyte raster.
+const maxCellPx = 512
+
+func plausibleCellPx(w, h int) bool {
+	return w > 0 && h > 0 && w <= maxCellPx && h <= maxCellPx
+}
+
 // parseCellPxEnv reads an AEYE_CELL_PX override of the form "<w>x<h>".
 func parseCellPxEnv(s string) (w, h int, ok bool) {
 	ws, hs, ok := strings.Cut(strings.TrimSpace(s), "x")
@@ -43,31 +52,30 @@ func parseCellPxEnv(s string) (w, h int, ok bool) {
 	}
 	w, err1 := strconv.Atoi(ws)
 	h, err2 := strconv.Atoi(hs)
-	if err1 != nil || err2 != nil || w <= 0 || h <= 0 {
+	if err1 != nil || err2 != nil || !plausibleCellPx(w, h) {
 		return 0, 0, false
 	}
 	return w, h, true
 }
 
 // parseClientCellPx takes the first client in `list-clients -F '#{client_cell_width}
-// #{client_cell_height}'` output that reports a cell size. A client that doesn't
-// know its pixels prints 0 0, or nothing on a tmux without the format.
+// #{client_cell_height}'` output that reports a plausible cell size — not
+// necessarily the one displaying this pane when several relays are attached. A
+// client that doesn't know its pixels prints empty or non-positive fields.
 func parseClientCellPx(out string) (w, h int, ok bool) {
 	for line := range strings.SplitSeq(out, "\n") {
 		ws, hs, _ := strings.Cut(strings.TrimSpace(line), " ")
 		w, err1 := strconv.Atoi(ws)
 		h, err2 := strconv.Atoi(hs)
-		if err1 == nil && err2 == nil && w > 0 && h > 0 {
+		if err1 == nil && err2 == nil && plausibleCellPx(w, h) {
 			return w, h, true
 		}
 	}
 	return 0, 0, false
 }
 
-// relayCellPx is the cell size the relay's mirroring client reports to this
-// pane's tmux session. A package var so tests can skip the tmux server.
-var relayCellPx = tmuxRelayCellPx
-
+// tmuxRelayCellPx is the cell size the relay's mirroring client reports to this
+// pane's tmux session.
 func tmuxRelayCellPx() (int, int, bool) {
 	pane := os.Getenv("TMUX_PANE")
 	if os.Getenv("TMUX") == "" || pane == "" {
@@ -88,13 +96,16 @@ func tmuxRelayCellPx() (int, int, bool) {
 // tmux, and only then the terminal query.
 func measureCellPx(relayed bool, override string, client func() (int, int, bool), query func() (int, int)) (int, int) {
 	if w, h, ok := parseCellPxEnv(override); ok {
+		tracef("cell size source=AEYE_CELL_PX")
 		return w, h
 	}
 	if relayed {
 		if w, h, ok := client(); ok {
+			tracef("cell size source=tmux client")
 			return w, h
 		}
 	}
+	tracef("cell size source=terminal query")
 	return query()
 }
 

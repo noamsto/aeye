@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.2](https://github.com/noamsto/aeye/compare/v1.10.1...v1.10.2) (2026-10-18)
+
+
+### Bug Fixes
+
+* **zoom:** re-pack a recalled diagram crop when a re-render changes its aspect ([#356](https://github.com/noamsto/aeye/issues/356)) ([aadbc6f](https://github.com/noamsto/aeye/commit/aadbc6f0ac861f08bbd7c310cc72a5a17bf568d5))
+
 ## [1.10.1](https://github.com/noamsto/aeye/compare/v1.10.0...v1.10.1) (2026-10-15)
 
 

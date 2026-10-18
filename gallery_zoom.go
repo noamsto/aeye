@@ -275,7 +275,8 @@ func editSurvives(e imageEntry) bool { return e.Source == "d2" && e.Name != "" }
 // one: finite, inside [0,1], with its longer side no tighter than the zoom floor.
 // The fractions are kept rather than re-anchored in pixels — the same share of
 // the diagram stays framed, which for a diagram that grows is the part the user
-// was looking at — so only an unusable crop falls back to fit.
+// was looking at — so only an unusable crop falls back to fit. (recalledCrop then
+// re-packs them if the new aspect leaves the box unfilled; see refitCrop.)
 func sanitizeCrop(c cropFrac) cropFrac {
 	for _, v := range []float64{c.x0, c.y0, c.x1, c.y1} {
 		if math.IsNaN(v) || math.IsInf(v, 0) {
@@ -290,6 +291,24 @@ func sanitizeCrop(c cropFrac) cropFrac {
 		return c
 	}
 	return scaleCropAbout(recenterScaled(c.cx(), c.cy(), w, h), 1, 1/zoomMax)
+}
+
+// refitCrop re-packs a crop recalled for a re-rendered image when its fractions,
+// shaped for the old pixels, no longer fill the box's binding axis: it keeps the
+// crop's on-screen magnification and center, so the view stays on the same spot
+// instead of showing bars until the next zoom step. A crop that already fills
+// the axis is returned untouched.
+func (m *galleryModel) refitCrop(c cropFrac) cropFrac {
+	boxW, boxH := m.previewBoxPx()
+	if m.curSize == (image.Point{}) || boxW <= 0 || boxH <= 0 {
+		return c
+	}
+	frac := boxAspectFrac(m.curSize.X, m.curSize.Y, boxW, boxH)
+	if aspect := c.w() / c.h(); (frac <= 1 && aspect >= frac*(1-1e-3)) || (frac > 1 && aspect <= frac*(1+1e-3)) {
+		return c
+	}
+	mag := min(zoomMagnification(c, frac), max(1/m.zoomFloor(), frac, 1/frac))
+	return cropAtMagnification(mag, c.cx(), c.cy(), frac)
 }
 
 // cropStamp is the staleness stamp for e's remembered crop. A diagram is stamped
@@ -327,7 +346,8 @@ func (m *galleryModel) rememberCrop() {
 
 // recalledCrop is the crop remembered under key if its image is unchanged since
 // it was saved (curStamp matches), else fit (dropping the stale entry). With
-// survivesEdit a changed stamp keeps the crop, sanitized for the new image.
+// survivesEdit a changed stamp keeps the crop, sanitized and re-packed for the new
+// image.
 func (m *galleryModel) recalledCrop(key string, survivesEdit bool) cropFrac {
 	sc, ok := m.crops[key]
 	if !ok {
@@ -335,7 +355,7 @@ func (m *galleryModel) recalledCrop(key string, survivesEdit bool) cropFrac {
 	}
 	if sc.stamp != m.curStamp {
 		if survivesEdit {
-			return sanitizeCrop(sc.crop)
+			return m.refitCrop(sanitizeCrop(sc.crop))
 		}
 		delete(m.crops, key)
 		return fullCrop()

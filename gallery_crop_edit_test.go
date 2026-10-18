@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 // rewriteDiagram simulates the hook re-rendering name's .d2: a new content hash
@@ -61,6 +63,49 @@ func TestSelectedDiagramCropValidWhenRewriteChangesSize(t *testing.T) {
 		if m.crop.isFull() || !validCrop(m.crop) {
 			t.Errorf("size %v: crop %+v, want a kept, valid zoom", size, m.crop)
 		}
+	}
+}
+
+// Regression (#355): a zoomed diagram re-rendered at a different aspect kept its
+// crop fractions, but those were shaped for the old pixels — against the new
+// image they no longer fill the box, leaving empty bars on the binding axis
+// (left/right in a tall narrow box, top/bottom in a wide one) until the next zoom
+// step re-packed the crop.
+func TestRewriteThatChangesAspectStillFillsBox(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		win      image.Point
+		from, to image.Point
+	}{
+		{"tall narrow box, landscape turns square", image.Pt(50, 70), image.Pt(1020, 394), image.Pt(300, 300)},
+		{"tall narrow box, portrait turns square", image.Pt(40, 60), image.Pt(400, 300), image.Pt(300, 300)},
+		{"wide box, square turns landscape", image.Pt(100, 20), image.Pt(400, 300), image.Pt(1020, 394)},
+		{"wide box, portrait turns landscape", image.Pt(120, 24), image.Pt(300, 900), image.Pt(1600, 500)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := cropDir(t)
+			m := newManifestCropModel(t, "dark", diagramPairNamed(t, dir, "roster", hashA, tc.from))
+			m, _ = send(t, m, tea.WindowSizeMsg{Width: tc.win.X, Height: tc.win.Y})
+			m = sendAll(t, land(t, m), keyZoom, keyZoom, keyZoom, keyZoom, keyZoom, keyZoom)
+			before := m.crop
+			m = land(t, rewriteDiagram(t, dir, m, "roster", hashB, tc.to))
+			if m.crop.isFull() {
+				t.Fatalf("rewrite dropped the zoom: crop %+v", m.crop)
+			}
+			boxW, boxH := m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx()
+			sx, sy := displayedSpan(m.crop, tc.to, boxW, boxH)
+			if boxAspectFrac(tc.to.X, tc.to.Y, boxW, boxH) <= 1 {
+				sy = 1 // width binds; the shortfall on the other axis is the rest letterbox
+			} else {
+				sx = 1
+			}
+			if math.Abs(sx-1) > 1e-2 || math.Abs(sy-1) > 1e-2 {
+				t.Errorf("rewritten diagram covers %.3f x %.3f of the box, crop %+v", sx, sy, m.crop)
+			}
+			if math.Abs(m.crop.cx()-before.cx()) > 1e-9 || math.Abs(m.crop.cy()-before.cy()) > 1e-9 {
+				t.Errorf("re-pack moved the view center: %+v -> %+v", before, m.crop)
+			}
+		})
 	}
 }
 

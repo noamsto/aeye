@@ -229,6 +229,7 @@ launch_tmux() {
 	[[ -n $OWNER_PID ]] && env_args+=(-e AEYE_OWNER_PID="$OWNER_PID")
 	[[ -n ${AEYE_DEBUG:-} ]] && env_args+=(-e AEYE_DEBUG="$AEYE_DEBUG")
 	[[ -n ${AEYE_BRIDGED:-} ]] && env_args+=(-e AEYE_BRIDGED="$AEYE_BRIDGED")
+	[[ -n ${AEYE_CELL_PX:-} ]] && env_args+=(-e AEYE_CELL_PX="$AEYE_CELL_PX")
 	# The viewer's argv is the manifest KEY, which is not a tmux target — forward
 	# the host pane separately so the `s` split toggle can move-pane against it.
 	env_args+=(-e AEYE_HOST_PANE="$PANE")

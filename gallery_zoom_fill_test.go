@@ -157,3 +157,55 @@ func TestZoomOutFromFillCeilingRetraces(t *testing.T) {
 		t.Fatalf("zoom-out never reached the full image: %+v", m.crop)
 	}
 }
+
+// Regression (#355): behind a remote tmux the viewer's CSI 16 t is answered by
+// tmux itself, which knows nothing about the mirroring terminal's real cell and
+// replies with its own default (16x32). The crop is then cut to the wrong box
+// aspect and kitty, fitting it into the real cell grid, pillarboxes it once zoom
+// reaches the packed phase. Measuring the mirroring client's cell fixes the
+// geometry; this drives the whole zoom range against the real 15x28 cell.
+func TestMirroredCarouselZoomFillsRealBox(t *testing.T) {
+	const realW, realH = 15, 28
+	cases := []struct {
+		name string
+		pane image.Point
+		img  image.Point
+	}{
+		{"mirror pane, landscape", image.Pt(97, 62), image.Pt(1020, 394)},
+		{"tall narrow box, landscape", image.Pt(40, 90), image.Pt(1600, 900)},
+		{"wide box, portrait", image.Pt(120, 24), image.Pt(300, 900)},
+	}
+	zoomAll := func(t *testing.T, cellW, cellH int, pane, img image.Point) (worst float64) {
+		t.Helper()
+		m := mouseModel(pane.X, pane.Y, 0, 1)
+		m.ready = true
+		m.cellW, m.cellH = cellW, cellH
+		m.curSize = img
+		m.curImgPath = m.images[0].Path
+		m.crop = fullCrop()
+		boxW, boxH := m.l.previewW*realW, m.l.previewH*realH
+		bindsX := boxAspectFrac(img.X, img.Y, boxW, boxH) <= 1
+		worst = 1
+		for range 30 {
+			pressZoom(&m, 'z')
+			sx, sy := displayedSpan(m.crop, img, boxW, boxH)
+			worst = min(worst, map[bool]float64{true: sx, false: sy}[bindsX])
+		}
+		return worst
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := func() (int, int, bool) { return realW, realH, true }
+			query := func() (int, int) { return 16, 32 }
+			w, h := measureCellPx(true, "", client, query)
+			if got := zoomAll(t, w, h, tc.pane, tc.img); got < 0.99 {
+				t.Errorf("measured cell %dx%d: binding axis covered only %.3f of the real box", w, h, got)
+			}
+			if tc.pane.X == 97 {
+				if got := zoomAll(t, 16, 32, tc.pane, tc.img); got > 0.97 {
+					t.Errorf("setup: tmux's default 16x32 should pillarbox the 97x62 mirror pane, covered %.3f", got)
+				}
+			}
+		})
+	}
+}

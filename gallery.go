@@ -1398,7 +1398,7 @@ func runGallery(pane string) error {
 	// a digit is a navigation key.
 	cellW, cellH := cellPxW, cellPxH
 	if backend == backendKitty {
-		cellW, cellH = queryCellPx()
+		cellW, cellH = measureCellPx(relayed, os.Getenv("AEYE_CELL_PX"), relayCellPx, queryCellPx)
 	}
 	tracef("cell size %dx%d px", cellW, cellH)
 	m := galleryModel{

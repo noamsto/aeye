@@ -79,7 +79,7 @@
         devShells.verify = pkgs.mkShell {
           packages =
             [self'.packages.default self'.packages.toggle pkgs.chafa pkgs.wezterm]
-            ++ lib.optionals pkgs.stdenv.isLinux [pkgs.ghostty];
+            ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [pkgs.ghostty];
         };
 
         packages = {

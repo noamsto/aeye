@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/mazznoer/csscolorparser"
+
 	"oss.terrastruct.com/d2/d2graph"
 	"oss.terrastruct.com/d2/d2target"
 	"oss.terrastruct.com/d2/lib/color"
@@ -14,13 +16,14 @@ const (
 	contrastLightInk = "#F5F5F5"
 )
 
-// resolvableFill reports whether a user fill resolves to a concrete RGB color —
-// true for hex (#rgb, #rrggbb), named CSS colors (lightgreen), and rgb()/hsl().
-// Gradients (url(...)) and anything else csscolorparser can't parse stay false,
-// so their labels keep the theme color, as before.
+// resolvableFill reports whether a user fill resolves to a concrete, visible
+// color — true for hex (#rgb, #rrggbb), named CSS colors (lightgreen), and
+// rgb()/hsl(). A fully transparent fill is no fill: the canvas shows through, so
+// it keeps the theme label color like an unfilled shape. Gradients (url(...))
+// and anything else csscolorparser can't parse stay false, as before.
 func resolvableFill(fill string) bool {
-	_, err := color.Luminance(fill)
-	return err == nil
+	c, err := csscolorparser.Parse(fill)
+	return err == nil && c.A > 0
 }
 
 // contrastLabels recolors a shape's label to contrast its fill, but only for

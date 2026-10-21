@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -26,8 +27,15 @@ func TestContrastInk(t *testing.T) {
 // determinism, dark theme so theme-default labels are light (never our inks).
 func renderSrc(t *testing.T, src string) string {
 	t.Helper()
+	return renderSrcTheme(t, "200", src)
+}
+
+// renderSrcTheme is renderSrc with an explicit d2 theme, so a case can run under
+// the light palette where a wrongly-inked label actually vanishes.
+func renderSrcTheme(t *testing.T, theme, src string) string {
+	t.Helper()
 	t.Setenv("AEYE_D2_SKETCH", "0")
-	t.Setenv("AEYE_D2_THEME", "200")
+	t.Setenv("AEYE_D2_THEME", theme)
 	p := filepath.Join(t.TempDir(), "d.d2")
 	if err := os.WriteFile(p, []byte(src), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
@@ -37,6 +45,18 @@ func renderSrc(t *testing.T, src string) string {
 		t.Fatalf("renderD2SVG: %v", err)
 	}
 	return string(svg)
+}
+
+// labelFill returns the fill of the <text> element whose body is exactly label,
+// so a case can compare two labels' inks rather than merely spot an ink.
+func labelFill(t *testing.T, svg, label string) string {
+	t.Helper()
+	re := regexp.MustCompile(`<text[^>]*fill="([^"]*)"[^>]*>` + regexp.QuoteMeta(label) + `</text>`)
+	m := re.FindStringSubmatch(svg)
+	if m == nil {
+		t.Fatalf("no text label %q in svg", label)
+	}
+	return m[1]
 }
 
 func TestContrastLabelsUserLightFillGetsDarkInk(t *testing.T) {
@@ -72,6 +92,44 @@ func TestContrastLabelsResolvesNamedAndShorthandFills(t *testing.T) {
 				t.Fatalf("fill %s should ink %s; not found", c.fill, c.wantInk)
 			}
 		})
+	}
+}
+
+// A fully transparent fill is no fill: the shape keeps the theme label color
+// exactly like an unfilled one, under every theme.
+func TestContrastLabelsTransparentFillKeepsThemeInk(t *testing.T) {
+	for _, theme := range []string{"105", "200"} {
+		t.Run("theme"+theme, func(t *testing.T) {
+			src := "a: \"no fill\"\nb: \"transparent\" { style: { fill: transparent } }\n"
+			svg := renderSrcTheme(t, theme, src)
+			unfilled := labelFill(t, svg, "no fill")
+			transparent := labelFill(t, svg, "transparent")
+			if transparent != unfilled {
+				t.Errorf("transparent fill label = %s, want the unfilled label's %s", transparent, unfilled)
+			}
+		})
+	}
+}
+
+// Every full-transparency spelling csscolorparser accepts must be rejected as a
+// fill, not just the keyword. d2's own grammar only takes "transparent" (it
+// refuses rgba()/8-digit hex as a fill value), so the other spellings are pinned
+// here at the gate; a partially transparent fill is still a fill.
+func TestResolvableFillRejectsFullyTransparent(t *testing.T) {
+	for _, fill := range []string{"transparent", "rgba(0,0,0,0)", "#00000000", "#0000", "hsla(0,0%,0%,0)"} {
+		if resolvableFill(fill) {
+			t.Errorf("resolvableFill(%q) = true, want false (fully transparent)", fill)
+		}
+	}
+	for _, fill := range []string{"rgba(0,0,0,0.5)", "lightgreen", "#efe", "#1e1e2e"} {
+		if !resolvableFill(fill) {
+			t.Errorf("resolvableFill(%q) = false, want true", fill)
+		}
+	}
+	for _, fill := range []string{"url(#grad)", "N1"} {
+		if resolvableFill(fill) {
+			t.Errorf("resolvableFill(%q) = true, want false (not a concrete color)", fill)
+		}
 	}
 }
 

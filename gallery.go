@@ -143,9 +143,11 @@ func (m *galleryModel) stripID(s int) int { return m.slotID(1 + s) }
 // (about to be stored again). They were replaced a full render ago, so no
 // placeholder still shows them. Scoped to this viewer's own ids: a sibling
 // carousel's images on the shared store are never touched.
-func (m *galleryModel) reapStale(keep map[int]bool) {
+func (m *galleryModel) reapStale(keep map[int]bool) (spared []int) {
 	for _, id := range m.staleIDs {
-		if !keep[id] {
+		if keep[id] {
+			spared = append(spared, id)
+		} else {
 			if traceEnabled {
 				tracef("delete id=%d (replaced earlier)", id)
 			}
@@ -153,6 +155,7 @@ func (m *galleryModel) reapStale(keep map[int]bool) {
 		}
 	}
 	m.staleIDs = m.staleIDs[:0]
+	return spared
 }
 
 // clearPaneImages deletes a pane's whole reserved id block on teardown, where the
@@ -549,7 +552,7 @@ func (m *galleryModel) transmitView() {
 			keep[m.slotID(sl)] = true
 		}
 	}
-	m.reapStale(keep)
+	spared := m.reapStale(keep)
 
 	// A thumbnail the cache doesn't hold yet is left out rather than transcoded
 	// here: the view is stored again once the fill lands (see armCache).
@@ -644,8 +647,17 @@ func (m *galleryModel) transmitView() {
 	}
 
 	m.storedIDs = m.storedIDs[:0]
+	live := map[int]bool{}
 	for sl := range nslots {
-		m.storedIDs = append(m.storedIDs, m.slotIDFor(sl, m.slots[sl].bit))
+		id := m.slotIDFor(sl, m.slots[sl].bit)
+		m.storedIDs = append(m.storedIDs, id)
+		live[id] = true
+	}
+	// A spared id whose store failed is still abandoned: reap it next time.
+	for _, id := range spared {
+		if !live[id] && !slices.Contains(m.staleIDs, id) {
+			m.staleIDs = append(m.staleIDs, id)
+		}
 	}
 	// Record the signature only when every write landed — a failed transmit
 	// leaves the store incomplete, so the next call must retry, not skip.

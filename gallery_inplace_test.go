@@ -139,23 +139,14 @@ func TestRefreshReapsReplacedIDLater(t *testing.T) {
 	if f.m.stripID(3) == old {
 		t.Fatal("slot kept its id; no double buffering")
 	}
-	f.m.cursor = 1
+	f.m.cursor = 1 // slot 3's content is unchanged, so nothing re-stores over old
 	ops := f.reload()
-	deleted := false
-	stored := map[int]bool{}
 	for _, o := range ops {
-		switch o.op {
-		case "d":
-			if o.id == old {
-				deleted = !stored[old]
-			}
-		case "T":
-			stored[o.id] = true
+		if o.op == "d" && o.id == old {
+			return
 		}
 	}
-	if !deleted && !stored[old] {
-		t.Errorf("replaced id %d neither reaped nor reused by the next transmit (ops %v)", old, ops)
-	}
+	t.Errorf("replaced id %d was never reaped (ops %v)", old, ops)
 }
 
 // AC3: a manifest touch that changes nothing visible writes nothing and clears nothing.

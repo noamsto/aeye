@@ -61,7 +61,7 @@ func computeLayout(paneW, paneH int) layout {
 	stripH := clamp(paneH/4, 5, 12)
 	stripW := stripThumbW
 	// +2 per thumb for its border frame.
-	stripCols := clamp((paneW+stripGutter)/(stripW+2+stripGutter), 1, maxCellDim)
+	stripCols := clamp((paneW+stripGutter)/(stripW+2+stripGutter), 1, altOffset-2)
 
 	// Rows the preview can't have: title(1) + subtitle(1) + legend(2) +
 	// filmstrip(stripH+2 border) + preview border(2). Cols: preview border(2).
@@ -109,17 +109,50 @@ func paneImageIDBaseOn(host, pane string) int {
 	return int(h.Sum32()%uint32(idBlocks)) * (maxCellDim + 1) //nolint:gosec // idBlocks is a small positive constant; no overflow
 }
 
-func (m *galleryModel) previewID() int    { return paneImageIDBase(m.pane) }
-func (m *galleryModel) stripID(s int) int { return paneImageIDBase(m.pane) + 1 + s }
+// altOffset separates a slot's two buffer ids inside the pane's reserved block:
+// slot s is stored under base+s or base+s+altOffset. The viewer stores a changed
+// image under the idle one and only then abandons the other, so a placeholder
+// cell never points at a deleted image. computeLayout bounds the strip so every
+// slot index stays below altOffset.
+var altOffset = (maxCellDim + 1) / 2
 
-// clearStored deletes, by id, every image this viewer stored on its last
-// transmit, so a re-store starts clean (dropping thumbs a shrunken filmstrip no
-// longer shows) without touching a sibling carousel's images on the shared store.
-func (m *galleryModel) clearStored() {
-	for _, id := range m.storedIDs {
-		fmt.Fprint(m.tty, deleteImage(id)) //nolint:errcheck // best-effort tty escape-sequence write
+// slotState is one stored image slot (0 = preview, 1+s = filmstrip cell s).
+type slotState struct {
+	bit  int    // which of the slot's two ids is live
+	key  string // content the live id holds; empty when unknown, which forces a store
+	path string // image path the live id shows; empty when it holds nothing usable
+}
+
+// slotIDFor is the image id of slot under buffer bit.
+func (m *galleryModel) slotIDFor(slot, bit int) int {
+	return paneImageIDBase(m.pane) + slot + bit*altOffset
+}
+
+// slotID is the live id of slot.
+func (m *galleryModel) slotID(slot int) int {
+	if slot < len(m.slots) {
+		return m.slotIDFor(slot, m.slots[slot].bit)
 	}
-	m.storedIDs = m.storedIDs[:0]
+	return m.slotIDFor(slot, 0)
+}
+
+func (m *galleryModel) previewID() int    { return m.slotID(0) }
+func (m *galleryModel) stripID(s int) int { return m.slotID(1 + s) }
+
+// reapStale deletes the ids earlier transmits abandoned, sparing any in keep
+// (about to be stored again). They were replaced a full render ago, so no
+// placeholder still shows them. Scoped to this viewer's own ids: a sibling
+// carousel's images on the shared store are never touched.
+func (m *galleryModel) reapStale(keep map[int]bool) {
+	for _, id := range m.staleIDs {
+		if !keep[id] {
+			if traceEnabled {
+				tracef("delete id=%d (replaced earlier)", id)
+			}
+			fmt.Fprint(m.tty, deleteImage(id)) //nolint:errcheck // best-effort tty escape-sequence write
+		}
+	}
+	m.staleIDs = m.staleIDs[:0]
 }
 
 // clearPaneImages deletes a pane's whole reserved id block on teardown, where the
@@ -149,18 +182,22 @@ func countdownBar(remaining, total time.Duration, width int) string {
 // ---------------------------------------------------------------------------
 
 type galleryModel struct {
-	pane         string
-	splitAxis    string // "side" | "bottom"; current tmux split, toggled by `s`
-	images       []imageEntry
-	backend      gridBackend
-	rasterFormat string // chafa -f value when backend == backendRaster (formatSixel/formatITerm)
-	theme        string
-	l            layout
-	cursor       int // selected image index
-	width        int
-	height       int
-	tty          *os.File // raw graphics sink (bypasses bubbletea's stdout)
-	storedIDs    []int    // kitty image ids stored last transmit, cleared before the next
+	pane          string
+	splitAxis     string // "side" | "bottom"; current tmux split, toggled by `s`
+	images        []imageEntry
+	backend       gridBackend
+	rasterFormat  string // chafa -f value when backend == backendRaster (formatSixel/formatITerm)
+	theme         string
+	l             layout
+	cursor        int // selected image index
+	width         int
+	height        int
+	tty           *os.File // raw graphics sink (bypasses bubbletea's stdout)
+	storedIDs     []int    // live kitty image ids (one per slot) after the last transmit
+	slots         []slotState
+	repaintNeeded bool  // a store landed under an id the View already shows; cleared by refreshView
+	keysValid     bool  // slots' keys describe what the store holds; false until the first transmit and after dropStore
+	staleIDs      []int // ids replaced by a double-buffered store, deleted on the next transmit
 	// lastTransmitSig signs the store set of the last successful transmitView;
 	// a call with a matching signature is a no-op. nil forces the next
 	// transmit — the restore paths clear it because tmux can drop the store
@@ -437,9 +474,34 @@ func (m *galleryModel) computeTransmitSig() transmitSig {
 	}
 }
 
+// stripKey is the content key of the strip cell showing images[idx]: everything
+// that decides the pixels stored for it, except the id they are stored under.
+func (m *galleryModel) stripKey(idx int) string {
+	e := m.images[idx]
+	if idx == m.cursor {
+		w := m.minimapWant()
+		w.id = 0
+		return fmt.Sprintf("sel|%s|%x|%dx%d|%v", e.Path, e.Mtime, m.l.stripW, m.l.stripH, w)
+	}
+	return fmt.Sprintf("%s|%x|%dx%d", e.Path, e.Mtime, m.l.stripW, m.l.stripH)
+}
+
+func (m *galleryModel) previewKey() string {
+	e := m.images[m.cursor]
+	zoomed := m.curImg != nil && !m.crop.isFull()
+	return fmt.Sprintf("%s|%x|%dx%d|%v|%v", e.Path, e.Mtime, m.l.previewW, m.l.previewH, m.crop, zoomed)
+}
+
 // transmitView stores the preview + visible filmstrip images store-only (kitty
 // backend). Writes to /dev/tty so the APC bytes never interleave with
 // bubbletea's frame output.
+//
+// It repaints in place: only a slot whose content changed is stored again, and
+// under the slot's idle id, so the old image stays on screen until the cell
+// switches over and nothing is ever deleted before its replacement is written.
+// Replaced ids are reaped by the next transmit (see reapStale). A transmit
+// whose store contents are unknown (the first, or after dropStore) ignores the
+// recorded keys and stores every slot.
 func (m *galleryModel) transmitView() {
 	if m.backend != backendKitty || m.tty == nil || len(m.images) == 0 {
 		return
@@ -448,81 +510,150 @@ func (m *galleryModel) transmitView() {
 	if m.lastTransmitSig != nil && *m.lastTransmitSig == sig {
 		return
 	}
-	m.clearStored()
-	// The store is gone from here on, so until this call completes the last
-	// signature no longer describes it.
+	// An incomplete store leaves the keys of what did land valid, so the retry
+	// (the cache fill arriving) sends only the slots still missing. Only a store
+	// whose contents are unknown (first call, dropStore) sends everything.
+	force := !m.keysValid
+	m.keysValid = true
+	// Until this call completes the last signature no longer describes the store.
 	m.lastTransmitSig = nil
+
+	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
+	shown := 0
+	for s := 0; s < m.l.stripCols && start+s < len(m.images); s++ {
+		shown++
+	}
+	nslots := 1 + shown
+	for len(m.slots) < nslots {
+		m.slots = append(m.slots, slotState{})
+	}
+	// A slot the strip no longer shows is abandoned.
+	for sl := nslots; sl < len(m.slots); sl++ {
+		if m.slots[sl].key != "" || m.slots[sl].path != "" {
+			m.staleIDs = append(m.staleIDs, m.slotIDFor(sl, m.slots[sl].bit))
+			m.slots[sl] = slotState{bit: m.slots[sl].bit}
+		}
+	}
+
+	keys := make([]string, nslots)
+	paths := make([]string, nslots)
+	keys[0], paths[0] = m.previewKey(), m.images[m.cursor].Path
+	for s := range shown {
+		keys[1+s], paths[1+s] = m.stripKey(start+s), m.images[start+s].Path
+	}
+	changed := make([]bool, nslots)
+	keep := map[int]bool{}
+	for sl := range nslots {
+		if changed[sl] = force || m.slots[sl].key != keys[sl]; changed[sl] {
+			keep[m.slotIDFor(sl, 1-m.slots[sl].bit)] = true
+			keep[m.slotID(sl)] = true
+		}
+	}
+	m.reapStale(keep)
+
 	// A thumbnail the cache doesn't hold yet is left out rather than transcoded
 	// here: the view is stored again once the fill lands (see armCache).
 	complete := true
-	var apc string
-	var n int
-	var err error
-	pid := m.previewID()
-	src, ok := m.images[m.cursor].Path, true
-	if m.curImg != nil && !m.crop.isFull() {
-		src = m.renderZoom(m.l.previewW, m.l.previewH)
-	} else {
-		src, ok = m.cachedPNGOrMiss(src, m.l.previewW, m.l.previewH)
-	}
-	// Recorded even on a miss: other paths (vector, crop, minimap) store under
-	// pid without recording it, and the next clearStored must remove those.
-	m.storedIDs = append(m.storedIDs, pid)
-	if ok {
-		apc = transmitVirtual(pid, src, m.l.previewW, m.l.previewH)
-		n, err = fmt.Fprint(m.tty, apc)
-	} else {
-		complete = false
-	}
-	if traceEnabled {
-		tracef("store preview id=%d bytes=%d n=%d err=%v cur=%d %dx%d nimg=%d",
-			pid, len(apc), n, err, m.cursor, m.l.previewW, m.l.previewH, len(m.images))
-	}
-	start := stripStart(m.cursor, m.l.stripCols, len(m.images))
-	stripCells, stripBytes, stripWritten := 0, 0, 0
-	var stripErr error
-	for s := 0; s < m.l.stripCols; s++ {
-		idx := start + s
-		if idx >= len(m.images) {
-			break
+	var firstErr error
+	// store puts slot's new content under its idle id, then makes that id live;
+	// the old id is queued for the next transmit to reap.
+	store := func(sl int, build func() (string, bool)) {
+		st := &m.slots[sl]
+		oldBit := st.bit
+		// A slot holding nothing stores under its own id; flipping only pays
+		// off when there is an old image to keep up meanwhile.
+		held := st.key != "" || st.path != ""
+		if held {
+			st.bit = 1 - oldBit
 		}
-		sid := m.stripID(s)
-		var sapc string
-		var got minimapStamp
-		if idx == m.cursor {
-			sapc, got = m.selectedThumbStore(m.minimapWant())
-		} else if thumb, ok := m.cachedPNGOrMiss(m.images[idx].Path, m.l.stripW, m.l.stripH); ok {
-			sapc = transmitVirtual(sid, thumb, m.l.stripW, m.l.stripH)
-		}
-		m.storedIDs = append(m.storedIDs, sid)
-		if sapc == "" {
+		apc, ok := build()
+		if !ok {
+			st.bit = oldBit
 			complete = false
-			if idx == m.cursor {
-				m.mini.stored = minimapStamp{}
+			// The old image is only worth keeping while it still shows this
+			// path (a re-rendered file); otherwise a stale picture of another
+			// image would sit where the new one belongs.
+			if st.path != paths[sl] && st.path != "" {
+				fmt.Fprint(m.tty, deleteImage(m.slotIDFor(sl, oldBit))) //nolint:errcheck // best-effort tty escape-sequence write
+				st.path = ""
 			}
+			st.key = ""
+			return
+		}
+		n, err := fmt.Fprint(m.tty, apc)
+		if traceEnabled {
+			tracef("store slot=%d id=%d bytes=%d n=%d err=%v cur=%d nimg=%d", sl, m.slotIDFor(sl, st.bit), len(apc), n, err, m.cursor, len(m.images))
+		}
+		if err != nil {
+			st.bit = oldBit
+			st.key = ""
+			complete = false
+			if firstErr == nil {
+				firstErr = err
+			}
+			return
+		}
+		if held {
+			m.staleIDs = append(m.staleIDs, m.slotIDFor(sl, oldBit))
+		} else {
+			// Same id as before, so the placeholder text is unchanged and the
+			// cells need a repaint to resolve the image.
+			m.repaintNeeded = true
+		}
+		st.key, st.path = keys[sl], paths[sl]
+	}
+
+	if changed[0] {
+		store(0, func() (string, bool) {
+			src, ok := m.images[m.cursor].Path, true
+			if m.curImg != nil && !m.crop.isFull() {
+				src = m.renderZoom(m.l.previewW, m.l.previewH)
+			} else {
+				src, ok = m.cachedPNGOrMiss(src, m.l.previewW, m.l.previewH)
+			}
+			if !ok {
+				return "", false
+			}
+			return transmitVirtual(m.previewID(), src, m.l.previewW, m.l.previewH), true
+		})
+	}
+	for s := range shown {
+		sl, idx := 1+s, start+s
+		if !changed[sl] {
 			continue
 		}
-		sn, serr := fmt.Fprint(m.tty, sapc)
-		if idx == m.cursor {
-			m.mini.stored = got
-			if serr != nil {
-				m.mini.stored = minimapStamp{}
+		store(sl, func() (string, bool) {
+			if idx == m.cursor {
+				apc, got := m.selectedThumbStore(m.minimapWant())
+				if apc == "" {
+					m.mini.stored = minimapStamp{}
+					return "", false
+				}
+				m.mini.stored = got
+				return apc, true
 			}
+			thumb, ok := m.cachedPNGOrMiss(m.images[idx].Path, m.l.stripW, m.l.stripH)
+			if !ok {
+				return "", false
+			}
+			return transmitVirtual(m.stripID(s), thumb, m.l.stripW, m.l.stripH), true
+		})
+		if idx == m.cursor && m.slots[sl].key == "" {
+			m.mini.stored = minimapStamp{}
 		}
-		stripCells++
-		stripBytes += len(sapc)
-		stripWritten += sn
-		if serr != nil && stripErr == nil {
-			stripErr = serr
-		}
+	}
+
+	m.storedIDs = m.storedIDs[:0]
+	for sl := range nslots {
+		m.storedIDs = append(m.storedIDs, m.slotIDFor(sl, m.slots[sl].bit))
 	}
 	// Record the signature only when every write landed — a failed transmit
 	// leaves the store incomplete, so the next call must retry, not skip.
-	if complete && err == nil && stripErr == nil {
+	if complete {
 		m.lastTransmitSig = &sig
 	}
 	if traceEnabled {
-		tracef("store strip cells=%d bytes=%d written=%d firstErr=%v", stripCells, stripBytes, stripWritten, stripErr)
+		tracef("transmit force=%v slots=%d complete=%v firstErr=%v", force, nslots, complete, firstErr)
 	}
 }
 
@@ -538,15 +669,44 @@ func (m *galleryModel) repaintCmd() tea.Cmd {
 	return tea.ClearScreen
 }
 
+// dropStore records that tmux dropped the image store behind the viewer's back
+// (alt-screen switch, hidden window): the model state is unchanged, but every
+// slot is empty, so the next transmit stores all of them again under their own
+// ids rather than double-buffering over images that no longer exist.
+func (m *galleryModel) dropStore() {
+	m.lastTransmitSig = nil
+	m.keysValid = false
+	for i := range m.slots {
+		m.slots[i].key, m.slots[i].path = "", ""
+	}
+	m.mini.stored = minimapStamp{}
+}
+
 // restoreView re-stores the images and repaints. Every route back from a state
 // where the store couldn't land — the first frame before the alt-screen, a
 // window tmux wasn't displaying — needs both halves.
 func (m *galleryModel) restoreView() tea.Cmd {
 	// The store was dropped behind the viewer's back, so the model state (and
 	// its transmit signature) is unchanged: force past the no-op guard.
-	m.lastTransmitSig = nil
+	m.dropStore()
 	m.transmitView()
 	return m.repaintCmd()
+}
+
+// refreshView stores whatever slots are missing or changed and repaints only
+// when a store reused an id the screen already shows. A changed slot lands under
+// its idle id, which the next View puts in the placeholder cells, so a plain
+// diff repaint is enough — no screen clear, and the unchanged images stay up.
+func (m *galleryModel) refreshView() tea.Cmd {
+	if m.backend != backendKitty {
+		return m.restoreView()
+	}
+	m.repaintNeeded = false
+	m.transmitView()
+	if m.repaintNeeded {
+		return m.repaintCmd()
+	}
+	return nil
 }
 
 // selectIndex moves the selection (clamped) and re-transmits. Any manual
@@ -577,8 +737,14 @@ func (m *galleryModel) reload() {
 			m.cursor = i
 		}
 	}
-	if m.pinned {
-		m.cursor = max(0, len(m.images)-1)
+	// Following the newest image means a genuinely new one: a background
+	// rewrite re-appends an existing diagram, which must not steal the selection.
+	if m.pinned && len(m.images) > 0 {
+		newest := cropKey(m.images[len(m.images)-1])
+		known := slices.ContainsFunc(prev, func(e imageEntry) bool { return cropKey(e) == newest })
+		if !known {
+			m.cursor = len(m.images) - 1
+		}
 	}
 	if m.ready {
 		m.l = computeLayout(m.width, m.height)
@@ -932,7 +1098,7 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if v {
 				// Stores written while hidden were dropped by tmux; force the
 				// re-store even when the manifest (and signature) is unchanged.
-				m.lastTransmitSig = nil
+				m.dropStore()
 				m.reload() // re-stores as a side effect
 				return m, tea.Batch(galleryTickCmd(m.tick, m.pane), m.kickVector(), m.repaintCmd())
 			}

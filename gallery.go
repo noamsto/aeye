@@ -480,6 +480,9 @@ func (m *galleryModel) computeTransmitSig() transmitSig {
 // stripKey is the content key of the strip cell showing images[idx]: everything
 // that decides the pixels stored for it, except the id they are stored under.
 func (m *galleryModel) stripKey(idx int) string {
+	if idx < 0 || idx >= len(m.images) {
+		return ""
+	}
 	e := m.images[idx]
 	if idx == m.cursor {
 		w := m.minimapWant()
@@ -490,6 +493,9 @@ func (m *galleryModel) stripKey(idx int) string {
 }
 
 func (m *galleryModel) previewKey() string {
+	if m.cursor < 0 || m.cursor >= len(m.images) {
+		return ""
+	}
 	e := m.images[m.cursor]
 	zoomed := m.curImg != nil && !m.crop.isFull()
 	return fmt.Sprintf("%s|%x|%dx%d|%v|%v", e.Path, e.Mtime, m.l.previewW, m.l.previewH, m.crop, zoomed)

@@ -259,12 +259,15 @@ func TestPinnedIgnoresReappendedDiagram(t *testing.T) {
 	m.theme, m.pinned = "dark", true
 	writeCropManifest(t, m.pane, a, b, c)
 	m.reload()
-	if m.images[m.cursor].Name != "c" {
+	if len(m.images) != 3 || m.images[m.cursor].Name != "c" {
 		t.Fatalf("setup: pinned cursor on %q, want c", m.images[m.cursor].Name)
 	}
 
 	writeCropManifest(t, m.pane, b, c, diagramPairNamed(t, dir, "a", hashA2, sizeA))
 	m.reload()
+	if len(m.images) != 3 {
+		t.Fatalf("reload kept %d images, want 3", len(m.images))
+	}
 	if got := m.images[m.cursor].Name; got != "c" {
 		t.Errorf("pinned cursor jumped to %q after a background rewrite, want c", got)
 	}

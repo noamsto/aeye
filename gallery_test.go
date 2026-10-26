@@ -583,19 +583,22 @@ func TestTransmitViewSkipsUnchanged(t *testing.T) {
 func TestTransmitViewRestoresOnChange(t *testing.T) {
 	cases := []struct {
 		name   string
+		images int
 		mutate func(t *testing.T, m *galleryModel)
 	}{
-		{"cursor move", func(t *testing.T, m *galleryModel) { m.cursor = 1 }},
-		{"resize", func(t *testing.T, m *galleryModel) { m.width = 120; m.l = computeLayout(m.width, m.height) }},
-		{"image appended", func(t *testing.T, m *galleryModel) {
+		{"cursor move", 5, func(t *testing.T, m *galleryModel) { m.cursor = 1 }},
+		{"resize", 5, func(t *testing.T, m *galleryModel) { m.width = 120; m.l = computeLayout(m.width, m.height) }},
+		// Appended while the filmstrip has room, so the new image is visible.
+		{"image appended", 2, func(t *testing.T, m *galleryModel) {
 			m.images = append(m.images, imageEntry{Path: writeTestPNG(t), Mtime: 99})
+			warmThumbs(m)
 		}},
-		{"crop zoomed", func(t *testing.T, m *galleryModel) { m.crop = cropFrac{0.1, 0.1, 0.9, 0.9} }},
+		{"crop zoomed", 5, func(t *testing.T, m *galleryModel) { m.crop = cropFrac{0.1, 0.1, 0.9, 0.9} }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := newTransmitRecorder(t)
-			m := newTransmitModel(t, rec, 5)
+			m := newTransmitModel(t, rec, tc.images)
 			m.transmitView()
 			base := rec.Len()
 

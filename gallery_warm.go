@@ -149,8 +149,10 @@ func (m *galleryModel) cacheFilled(msg cacheFilledMsg) tea.Cmd {
 	m.cacheBusy = false
 	cmds := []tea.Cmd{func() tea.Msg { return cacheWarmedMsg{failed: runCacheJobs(msg.ctx, msg.rest)} }}
 	if msg.notify && msg.target == m.cacheTarget() {
-		// restoreView re-stores the bitmap over any sharp d2 frame, so render it again.
-		cmds = append(cmds, m.restoreView(), m.kickVector())
+		// Only the slots the fill completed are stored again; the vector kick
+		// below re-renders a sharp d2 frame over the preview as it does after
+		// any selection.
+		cmds = append(cmds, m.refreshView(), m.kickVector())
 	}
 	return tea.Batch(cmds...)
 }

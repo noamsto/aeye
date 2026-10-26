@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.3](https://github.com/noamsto/aeye/compare/v1.10.2...v1.10.3) (2026-10-26)
+
+
+### Bug Fixes
+
+* **carousel:** repaint in place on refresh instead of blanking every image ([#365](https://github.com/noamsto/aeye/issues/365)) ([61f1f76](https://github.com/noamsto/aeye/commit/61f1f76baa2c2a7992a064473e8da3dbcc8341da))
+* **contrast:** a transparent fill must keep the theme label color ([#360](https://github.com/noamsto/aeye/issues/360)) ([beb98de](https://github.com/noamsto/aeye/commit/beb98debffe4f59e86df168d21f87b2af2d09bee))
+
 ## [1.10.2](https://github.com/noamsto/aeye/compare/v1.10.1...v1.10.2) (2026-10-18)
 
 

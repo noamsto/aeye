@@ -101,16 +101,21 @@ var (
 	italicRe     = regexp.MustCompile(`\.text-italic \{(?:font-style:italic;)?`)
 )
 
+// d2FontFamily is the installed family text is rendered in (AEYE_D2_FONT).
+func d2FontFamily() string {
+	if family := os.Getenv("AEYE_D2_FONT"); family != "" {
+		return family
+	}
+	return "Noto Sans"
+}
+
 // fixFonts rewrites d2's embedded @font-face family names to an installed
 // family and injects weight/style onto the bold/italic classes — resvg ignores
 // @font-face, so without this every text label is dropped. Idempotent: the
 // optional already-injected token lets a re-run match without doubling.
 // (Port of the former d2-fix-fonts.sh.)
 func fixFonts(svg []byte) []byte {
-	family := os.Getenv("AEYE_D2_FONT")
-	if family == "" {
-		family = "Noto Sans"
-	}
+	family := d2FontFamily()
 	svg = fontFamilyRe.ReplaceAllLiteral(svg, []byte(family))
 	svg = boldRe.ReplaceAllLiteral(svg, []byte(".text-bold {font-weight:bold;"))
 	svg = italicRe.ReplaceAllLiteral(svg, []byte(".text-italic {font-style:italic;"))
@@ -159,14 +164,18 @@ func resvgBin() string {
 	return "resvg"
 }
 
-// resvgFontArgs pins resvg to the bundled font directory (AEYE_D2_FONT_DIR) so it
-// resolves the family fixFonts baked into the SVG. Every resvg call must use these
-// — the live sharp render as much as this hook — or the sharp render drops text
-// the cached raster kept, since the family (e.g. Source Sans 3) isn't a system
-// font on macOS. Empty when unset, so resvg falls back to system fonts.
+// resvgFontArgs makes resvg's default and generic serif/sans-serif families the
+// one fixFonts uses: an SVG that names no family (or a generic one) would
+// otherwise fall back to a font that may not exist and drop its text. With
+// AEYE_D2_FONT_DIR set it also pins resvg to that bundled font directory, since
+// the family (e.g. Source Sans 3) isn't a system font on macOS. Every resvg call
+// must use these — the live sharp render as much as this hook — or the sharp
+// render drops text the cached raster kept.
 func resvgFontArgs() []string {
+	f := d2FontFamily()
+	args := []string{"--font-family", f, "--serif-family", f, "--sans-serif-family", f}
 	if dir := os.Getenv("AEYE_D2_FONT_DIR"); dir != "" {
-		return []string{"--skip-system-fonts", "--use-fonts-dir", dir}
+		args = append(args, "--skip-system-fonts", "--use-fonts-dir", dir)
 	}
-	return nil
+	return args
 }

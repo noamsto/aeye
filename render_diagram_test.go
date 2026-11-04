@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -36,24 +37,29 @@ func TestFixFonts(t *testing.T) {
 }
 
 func TestResvgFontArgs(t *testing.T) {
-	t.Run("pins the fonts dir when set", func(t *testing.T) {
-		t.Setenv("AEYE_D2_FONT_DIR", "/fonts")
-		want := []string{"--skip-system-fonts", "--use-fonts-dir", "/fonts"}
-		got := resvgFontArgs()
-		if len(got) != len(want) {
+	check := func(t *testing.T, want []string) {
+		t.Helper()
+		if got := resvgFontArgs(); !slices.Equal(got, want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
-		for i := range want {
-			if got[i] != want[i] {
-				t.Fatalf("got %v, want %v", got, want)
-			}
-		}
-	})
-	t.Run("empty when unset, so resvg uses system fonts", func(t *testing.T) {
+	}
+	family := func(f string) []string {
+		return []string{"--font-family", f, "--serif-family", f, "--sans-serif-family", f}
+	}
+	t.Run("defaults every generic to Noto Sans", func(t *testing.T) {
+		t.Setenv("AEYE_D2_FONT", "")
 		t.Setenv("AEYE_D2_FONT_DIR", "")
-		if got := resvgFontArgs(); got != nil {
-			t.Fatalf("got %v, want nil", got)
-		}
+		check(t, family("Noto Sans"))
+	})
+	t.Run("follows AEYE_D2_FONT", func(t *testing.T) {
+		t.Setenv("AEYE_D2_FONT", "Source Sans 3")
+		t.Setenv("AEYE_D2_FONT_DIR", "")
+		check(t, family("Source Sans 3"))
+	})
+	t.Run("pins the fonts dir when set", func(t *testing.T) {
+		t.Setenv("AEYE_D2_FONT", "")
+		t.Setenv("AEYE_D2_FONT_DIR", "/fonts")
+		check(t, append(family("Noto Sans"), "--skip-system-fonts", "--use-fonts-dir", "/fonts"))
 	})
 }
 

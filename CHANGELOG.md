@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/noamsto/aeye/compare/v1.10.3...v1.11.0) (2026-11-04)
+
+
+### Features
+
+* **carousel:** animate diagrams with kitty frame loops ([#372](https://github.com/noamsto/aeye/issues/372)) ([8f9f47c](https://github.com/noamsto/aeye/commit/8f9f47c5f745772da8a92db8bdae3a98f88a8707))
+
 ## [1.10.3](https://github.com/noamsto/aeye/compare/v1.10.2...v1.10.3) (2026-10-26)
 
 

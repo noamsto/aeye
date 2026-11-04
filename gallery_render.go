@@ -585,20 +585,19 @@ func animStop(id int) string {
 	return tmuxPassthrough(fmt.Sprintf("\x1b_Ga=a,i=%d,q=2,s=1\x1b\\", id))
 }
 
-// animationStore uploads the root frame, then every loop frame in order, and
-// starts the loop. Kitty numbers loop frames from 2, since the root is frame 1.
-func animationStore(id int, s *animSet, cols, rows int) string {
-	var b strings.Builder
-	b.WriteString(transmitVirtualRaw(id, s.Root, s.Plan.W, s.Plan.H, cols, rows))
+// animationStore returns the escapes that upload the root frame, then every
+// loop frame in order, and start the loop. Kitty numbers loop frames from 2,
+// since the root is frame 1.
+func animationStore(id int, s *animSet, cols, rows int) []string {
+	apcs := []string{transmitVirtualRaw(id, s.Root, s.Plan.W, s.Plan.H, cols, rows)}
 	for i, f := range s.Plan.Frames {
 		for j, r := range f.Rects {
 			if j == 0 {
-				b.WriteString(animNewFrame(id, r, s.Blob, f.Full, animGapMS))
+				apcs = append(apcs, animNewFrame(id, r, s.Blob, f.Full, animGapMS))
 			} else {
-				b.WriteString(animEditFrame(id, i+2, r, s.Blob))
+				apcs = append(apcs, animEditFrame(id, i+2, r, s.Blob))
 			}
 		}
 	}
-	b.WriteString(animStartLoop(id, animGapMS))
-	return b.String()
+	return append(apcs, animStartLoop(id, animGapMS))
 }

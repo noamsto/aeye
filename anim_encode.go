@@ -46,7 +46,7 @@ func animFrameCount(boxW, boxH int) int {
 
 // diffRects compares base and cur on an animTile grid and returns the changed
 // area as rectangles in top-to-bottom, left-to-right order.
-func diffRects(base, cur *image.RGBA) []image.Rectangle {
+func diffRects(base, cur *image.NRGBA) []image.Rectangle {
 	b := base.Bounds()
 	rects := []image.Rectangle{}
 	for ty := b.Min.Y; ty < b.Max.Y; ty += animTile {
@@ -83,7 +83,7 @@ func mergeAbove(above []image.Rectangle, run image.Rectangle) int {
 	return -1
 }
 
-func tileDiffers(base, cur *image.RGBA, x0, y0, x1, y1 int) bool {
+func tileDiffers(base, cur *image.NRGBA, x0, y0, x1, y1 int) bool {
 	for y := y0; y < y1; y++ {
 		o := base.PixOffset(x0, y)
 		p := cur.PixOffset(x0, y)
@@ -98,19 +98,16 @@ func tileDiffers(base, cur *image.RGBA, x0, y0, x1, y1 int) bool {
 // encodeAnim diffs every frame against frames[0] and packs the changed
 // rectangles' RGBA rows into one blob. A frame with too much change, or any
 // frame when forceFull is set, is stored whole.
-func encodeAnim(frames []*image.RGBA, forceFull bool) (blob []byte, p animPlan) {
+func encodeAnim(frames []*image.NRGBA, forceFull bool) (blob []byte, p animPlan) {
 	b := frames[0].Bounds()
-	p = animPlan{W: b.Dx(), H: b.Dy()}
-	blob = []byte{}
-	add := func(img *image.RGBA, r image.Rectangle) animRect {
-		off := int64(len(blob))
-		for y := r.Min.Y; y < r.Max.Y; y++ {
-			o := img.PixOffset(r.Min.X, y)
-			blob = append(blob, img.Pix[o:o+r.Dx()*4]...)
-		}
-		return animRect{r.Min.X, r.Min.Y, r.Dx(), r.Dy(), off, int64(len(blob)) - off}
+	p = animPlan{W: b.Dx(), H: b.Dy(), Frames: make([]animFrame, len(frames)-1)}
+	type cut struct {
+		img *image.NRGBA
+		r   image.Rectangle
 	}
-	for _, cur := range frames[1:] {
+	cuts := make([][]cut, len(frames)-1)
+	size := 0
+	for i, cur := range frames[1:] {
 		rects := diffRects(frames[0], cur)
 		area := 0
 		for _, r := range rects {
@@ -118,15 +115,29 @@ func encodeAnim(frames []*image.RGBA, forceFull bool) (blob []byte, p animPlan) 
 		}
 		switch {
 		case forceFull || area*2 > p.W*p.H || len(rects) > animMaxRects:
-			p.Frames = append(p.Frames, animFrame{Full: true, Rects: []animRect{add(cur, b)}})
+			p.Frames[i].Full = true
+			cuts[i] = []cut{{cur, b}}
 		case len(rects) == 0:
-			p.Frames = append(p.Frames, animFrame{Rects: []animRect{add(frames[0], image.Rect(0, 0, 1, 1))}})
+			cuts[i] = []cut{{frames[0], image.Rect(0, 0, 1, 1)}}
 		default:
-			f := animFrame{}
 			for _, r := range rects {
-				f.Rects = append(f.Rects, add(cur, r))
+				cuts[i] = append(cuts[i], cut{cur, r})
 			}
-			p.Frames = append(p.Frames, f)
+		}
+		for _, c := range cuts[i] {
+			size += c.r.Dx() * c.r.Dy() * 4
+		}
+	}
+	blob = make([]byte, 0, size)
+	for i, cs := range cuts {
+		for _, c := range cs {
+			off := int64(len(blob))
+			for y := c.r.Min.Y; y < c.r.Max.Y; y++ {
+				o := c.img.PixOffset(c.r.Min.X, y)
+				blob = append(blob, c.img.Pix[o:o+c.r.Dx()*4]...)
+			}
+			p.Frames[i].Rects = append(p.Frames[i].Rects,
+				animRect{c.r.Min.X, c.r.Min.Y, c.r.Dx(), c.r.Dy(), off, int64(len(blob)) - off})
 		}
 	}
 	return blob, p

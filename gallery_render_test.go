@@ -5,6 +5,7 @@ import (
 	"image"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"testing"
 )
@@ -161,12 +162,14 @@ func TestAnimEscapes(t *testing.T) {
 			}},
 		}
 		got := animationStore(7, s, 10, 5)
-		want := transmitVirtualRaw(7, "/tmp/r", 64, 48, 10, 5) +
-			animNewFrame(7, r1, "/tmp/b", false, animGapMS) +
-			animEditFrame(7, 2, r2, "/tmp/b") +
-			animNewFrame(7, rf, "/tmp/b", true, animGapMS) +
-			animStartLoop(7, animGapMS)
-		if got != want {
+		want := []string{
+			transmitVirtualRaw(7, "/tmp/r", 64, 48, 10, 5),
+			animNewFrame(7, r1, "/tmp/b", false, animGapMS),
+			animEditFrame(7, 2, r2, "/tmp/b"),
+			animNewFrame(7, rf, "/tmp/b", true, animGapMS),
+			animStartLoop(7, animGapMS),
+		}
+		if !slices.Equal(got, want) {
 			t.Errorf("animationStore =\n%q\nwant\n%q", got, want)
 		}
 	})

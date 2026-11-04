@@ -7,25 +7,25 @@ import (
 	"testing"
 )
 
-func animTestImage(w, h int) *image.RGBA {
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
+func animTestImage(w, h int) *image.NRGBA {
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
 	for y := range h {
 		for x := range w {
-			img.SetRGBA(x, y, color.RGBA{uint8(x), uint8(y), 7, 255})
+			img.SetNRGBA(x, y, color.NRGBA{uint8(x), uint8(y), 7, 255})
 		}
 	}
 	return img
 }
 
-func animClone(img *image.RGBA) *image.RGBA {
+func animClone(img *image.NRGBA) *image.NRGBA {
 	c := *img
 	c.Pix = bytes.Clone(img.Pix)
 	return &c
 }
 
-func animPoke(img *image.RGBA, pts ...image.Point) {
+func animPoke(img *image.NRGBA, pts ...image.Point) {
 	for _, p := range pts {
-		img.SetRGBA(p.X, p.Y, color.RGBA{250, 250, 250, 255})
+		img.SetNRGBA(p.X, p.Y, color.NRGBA{250, 250, 250, 255})
 	}
 }
 
@@ -73,9 +73,12 @@ func TestEncodeAnimPartial(t *testing.T) {
 	animPoke(f1, image.Pt(20, 5))
 	f2 := animClone(f0)
 
-	blob, p := encodeAnim([]*image.RGBA{f0, f1, f2}, false)
+	blob, p := encodeAnim([]*image.NRGBA{f0, f1, f2}, false)
 	if p.W != 64 || p.H != 48 || len(p.Frames) != 2 {
 		t.Fatalf("plan = %+v", p)
+	}
+	if cap(blob) != len(blob) {
+		t.Errorf("blob cap %d != len %d: not allocated once at its final size", cap(blob), len(blob))
 	}
 	fr := p.Frames[0]
 	if fr.Full || len(fr.Rects) != 1 {
@@ -116,7 +119,7 @@ func TestEncodeAnimFullFallback(t *testing.T) {
 		pts = append(pts, image.Pt(i%4*16+1, i/4*16+1))
 	}
 	animPoke(big, pts...)
-	_, p := encodeAnim([]*image.RGBA{f0, big}, false)
+	_, p := encodeAnim([]*image.NRGBA{f0, big}, false)
 	assertFullFrame(t, p.Frames[0], 64, 48)
 
 	// More than animMaxRects disjoint tiles, well under half the area.
@@ -130,12 +133,12 @@ func TestEncodeAnimFullFallback(t *testing.T) {
 		}
 	}
 	animPoke(many, pts...)
-	_, p = encodeAnim([]*image.RGBA{g0, many}, false)
+	_, p = encodeAnim([]*image.NRGBA{g0, many}, false)
 	assertFullFrame(t, p.Frames[0], w, h)
 
 	small := animClone(f0)
 	animPoke(small, image.Pt(1, 1))
-	_, p = encodeAnim([]*image.RGBA{f0, small, small}, true)
+	_, p = encodeAnim([]*image.NRGBA{f0, small, small}, true)
 	for _, fr := range p.Frames {
 		assertFullFrame(t, fr, 64, 48)
 	}

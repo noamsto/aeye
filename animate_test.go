@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -46,6 +48,26 @@ func TestAnimFrameSVG_D2OneAnimatedEdge(t *testing.T) {
 			}
 			if !bytes.Contains(frames[0], []byte("stroke-dashoffset:0.0000;")) {
 				t.Error("frame 0 lacks stroke-dashoffset:0.0000;")
+			}
+			// One loop is one dash period, so each frame shifts by period/n.
+			edge := func(svg []byte) []byte {
+				for _, tag := range animPathTagRe.FindAll(svg, -1) {
+					if animEdgeRe.Match(tag) {
+						return tag
+					}
+				}
+				return nil
+			}
+			dash := animDasharrayRe.FindSubmatch(edge(svg))
+			off := animOffsetRe.FindSubmatch(edge(frames[1]))
+			if dash == nil || off == nil {
+				t.Fatal("no dasharray / dashoffset in the animated edge")
+			}
+			d, _ := strconv.ParseFloat(string(dash[1]), 64)
+			g, _ := strconv.ParseFloat(string(dash[2]), 64)
+			o, _ := strconv.ParseFloat(string(off[2]), 64)
+			if got := math.Abs(o) * n; math.Abs(got-(d+g)) > 1e-3 {
+				t.Errorf("|offset(1)|*n = %v, want the dash period %v", got, d+g)
 			}
 		})
 	}
@@ -137,6 +159,15 @@ func TestAnimFrameSVG_ClassHooks(t *testing.T) {
 	f0 := string(animFrameSVG(svg, 0, n))
 	if !strings.Contains(f0, "opacity: 1.0000") || !strings.Contains(f0, "brightness(1.0000)") {
 		t.Errorf("frame 0 not neutral: %s", f0)
+	}
+	for _, tc := range []struct {
+		k                   int
+		opacity, brightness string
+	}{{3, "0.8000", "1.1500"}, {6, "0.6000", "1.3000"}} {
+		got := string(animFrameSVG(svg, tc.k, n))
+		if !strings.Contains(got, "opacity: "+tc.opacity) || !strings.Contains(got, "brightness("+tc.brightness+")") {
+			t.Errorf("frame %d: want opacity %s, brightness %s: %s", tc.k, tc.opacity, tc.brightness, got)
+		}
 	}
 	if svgAnimates([]byte(`<svg><g class="aeye-flowing"/></svg>`)) {
 		t.Error("aeye-flowing must not match")

@@ -177,6 +177,12 @@ func writeRaw(out string, img *image.RGBA) string {
 	if img.Stride != img.Bounds().Dx()*4 {
 		return "" // a sub-image view; not tightly packed, so not safe to dump
 	}
+	return writePix(out, img.Pix)
+}
+
+// writePix writes pix to out via a temp file renamed into place, so a reader
+// never sees a partial file. Returns "" on any failure.
+func writePix(out string, pix []byte) string {
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil { //nolint:gosec // cache dir holds user-viewable images, not secrets
 		return ""
 	}
@@ -184,7 +190,7 @@ func writeRaw(out string, img *image.RGBA) string {
 	if err != nil {
 		return ""
 	}
-	if _, err := tmp.Write(img.Pix); err != nil {
+	if _, err := tmp.Write(pix); err != nil {
 		tmp.Close()           //nolint:errcheck,gosec // already failing; the write error wins
 		os.Remove(tmp.Name()) //nolint:errcheck,gosec // best-effort temp cleanup
 		return ""

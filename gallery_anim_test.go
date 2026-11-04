@@ -9,10 +9,14 @@ import (
 	"image/color"
 	"image/png"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/noamsto/themestate"
@@ -84,7 +88,7 @@ func animStub(t *testing.T) (svg, log string) {
 	writeAnimPNG(t, b, true)
 	log = filepath.Join(dir, "calls.log")
 	script := filepath.Join(dir, "resvg")
-	body := fmt.Sprintf("#!/bin/sh\nfor a; do in=$out; out=$a; done\necho call >> %q\n"+
+	body := fmt.Sprintf("#!/bin/sh\nfor a; do in=$out; out=$a; done\necho \"$*\" >> %q\n"+
 		"if grep -q 'stroke-dashoffset:0.0000' \"$in\"; then cp %q \"$out\"; else cp %q \"$out\"; fi\n", log, a, b)
 	if err := os.WriteFile(script, []byte(body), 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
@@ -123,7 +127,7 @@ func TestRenderAnimFrames(t *testing.T) {
 	const boxW, boxH = 40, 30
 	n := animFrameCount(boxW, boxH)
 
-	set := renderAnimFrames(ctx, svg, fullCrop(), boxW, boxW, boxH, animPartial)
+	set := renderAnimFrames(ctx, svg, fullCrop(), boxW, boxH, animPartial)
 	if set == nil {
 		t.Fatal("renderAnimFrames = nil")
 	}
@@ -144,8 +148,15 @@ func TestRenderAnimFrames(t *testing.T) {
 	if got := logLines(t, log); got != n {
 		t.Fatalf("resvg calls = %d, want %d", got, n)
 	}
+	calls, err := os.ReadFile(log) //nolint:gosec // test fixture path
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprintf("--width %d --height %d ", boxW, boxH); !strings.Contains(string(calls), want) {
+		t.Errorf("resvg not fitted to the box (%q):\n%s", want, calls)
+	}
 
-	if again := renderAnimFrames(ctx, svg, fullCrop(), boxW, boxW, boxH, animPartial); again != set {
+	if again := renderAnimFrames(ctx, svg, fullCrop(), boxW, boxH, animPartial); again != set {
 		t.Error("second call missed the cache")
 	}
 	if got := logLines(t, log); got != n {
@@ -162,7 +173,7 @@ func TestRenderAnimFrames(t *testing.T) {
 		t.Fatal(err)
 	}
 	half := cropFrac{0, 0, 0.5, 0.5}
-	cropped := renderAnimFrames(ctx, svg, half, boxW, boxW, boxH, animPartial)
+	cropped := renderAnimFrames(ctx, svg, half, boxW, boxH, animPartial)
 	if cropped == nil {
 		t.Fatal("cropped render = nil")
 	}
@@ -176,7 +187,7 @@ func TestRenderAnimFrames(t *testing.T) {
 		t.Error("cropped root/blob missing")
 	}
 
-	full := renderAnimFrames(ctx, svg, half, boxW, boxW, boxH, animFull)
+	full := renderAnimFrames(ctx, svg, half, boxW, boxH, animFull)
 	if full == nil {
 		t.Fatal("full-mode render = nil")
 	}
@@ -186,21 +197,21 @@ func TestRenderAnimFrames(t *testing.T) {
 		}
 	}
 
-	if got := renderAnimFrames(ctx, svg, fullCrop(), boxW, boxW, boxH, animOff); got != nil {
+	if got := renderAnimFrames(ctx, svg, fullCrop(), boxW, boxH, animOff); got != nil {
 		t.Error("animOff rendered frames")
 	}
 
 	cctx, cancel := context.WithCancel(ctx)
 	cancel()
 	other := cropFrac{0.25, 0.25, 0.75, 0.75}
-	if got := renderAnimFrames(cctx, svg, other, boxW, boxW, boxH, animPartial); got != nil {
+	if got := renderAnimFrames(cctx, svg, other, boxW, boxH, animPartial); got != nil {
 		t.Error("cancelled ctx returned a set")
 	}
 	key := animKey{id: 1, vector: svg, crop: other, boxW: boxW, boxH: boxH}
-	if msg := renderAnimCmd(cctx, 1, key, boxW, animPartial)(); msg != nil {
+	if msg := renderAnimCmd(cctx, 1, key, animPartial)(); msg != nil {
 		t.Errorf("cancelled renderAnimCmd msg = %#v, want nil", msg)
 	}
-	if msg, ok := renderAnimCmd(ctx, 7, key, boxW, animPartial)().(animReadyMsg); !ok || msg.gen != 7 || msg.key != key || msg.set == nil {
+	if msg, ok := renderAnimCmd(ctx, 7, key, animPartial)().(animReadyMsg); !ok || msg.gen != 7 || msg.key != key || msg.set == nil {
 		t.Errorf("renderAnimCmd msg = %#v, want animReadyMsg for gen 7", msg)
 	}
 
@@ -231,7 +242,7 @@ func TestAnimCachesConcurrent(t *testing.T) {
 	for i := range 8 {
 		wg.Go(func() {
 			animates[i] = vectorAnimates(svg)
-			sets[i] = renderAnimFrames(context.Background(), svg, fullCrop(), 40, 40, 30, animPartial)
+			sets[i] = renderAnimFrames(context.Background(), svg, fullCrop(), 40, 30, animPartial)
 		})
 	}
 	wg.Wait()
@@ -398,7 +409,7 @@ func TestVectorReadyKicksAnim(t *testing.T) {
 	if cmd := handleMsg(m, amsg); cmd != nil {
 		t.Error("animReadyMsg returned a cmd")
 	}
-	if got, want := string(written(rec, from)), animationStore(m.previewID(), amsg.set, m.l.previewW, m.l.previewH); got != want {
+	if got, want := string(written(rec, from)), strings.Join(animationStore(m.previewID(), amsg.set, m.l.previewW, m.l.previewH), ""); got != want {
 		t.Errorf("animReadyMsg bytes:\n got %q\nwant %q", got, want)
 	}
 	if m.anim.attached != amsg.key {
@@ -425,7 +436,7 @@ func TestAnimHiddenSchedulesNothing(t *testing.T) {
 	}
 
 	boxW, boxH := m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx()
-	set := renderAnimFrames(context.Background(), svg, m.crop, boxW, boxW, boxH, animPartial)
+	set := renderAnimFrames(context.Background(), svg, m.crop, boxW, boxH, animPartial)
 	if set == nil {
 		t.Fatal("fixture frame render failed")
 	}
@@ -440,7 +451,16 @@ func TestAnimHiddenSchedulesNothing(t *testing.T) {
 
 	gen := m.anim.gen
 	from = rec.Len()
-	handleMsg(m, galleryTickMsg{})
+	cmd := handleMsg(m, galleryTickMsg{})
+	// Running the poller would block until something changes, so name the
+	// returned cmd instead: a render batched in makes it a tea.Batch closure.
+	// Inlining gives each call site its own copy, hence the substring match.
+	if cmd == nil {
+		t.Fatal("hidden tick dropped the manifest poller")
+	}
+	if name := runtime.FuncForPC(reflect.ValueOf(cmd).Pointer()).Name(); !strings.Contains(name, ".galleryTickCmd.func") {
+		t.Errorf("hidden tick returned %s, want the manifest poller alone", name)
+	}
 	if m.visible {
 		t.Fatal("tick flipped visibility")
 	}
@@ -551,5 +571,218 @@ func TestSelectionStopsOldAnimation(t *testing.T) {
 	}
 	if m.anim.attached != (animKey{}) {
 		t.Errorf("selection change left attached = %+v", m.anim.attached)
+	}
+}
+
+// TestAnimRootStraightAlpha: kitty's f=32 is straight RGBA, so a translucent
+// pixel must reach the root file un-premultiplied.
+func TestAnimRootStraightAlpha(t *testing.T) {
+	svg, _ := animStub(t)
+	dir := filepath.Dir(svg)
+	for _, name := range []string{"a.png", "b.png"} {
+		img := image.NewNRGBA(image.Rect(0, 0, 40, 30))
+		for i := 0; i < len(img.Pix); i += 4 {
+			copy(img.Pix[i:i+4], []byte{200, 100, 50, 128})
+		}
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, img); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), buf.Bytes(), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+			t.Fatal(err)
+		}
+	}
+	set := renderAnimFrames(context.Background(), svg, fullCrop(), 40, 30, animPartial)
+	if set == nil {
+		t.Fatal("renderAnimFrames = nil")
+	}
+	root, err := os.ReadFile(set.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []byte{200, 100, 50, 128} {
+		if d := int(root[i]) - int(want); d < -2 || d > 2 {
+			t.Fatalf("root pixel = %v, want straight %v", root[:4], []byte{200, 100, 50, 128})
+		}
+	}
+}
+
+// TestAnimRepublishEvicts: a republished diagram (same path, new mtime) must
+// evict the older render's files, not leave them behind under another stem.
+func TestAnimRepublishEvicts(t *testing.T) {
+	svg, _ := animStub(t)
+	ctx := context.Background()
+	old := renderAnimFrames(ctx, svg, fullCrop(), 40, 30, animPartial)
+	if old == nil {
+		t.Fatal("renderAnimFrames = nil")
+	}
+	fi, err := os.Stat(svg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	later := fi.ModTime().Add(time.Second)
+	if err := os.Chtimes(svg, later, later); err != nil {
+		t.Fatal(err)
+	}
+	cur := renderAnimFrames(ctx, svg, fullCrop(), 40, 30, animPartial)
+	if cur == nil {
+		t.Fatal("republished render = nil")
+	}
+	if exists(old.Root) || exists(old.Blob) {
+		t.Error("republish left the older mtime's root/blob on disk")
+	}
+	if !exists(cur.Root) || !exists(cur.Blob) {
+		t.Error("republished root/blob missing")
+	}
+}
+
+// TestAnimUncroppableZoomStaysStatic: zoomed into an SVG with no viewBox to
+// crop, the frames would show the whole diagram in the crop's slot.
+func TestAnimUncroppableZoomStaysStatic(t *testing.T) {
+	svg, _ := animStub(t)
+	noVB := strings.Replace(animFixtureSVG, `viewBox="0 0 40 30"`, `width="40" height="30"`, 1)
+	if err := os.WriteFile(svg, []byte(noVB), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if got := renderAnimFrames(ctx, svg, cropFrac{0, 0, 0.5, 0.5}, 40, 30, animPartial); got != nil {
+		t.Error("zoomed render of an un-croppable svg animated the whole diagram")
+	}
+	if got := renderAnimFrames(ctx, svg, fullCrop(), 40, 30, animPartial); got == nil {
+		t.Error("full-crop render of an svg without a viewBox = nil")
+	}
+}
+
+// TestAnimCropRealResvg: the crop window reaches resvg, and the frames land at
+// the size the static sharp frame is fitted to.
+func TestAnimCropRealResvg(t *testing.T) {
+	if _, err := exec.LookPath(resvgBin()); err != nil {
+		t.Skip("resvg not on PATH")
+	}
+	t.Setenv("AEYE_D2_FONT_DIR", "")
+	t.Setenv("TMPDIR", t.TempDir())
+	resetAnimCaches(t)
+	svg := filepath.Join(t.TempDir(), "d.svg")
+	stroked := strings.Replace(animFixtureSVG, "style=", `stroke="#000" style=`, 1)
+	if err := os.WriteFile(svg, []byte(stroked), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	const boxW, boxH = 300, 150
+	ctx := context.Background()
+	root := func(crop cropFrac) (image.Point, []byte) {
+		t.Helper()
+		set := renderAnimFrames(ctx, svg, crop, boxW, boxH, animPartial)
+		if set == nil {
+			t.Fatalf("renderAnimFrames(%v) = nil", crop)
+		}
+		pix, err := os.ReadFile(set.Root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return image.Pt(set.Plan.W, set.Plan.H), pix
+	}
+	crop := cropFrac{0, 0, 0.6, 0.6}
+	size, cropped := root(crop)
+
+	f, err := os.Open(renderVector(svg, crop, boxW))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close() //nolint:errcheck // read-only test file
+	ref, err := png.Decode(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := fitToBox(ref, boxW, boxH).Bounds().Size(); size != want {
+		t.Errorf("cropped frame 0 is %v, static sharp frame is %v", size, want)
+	}
+	if _, full := root(fullCrop()); bytes.Equal(cropped, full) {
+		t.Error("cropped frame 0 equals the uncropped one: crop not applied")
+	}
+}
+
+// TestStaticSelectionNoAnimStop: moving between static entries never touches
+// kitty's animation state.
+func TestStaticSelectionNoAnimStop(t *testing.T) {
+	animStub(t)
+	svg := filepath.Join(t.TempDir(), "s.svg")
+	if err := os.WriteFile(svg, []byte(staticFixtureSVG), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	m, rec := newAnimModel(t, 2, svg, animPartial)
+	handleMsg(m, vectorReady(t, m))
+	from := rec.Len()
+	m.selectIndex(m.cursor + 1)
+	out := written(rec, from)
+	if len(out) == 0 {
+		t.Fatal("selection change stored nothing")
+	}
+	if bytes.Contains(out, []byte("a=a,")) {
+		t.Errorf("static selection change wrote animation control: %q", out)
+	}
+}
+
+// kickPending drives a vectorReadyMsg for the current framing and returns the
+// animation render it kicks, unrun.
+func kickPending(t *testing.T, m *galleryModel) tea.Cmd {
+	t.Helper()
+	cmd := handleMsg(m, vectorReady(t, m))
+	if cmd == nil {
+		t.Fatal("animated vectorReadyMsg kicked no animation render")
+	}
+	return cmd
+}
+
+// TestAnimUnwantedRenderCancelled: once the preview moves on, the pending render
+// is cancelled rather than left to finish frames nobody will attach.
+func TestAnimUnwantedRenderCancelled(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		move func(t *testing.T, m *galleryModel)
+	}{
+		{"selection change", func(_ *testing.T, m *galleryModel) { m.selectIndex(m.cursor + 1) }},
+		{"preview re-store", func(_ *testing.T, m *galleryModel) { m.transmitPreviewOnly() }},
+		{"pane hidden", func(t *testing.T, m *galleryModel) {
+			stubPaneVisible(t, false)
+			handleMsg(m, galleryTickMsg{})
+			if m.visible {
+				t.Fatal("tick did not hide the pane")
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svg, _ := animStub(t)
+			m, _ := newAnimModel(t, 2, svg, animPartial)
+			cmd := kickPending(t, m)
+			tc.move(t, m)
+			if msg := cmd(); msg != nil {
+				t.Errorf("render still ran after the preview moved on: %#v", msg)
+			}
+		})
+	}
+}
+
+// TestAnimSameFramingNotRestarted: a repeat sharp render of the framing whose
+// animation is already rendering keeps that render rather than restarting it.
+func TestAnimSameFramingNotRestarted(t *testing.T) {
+	svg, _ := animStub(t)
+	m, _ := newAnimModel(t, 1, svg, animPartial)
+	cmd := kickPending(t, m)
+	gen := m.anim.gen
+
+	m.kickVector()
+	if again := handleMsg(m, vectorReady(t, m)); again != nil {
+		t.Error("repeat vectorReadyMsg restarted the render")
+	}
+	if m.anim.gen != gen {
+		t.Errorf("gen = %d, want %d", m.anim.gen, gen)
+	}
+	msg, ok := cmd().(animReadyMsg)
+	if !ok {
+		t.Fatal("the pending render was cancelled")
+	}
+	handleMsg(m, msg)
+	if m.anim.attached != msg.key {
+		t.Errorf("attached = %+v, want %+v", m.anim.attached, msg.key)
 	}
 }

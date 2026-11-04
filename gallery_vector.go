@@ -159,9 +159,7 @@ func (m *galleryModel) scheduleVector() tea.Cmd {
 
 // kickVector returns the async render cmd for the current d2 selection at the
 // current crop, or nil when there is nothing to sharpen (no vector / not kitty).
-// Any running frame render is cancelled: this render's result kicks its own.
 func (m *galleryModel) kickVector() tea.Cmd {
-	m.cancelAnim()
 	v := m.curVector()
 	if v == "" || m.backend != backendKitty {
 		return nil

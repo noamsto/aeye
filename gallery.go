@@ -615,6 +615,7 @@ func (m *galleryModel) transmitView() {
 	}
 
 	if changed[0] {
+		m.cancelAnim()
 		m.stopAnim()
 		store(0, func() (string, bool) {
 			src, ok := m.images[m.cursor].Path, true
@@ -1134,6 +1135,7 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.reload() // re-stores as a side effect
 				return m, tea.Batch(galleryTickCmd(m.tick, m.pane), m.kickVector(), m.repaintCmd())
 			}
+			m.cancelAnim()
 		}
 		// A live light/dark switch repaints from the already-rendered variant —
 		// reload() re-resolves every d2 path to the new theme. Force the reload by

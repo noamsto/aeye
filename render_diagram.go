@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/xml"
+	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -130,11 +134,17 @@ func fixFonts(svg []byte) []byte {
 func runRenderDiagram(in, out string) error {
 	var svg []byte
 	var err error
+	var sizeArgs []string
 	if strings.EqualFold(filepath.Ext(in), ".svg") {
 		svg, err = os.ReadFile(in) //nolint:gosec // path is the user's own diagram file
 		if err != nil {
 			return fmt.Errorf("read %s: %w", in, err)
 		}
+		w, h, err := svgSize(svg)
+		if err != nil {
+			return fmt.Errorf("svg %s: cannot determine its size (%w)", in, err)
+		}
+		sizeArgs = rasterCapArgs(w, h)
 	} else {
 		svg, err = renderD2SVG(in)
 		if err != nil {
@@ -148,12 +158,123 @@ func runRenderDiagram(in, out string) error {
 		return fmt.Errorf("write %s: %w", svgPath, err)
 	}
 
-	args := append(resvgFontArgs(), svgPath, out)
+	args := append(append(resvgFontArgs(), sizeArgs...), svgPath, out)
 	cmd := exec.Command(resvgBin(), args...) //nolint:gosec // args built by the tool, not shell-interpreted
 	if stderr, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("resvg: %w: %s", err, stderr)
 	}
 	return nil
+}
+
+// maxRasterSide caps the long side of a rasterized .svg input: resvg renders at
+// the declared size, so a few bytes claiming 20000x20000 cost gigabytes.
+const maxRasterSide = 8192
+
+// rasterCapArgs scales a canvas whose long side exceeds maxRasterSide down to
+// it (resvg keeps the aspect); nil leaves the declared size alone.
+func rasterCapArgs(w, h float64) []string {
+	switch {
+	case max(w, h) <= maxRasterSide:
+		return nil
+	case w >= h:
+		return []string{"--width", strconv.Itoa(maxRasterSide)}
+	default:
+		return []string{"--height", strconv.Itoa(maxRasterSide)}
+	}
+}
+
+var errNoSVGSize = errors.New("no width/height or viewBox")
+
+// svgUnitPx converts the absolute CSS units to px at 96 dpi, as resvg does.
+var svgUnitPx = map[string]float64{
+	"": 1, "px": 1, "pt": 4.0 / 3, "pc": 16, "in": 96, "cm": 96 / 2.54, "mm": 96 / 25.4,
+}
+
+// svgSize is the pixel size resvg rasterizes svg at, read from the root
+// element's width, height and viewBox. A percentage resolves against the
+// viewBox; a missing side follows the viewBox's aspect. em/ex are rejected: they
+// hang off a font size a stylesheet can set, which the root tag doesn't show.
+func svgSize(svg []byte) (w, h float64, err error) {
+	attrs, err := svgRootAttrs(svg)
+	if err != nil {
+		return 0, 0, err
+	}
+	vb, hasVB := parseViewBox(attrs["viewBox"])
+	// resvg ignores a viewBox without a positive, finite area.
+	hasVB = hasVB && vb.w > 0 && vb.h > 0 && !math.IsInf(vb.w+vb.h, 0)
+	w, wSet, err := svgLength("width", attrs["width"], vb.w, hasVB)
+	if err != nil {
+		return 0, 0, err
+	}
+	h, hSet, err := svgLength("height", attrs["height"], vb.h, hasVB)
+	if err != nil {
+		return 0, 0, err
+	}
+	switch {
+	case wSet && hSet:
+		return w, h, nil
+	case !hasVB:
+		return 0, 0, errNoSVGSize
+	case wSet:
+		return w, w * vb.h / vb.w, nil
+	case hSet:
+		return h * vb.w / vb.h, h, nil
+	default:
+		return vb.w, vb.h, nil
+	}
+}
+
+// svgRootAttrs returns the un-namespaced attributes of the document's root
+// element, which must be <svg>.
+func svgRootAttrs(svg []byte) (map[string]string, error) {
+	dec := xml.NewDecoder(bytes.NewReader(svg))
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, fmt.Errorf("read root element: %w", err)
+		}
+		el, ok := tok.(xml.StartElement)
+		if !ok {
+			continue
+		}
+		if el.Name.Local != "svg" {
+			return nil, fmt.Errorf("root element is <%s>, not <svg>", el.Name.Local)
+		}
+		attrs := map[string]string{}
+		for _, a := range el.Attr {
+			if a.Name.Space == "" {
+				attrs[a.Name.Local] = strings.TrimSpace(a.Value)
+			}
+		}
+		return attrs, nil
+	}
+}
+
+// svgLength resolves a root width/height to px. set is false when it is missing,
+// or a percentage with no viewBox to resolve against.
+func svgLength(name, v string, vbSide float64, hasVB bool) (px float64, set bool, err error) {
+	if v == "" {
+		return 0, false, nil
+	}
+	var num, unit string
+	if pct, ok := strings.CutSuffix(v, "%"); ok {
+		num, unit = pct, "%"
+	} else {
+		i := strings.LastIndexFunc(v, func(r rune) bool { return r < 'a' || r > 'z' })
+		num, unit = v[:i+1], v[i+1:]
+	}
+	n, err := strconv.ParseFloat(num, 64)
+	if err != nil || math.IsInf(n, 0) || math.IsNaN(n) {
+		return 0, false, fmt.Errorf("unreadable %s %q", name, v)
+	}
+	if unit == "%" {
+		return vbSide * n / 100, hasVB, nil
+	}
+	scale, ok := svgUnitPx[unit]
+	if !ok {
+		return 0, false, fmt.Errorf("unsupported %s unit %q", name, v)
+	}
+	return n * scale, true, nil
 }
 
 // resvgBin is the resvg executable: AEYE_RESVG when set, else resvg on PATH.

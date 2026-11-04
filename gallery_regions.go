@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // region is one navigable diagram object, bbox in source fractions (0..1).
@@ -35,7 +36,7 @@ var (
 type viewBox struct{ x, y, w, h float64 }
 
 func parseViewBox(s string) (viewBox, bool) {
-	f := strings.Fields(s)
+	f := strings.FieldsFunc(s, func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
 	if len(f) != 4 {
 		return viewBox{}, false
 	}

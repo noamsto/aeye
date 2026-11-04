@@ -792,18 +792,20 @@ func (m *galleryModel) reload() {
 // markPending marks the selected entry for deletion. Any prior pending deletion
 // on a different entry commits first (single-level undo). Re-marking the entry
 // that is already pending is a no-op, so a stray second x can't skip the undo
-// window and delete it early. No-op on an empty carousel.
-func (m *galleryModel) markPending() {
+// window and delete it early. No-op on an empty carousel. Reports whether it
+// committed a prior deletion (and so reloaded).
+func (m *galleryModel) markPending() (committed bool) {
 	if len(m.images) == 0 {
-		return
+		return false
 	}
 	e := m.images[m.cursor]
 	if m.isPending(e) {
-		return
+		return false
 	}
 	if m.pending != nil {
 		m.commitPending()
 		m.reload()
+		committed = true
 	}
 	m.pending = &pendingDeletion{
 		path:     e.Path,
@@ -812,6 +814,7 @@ func (m *galleryModel) markPending() {
 		deadline: time.Now().Add(undoWindow),
 	}
 	m.delGen++
+	return committed
 }
 
 // undoPending cancels a pending deletion, leaving every file on disk. Bumping
@@ -1025,8 +1028,12 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.reload()
 		case "x":
-			m.markPending()
-			return m, tea.Batch(m.scheduleDeleteTicks(), m.schedulePaint())
+			var kick tea.Cmd
+			if m.markPending() {
+				// The commit's reload may have cancelled the preview's animation.
+				kick = m.kickVector()
+			}
+			return m, tea.Batch(m.scheduleDeleteTicks(), m.schedulePaint(), kick)
 		case "u":
 			m.undoPending()
 			return m, m.schedulePaint()
@@ -1102,7 +1109,8 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.commitPending()
 		m.reload()
-		return m, m.schedulePaint()
+		// The reload may have cancelled the preview's animation render.
+		return m, tea.Batch(m.schedulePaint(), m.kickVector())
 	case deleteCountdownMsg:
 		// Repaint-only tick: re-renders the depleting bar (text layer; rasters
 		// are stored by id and not re-transmitted). Stops once pending clears.

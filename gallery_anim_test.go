@@ -255,8 +255,9 @@ func TestAnimCachesConcurrent(t *testing.T) {
 
 const staticFixtureSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><path d="M0 0 L10 10"/></svg>`
 
-// newAnimModel is a visible kitty carousel over n real images, every entry
-// carrying vector, writing graphics to a file recorder, already transmitted once.
+// newAnimModel is a visible kitty carousel over n real images, every manifest
+// entry carrying vector (so it survives a reload), writing graphics to a file
+// recorder, already transmitted once.
 func newAnimModel(t *testing.T, n int, vector string, mode animMode) (*galleryModel, *transmitRecorder) {
 	t.Helper()
 	t.Setenv("TMUX", "")
@@ -269,7 +270,7 @@ func newAnimModel(t *testing.T, n int, vector string, mode animMode) (*galleryMo
 	const pane = "7"
 	var manifest string
 	for range n {
-		manifest += fmt.Sprintf("{\"type\":\"image\",\"path\":%q}\n", writeTestPNG(t))
+		manifest += fmt.Sprintf("{\"type\":\"image\",\"path\":%q,\"vector\":%q}\n", writeTestPNG(t), vector)
 	}
 	if err := os.WriteFile(manifestPath(pane), []byte(manifest), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
@@ -294,9 +295,6 @@ func newAnimModel(t *testing.T, n int, vector string, mode animMode) (*galleryMo
 	warmThumbs(m)
 	if len(m.images) != n {
 		t.Fatalf("fixture manifest loaded %d images, want %d", len(m.images), n)
-	}
-	for i := range m.images {
-		m.images[i].Vector = vector
 	}
 	m.transmitView()
 	return m, rec
@@ -785,4 +783,68 @@ func TestAnimSameFramingNotRestarted(t *testing.T) {
 	if m.anim.attached != msg.key {
 		t.Errorf("attached = %+v, want %+v", m.anim.attached, msg.key)
 	}
+}
+
+// yieldsVectorReady runs cmd's leaves concurrently and reports whether one
+// yields a vectorReadyMsg within timeout; a long tick in the batch (the undo
+// window) can't hold it up.
+func yieldsVectorReady(cmd tea.Cmd, timeout time.Duration) bool {
+	found := make(chan struct{}, 1)
+	var run func(tea.Cmd)
+	run = func(c tea.Cmd) {
+		if c == nil {
+			return
+		}
+		go func() {
+			switch msg := c().(type) {
+			case tea.BatchMsg:
+				for _, sub := range msg {
+					run(sub)
+				}
+			case vectorReadyMsg:
+				select {
+				case found <- struct{}{}:
+				default:
+				}
+			}
+		}()
+	}
+	run(cmd)
+	select {
+	case <-found:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
+// TestDeleteCommitKeepsSharpD2: committing a deletion reloads, and the reload's
+// re-store can cancel the selection's in-flight animation render, so both
+// routes that commit must re-kick the sharp vector render.
+func TestDeleteCommitKeepsSharpD2(t *testing.T) {
+	t.Run("deleteCommitMsg", func(t *testing.T) {
+		svg, _ := animStub(t)
+		m, _ := newAnimModel(t, 2, svg, animPartial)
+		m.markPending()
+		cmd := handleMsg(m, deleteCommitMsg{gen: m.delGen})
+		if m.pending != nil || len(m.images) != 1 {
+			t.Fatalf("deletion not committed: pending=%v images=%d", m.pending, len(m.images))
+		}
+		if !yieldsVectorReady(cmd, 3*time.Second) {
+			t.Fatal("committing the deletion issued no vector render; the preview stays a bitmap")
+		}
+	})
+	t.Run("x commits the earlier pending deletion", func(t *testing.T) {
+		svg, _ := animStub(t)
+		m, _ := newAnimModel(t, 3, svg, animPartial)
+		m.markPending()
+		m.selectIndex(1)
+		cmd := handleMsg(m, tea.KeyPressMsg{Text: "x", Code: 'x'})
+		if len(m.images) != 2 || m.pending == nil {
+			t.Fatalf("x did not commit the earlier deletion and mark the next: images=%d pending=%v", len(m.images), m.pending)
+		}
+		if !yieldsVectorReady(cmd, 3*time.Second) {
+			t.Fatal("x committing an earlier deletion issued no vector render; the preview stays a bitmap")
+		}
+	})
 }

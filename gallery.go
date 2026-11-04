@@ -255,6 +255,8 @@ type galleryModel struct {
 	regionIdx    int         // focused sibling index at the current level; -1 = not in region mode
 	vecGen       uint64      // debounce generation: only the latest scheduled vector kick fires
 	rasterGen    uint64      // debounce generation for the post-render sixel repaint
+	animMode     animMode    // kitty frame playback for animated diagrams; animOff elsewhere
+	anim         animState
 
 	// Transient one-line feedback (e.g. copy result), cleared on the next key.
 	status string
@@ -613,6 +615,8 @@ func (m *galleryModel) transmitView() {
 	}
 
 	if changed[0] {
+		m.cancelAnim()
+		m.stopAnim()
 		store(0, func() (string, bool) {
 			src, ok := m.images[m.cursor].Path, true
 			if m.curImg != nil && !m.crop.isFull() {
@@ -698,6 +702,7 @@ func (m *galleryModel) dropStore() {
 		m.slots[i].key, m.slots[i].path = "", ""
 	}
 	m.mini.stored = minimapStamp{}
+	m.anim.attached = animKey{}
 }
 
 // restoreView re-stores the images and repaints. Every route back from a state
@@ -787,18 +792,20 @@ func (m *galleryModel) reload() {
 // markPending marks the selected entry for deletion. Any prior pending deletion
 // on a different entry commits first (single-level undo). Re-marking the entry
 // that is already pending is a no-op, so a stray second x can't skip the undo
-// window and delete it early. No-op on an empty carousel.
-func (m *galleryModel) markPending() {
+// window and delete it early. No-op on an empty carousel. Reports whether it
+// committed a prior deletion (and so reloaded).
+func (m *galleryModel) markPending() (committed bool) {
 	if len(m.images) == 0 {
-		return
+		return false
 	}
 	e := m.images[m.cursor]
 	if m.isPending(e) {
-		return
+		return false
 	}
 	if m.pending != nil {
 		m.commitPending()
 		m.reload()
+		committed = true
 	}
 	m.pending = &pendingDeletion{
 		path:     e.Path,
@@ -807,6 +814,7 @@ func (m *galleryModel) markPending() {
 		deadline: time.Now().Add(undoWindow),
 	}
 	m.delGen++
+	return committed
 }
 
 // undoPending cancels a pending deletion, leaving every file on disk. Bumping
@@ -1020,8 +1028,12 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.reload()
 		case "x":
-			m.markPending()
-			return m, tea.Batch(m.scheduleDeleteTicks(), m.schedulePaint())
+			var kick tea.Cmd
+			if m.markPending() {
+				// The commit's reload may have cancelled the preview's animation.
+				kick = m.kickVector()
+			}
+			return m, tea.Batch(m.scheduleDeleteTicks(), m.schedulePaint(), kick)
 		case "u":
 			m.undoPending()
 			return m, m.schedulePaint()
@@ -1071,6 +1083,11 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.backend != backendKitty || m.tty == nil {
 			return m, nil
 		}
+		// Kitty is already looping this framing; a static re-store would stop it.
+		key := m.previewAnimKey(msg.vector, msg.crop)
+		if key == m.anim.attached {
+			return m, nil
+		}
 		// The raster IS the crop window (rendered at preview width), so fit it to
 		// the box and place it — no second crop. Reuses the per-pane zoom scratch
 		// file: Update is single-threaded and kitty fetches the t=f path when it
@@ -1080,6 +1097,11 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fitToBox(msg.raster, m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx()),
 			m.images[m.cursor].Path, fastPNG.Encode)
 		fmt.Fprint(m.tty, transmitVirtual(m.previewID(), src, m.l.previewW, m.l.previewH)) //nolint:errcheck // best-effort tty escape-sequence write
+		// The a=T above replaced any frames under this id.
+		m.anim.attached = animKey{}
+		return m, m.kickAnim(key, msg.animates)
+	case animReadyMsg:
+		m.attachAnim(msg)
 		return m, nil
 	case deleteCommitMsg:
 		if msg.gen != m.delGen || m.pending == nil {
@@ -1087,7 +1109,8 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.commitPending()
 		m.reload()
-		return m, m.schedulePaint()
+		// The reload may have cancelled the preview's animation render.
+		return m, tea.Batch(m.schedulePaint(), m.kickVector())
 	case deleteCountdownMsg:
 		// Repaint-only tick: re-renders the depleting bar (text layer; rasters
 		// are stored by id and not re-transmitted). Stops once pending clears.
@@ -1120,6 +1143,7 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.reload() // re-stores as a side effect
 				return m, tea.Batch(galleryTickCmd(m.tick, m.pane), m.kickVector(), m.repaintCmd())
 			}
+			m.cancelAnim()
 		}
 		// A live light/dark switch repaints from the already-rendered variant —
 		// reload() re-resolves every d2 path to the new theme. Force the reload by
@@ -1606,6 +1630,9 @@ func runGallery(pane string) error {
 		dragNative: os.Getenv("TMUX") == "" && strings.HasPrefix(termName(), "xterm-kitty") && probeDragProtocol(),
 		bridged:    bridgedPolicy(relayed),
 		tick:       &tickSnapshot{},
+	}
+	if backend == backendKitty {
+		m.animMode = animModeFor(termname, os.Getenv("AEYE_ANIMATE"))
 	}
 	// Record the initial selection and its size now, so zoom geometry works on the
 	// first keystroke. Its pixels decode once the first WindowSizeMsg sizes the

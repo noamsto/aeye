@@ -528,6 +528,9 @@ func (m *galleryModel) transmitPreviewOnly() {
 	if m.curImg == nil && !m.crop.isFull() {
 		return
 	}
+	// The a=T replaces the image under the same id, frames and all.
+	m.cancelAnim()
+	m.anim.attached = animKey{}
 	fmt.Fprint(m.tty, m.storePreviewCrop()) //nolint:errcheck // best-effort tty escape-sequence write
 }
 

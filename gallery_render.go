@@ -551,3 +551,53 @@ func transmitVirtualRaw(id int, path string, pxW, pxH, cols, rows int) string {
 	return tmuxPassthrough(fmt.Sprintf("\x1b_Gi=%d,a=T,U=1,q=2,f=32,s=%d,v=%d,c=%d,r=%d,t=f;%s\x1b\\",
 		id, pxW, pxH, cols, rows, enc))
 }
+
+// animNewFrame adds a loop frame to image id from one rect of the blob. A partial frame
+// composes onto the root (c=1) at X,Y and replaces pixels (X=1) rather than
+// blending them; a full frame is the whole image and needs neither.
+func animNewFrame(id int, r animRect, blob string, full bool, gapMS int) string {
+	enc := base64.StdEncoding.EncodeToString([]byte(blob))
+	if full {
+		return tmuxPassthrough(fmt.Sprintf("\x1b_Ga=f,i=%d,q=2,s=%d,v=%d,f=32,t=f,O=%d,S=%d,z=%d;%s\x1b\\",
+			id, r.W, r.H, r.Off, r.Size, gapMS, enc))
+	}
+	return tmuxPassthrough(fmt.Sprintf("\x1b_Ga=f,i=%d,q=2,c=1,X=1,x=%d,y=%d,s=%d,v=%d,f=32,t=f,O=%d,S=%d,z=%d;%s\x1b\\",
+		id, r.X, r.Y, r.W, r.H, r.Off, r.Size, gapMS, enc))
+}
+
+// animEditFrame adds one more rect to an existing loop frame; r= names the frame
+// to edit, so the rect lands on it instead of creating a new frame.
+func animEditFrame(id, frame int, r animRect, blob string) string {
+	enc := base64.StdEncoding.EncodeToString([]byte(blob))
+	return tmuxPassthrough(fmt.Sprintf("\x1b_Ga=f,i=%d,q=2,r=%d,X=1,x=%d,y=%d,s=%d,v=%d,f=32,t=f,O=%d,S=%d;%s\x1b\\",
+		id, frame, r.X, r.Y, r.W, r.H, r.Off, r.Size, enc))
+}
+
+// animStartLoop sets the gap of the root frame (r=1) and runs the animation
+// forever (s=3 starts it, v=1 means loop indefinitely).
+func animStartLoop(id, gapMS int) string {
+	return tmuxPassthrough(fmt.Sprintf("\x1b_Ga=a,i=%d,q=2,r=1,z=%d\x1b\\", id, gapMS)) +
+		tmuxPassthrough(fmt.Sprintf("\x1b_Ga=a,i=%d,q=2,s=3,v=1\x1b\\", id))
+}
+
+// animStop halts the loop of image id.
+func animStop(id int) string {
+	return tmuxPassthrough(fmt.Sprintf("\x1b_Ga=a,i=%d,q=2,s=1\x1b\\", id))
+}
+
+// animationStore returns the escapes that upload the root frame, then every
+// loop frame in order, and start the loop. Kitty numbers loop frames from 2,
+// since the root is frame 1.
+func animationStore(id int, s *animSet, cols, rows int) []string {
+	apcs := []string{transmitVirtualRaw(id, s.Root, s.Plan.W, s.Plan.H, cols, rows)}
+	for i, f := range s.Plan.Frames {
+		for j, r := range f.Rects {
+			if j == 0 {
+				apcs = append(apcs, animNewFrame(id, r, s.Blob, f.Full, animGapMS))
+			} else {
+				apcs = append(apcs, animEditFrame(id, i+2, r, s.Blob))
+			}
+		}
+	}
+	return append(apcs, animStartLoop(id, animGapMS))
+}

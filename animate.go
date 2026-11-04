@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 )
 
@@ -28,12 +29,7 @@ var (
 // svgAnimates reports whether svg carries a D2 animated edge or an aeye-*
 // class hook, i.e. whether animFrameSVG can produce distinct frames.
 func svgAnimates(svg []byte) bool {
-	for _, tag := range animPathTagRe.FindAll(svg, -1) {
-		if animEdgeRe.Match(tag) {
-			return true
-		}
-	}
-	return animHookRe.Match(svg)
+	return slices.ContainsFunc(animPathTagRe.FindAll(svg, -1), animEdgeRe.Match) || animHookRe.Match(svg)
 }
 
 // animFrameSVG returns loop frame k of n. k is reduced mod n first so frame n

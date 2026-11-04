@@ -111,6 +111,41 @@ func TestRenderD2SVG(t *testing.T) {
 	}
 }
 
+func TestRunRenderDiagramSVGInput(t *testing.T) {
+	dir := t.TempDir()
+	runLog := filepath.Join(dir, "resvg.log")
+	stub := filepath.Join(dir, "resvg")
+	script := "#!/bin/sh\nfor a; do :; done\necho png > \"$a\"\necho run >> " + runLog + "\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec // test stub must be executable
+		t.Fatal(err)
+	}
+	t.Setenv("AEYE_RESVG", stub)
+
+	in := filepath.Join(dir, "x.svg")
+	want := []byte(`<svg xmlns="http://www.w3.org/2000/svg"><!-- verbatim-marker-7731 --></svg>`)
+	if err := os.WriteFile(in, want, 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "x-dark.png")
+	if err := runRenderDiagram(in, out); err != nil {
+		t.Fatalf("runRenderDiagram: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "x-dark.svg")) //nolint:gosec // temp-dir path
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("sibling svg = %q, want input verbatim", got)
+	}
+	runs, err := os.ReadFile(runLog) //nolint:gosec // temp-dir path
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := bytes.Count(runs, []byte("run")); n != 1 {
+		t.Fatalf("resvg ran %d times, want 1", n)
+	}
+}
+
 // TestRenderD2SVGHonorsInFileLayout guards the regression where presetting
 // CompileOptions.Layout silently defeats in-file `layout-engine: elk` (d2 only
 // reads d2-config's engine when Layout is nil). Same graph, elk vs dagre: if

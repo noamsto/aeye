@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"oss.terrastruct.com/d2/d2graph"
 	"oss.terrastruct.com/d2/d2layouts/d2dagrelayout"
@@ -119,13 +120,23 @@ func fixFonts(svg []byte) []byte {
 // runRenderDiagram is the whole diagram pipeline in one call: compile the .d2
 // via the embedded d2 library (labels contrasted against their fills during
 // compile), rewrite fonts, write the processed SVG next to the PNG (the
-// carousel's vector source), then rasterize to PNG with resvg.
+// carousel's vector source), then rasterize to PNG with resvg. A .svg input
+// skips compile and fixFonts: its bytes are used verbatim.
 func runRenderDiagram(in, out string) error {
-	svg, err := renderD2SVG(in)
-	if err != nil {
-		return fmt.Errorf("compile %s: %w", in, err)
+	var svg []byte
+	var err error
+	if strings.EqualFold(filepath.Ext(in), ".svg") {
+		svg, err = os.ReadFile(in) //nolint:gosec // path is the user's own diagram file
+		if err != nil {
+			return fmt.Errorf("read %s: %w", in, err)
+		}
+	} else {
+		svg, err = renderD2SVG(in)
+		if err != nil {
+			return fmt.Errorf("compile %s: %w", in, err)
+		}
+		svg = fixFonts(svg)
 	}
-	svg = fixFonts(svg)
 
 	svgPath := out[:len(out)-len(filepath.Ext(out))] + ".svg" // out has no ext -> out+".svg"
 	if err := os.WriteFile(svgPath, svg, 0o644); err != nil { //nolint:gosec // rendered diagram is a user-readable output file

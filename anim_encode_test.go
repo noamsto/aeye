@@ -9,8 +9,8 @@ import (
 
 func animTestImage(w, h int) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
+	for y := range h {
+		for x := range w {
 			img.SetRGBA(x, y, color.RGBA{uint8(x), uint8(y), 7, 255})
 		}
 	}
@@ -85,7 +85,7 @@ func TestEncodeAnimPartial(t *testing.T) {
 	if r.X != 16 || r.Y != 0 || r.W != 16 || r.H != 16 || r.Size != 16*16*4 {
 		t.Fatalf("rect = %+v", r)
 	}
-	for y := 0; y < r.H; y++ {
+	for y := range r.H {
 		got := blob[r.Off+int64(y*r.W*4) : r.Off+int64((y+1)*r.W*4)]
 		o := f1.PixOffset(r.X, r.Y+y)
 		if !bytes.Equal(got, f1.Pix[o:o+r.W*4]) {
@@ -112,7 +112,7 @@ func TestEncodeAnimFullFallback(t *testing.T) {
 	// 7 of 12 tiles is over half the area.
 	big := animClone(f0)
 	var pts []image.Point
-	for i := 0; i < 7; i++ {
+	for i := range 7 {
 		pts = append(pts, image.Pt(i%4*16+1, i/4*16+1))
 	}
 	animPoke(big, pts...)

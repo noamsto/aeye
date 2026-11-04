@@ -48,7 +48,7 @@ func animFrameCount(boxW, boxH int) int {
 // area as rectangles in top-to-bottom, left-to-right order.
 func diffRects(base, cur *image.RGBA) []image.Rectangle {
 	b := base.Bounds()
-	var rects []image.Rectangle
+	rects := []image.Rectangle{}
 	for ty := b.Min.Y; ty < b.Max.Y; ty += animTile {
 		y1 := min(ty+animTile, b.Max.Y)
 		rowStart := len(rects)
@@ -101,6 +101,7 @@ func tileDiffers(base, cur *image.RGBA, x0, y0, x1, y1 int) bool {
 func encodeAnim(frames []*image.RGBA, forceFull bool) (blob []byte, p animPlan) {
 	b := frames[0].Bounds()
 	p = animPlan{W: b.Dx(), H: b.Dy()}
+	blob = []byte{}
 	add := func(img *image.RGBA, r image.Rectangle) animRect {
 		off := int64(len(blob))
 		for y := r.Min.Y; y < r.Max.Y; y++ {

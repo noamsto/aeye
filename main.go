@@ -39,15 +39,15 @@ var cli struct {
 	} `cmd:"" default:"withargs" help:"Open the image carousel (default)."`
 
 	RenderDiagram struct {
-		In  string `arg:"" help:"Input .d2 file."`
+		In  string `arg:"" help:"Input .d2 or .svg file."`
 		Out string `arg:"" help:"Output .png file (a sibling .svg is written too)."`
-	} `cmd:"" name:"render-diagram" help:"Compile a .d2 to PNG: d2 -> fix-fonts -> contrast -> resvg."`
+	} `cmd:"" name:"render-diagram" help:"Compile a .d2 to PNG: d2 -> fix-fonts -> contrast -> resvg. A .svg is rasterized as-is."`
 
 	PublishDiagram struct {
-		File string `arg:"" help:"D2 source under <state-dir>/images/diagrams/src/."`
+		File string `arg:"" help:"Diagram source (.d2, .svg or .png) under <state-dir>/images/diagrams/src/."`
 		Pane string `help:"tmux pane (%id) whose carousel receives it. Default: $TMUX_PANE." placeholder:"%ID"`
 		Open bool   `help:"Open the carousel beside the pane if no viewer is open, without moving focus."`
-	} `cmd:"" name:"publish-diagram" help:"Render a .d2 into a pane's carousel, replacing an earlier publish of the same file name."`
+	} `cmd:"" name:"publish-diagram" help:"Render a diagram into a pane's carousel, replacing an earlier publish of the same name."`
 
 	FlockFD struct {
 		FD       int  `arg:"" name:"fd" help:"File descriptor inherited from the calling shell."`

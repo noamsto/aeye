@@ -215,7 +215,7 @@ env flag (e.g. `AEYE_D2_BROWSER=1`), leaving the default hermetic.
 
 ## Animated diagrams (#371)
 
-D2's `animated: true` is CSS (`animation: dashdraw`) that resvg ignores, so the
+D2's `style.animated: true` is CSS (`animation: dashdraw`) that resvg ignores, so the
 static raster has no motion. The carousel now turns it into a looping kitty
 animation on the selected preview.
 
@@ -229,10 +229,14 @@ animation on the selected preview.
   in D2's direction (sign of the offset, negated by `animation-direction:
   reverse`). The hooks get an injected `<style>` whose keyframe state is fixed per
   frame. Frame k is identical to frame k mod n, so the loop is seamless.
-- **Rasterization.** One resvg run per frame at preview width, fitted to the box,
-  cached per framing under the `aeye-anim-` prefix (evicted only within it). At
-  most 4 run concurrently; a newer request cancels the in-flight ones
-  (`exec.CommandContext`). Any failure leaves the static image.
+- **Rasterization.** One resvg run per frame, directly at the box size
+  (`--width`/`--height`; resvg fits within both, keeping aspect) rather than at
+  preview width and shrunk. Frames are straight-alpha RGBA (kitty `f=32` expects
+  non-premultiplied). Per-framing files are named from the vector path with the
+  mtime in the suffix, so a republish evicts the previous set; they live under
+  the `aeye-anim-` prefix (evicted only within it). At most 4 run concurrently;
+  a newer request cancels the in-flight ones (`exec.CommandContext`). Any
+  failure leaves the static image.
 - **Partial-rectangle frames.** Each frame is diffed against frame 0 in 16 px
   tiles. The changed rectangles go into one blob of raw RGBA that kitty reads via
   `O`/`S`; a frame's first rect creates it on a copy of the base (`c=1`,
@@ -240,16 +244,19 @@ animation on the selected preview.
   A frame falls back to a full frame when the changed area exceeds 50 % or it
   needs more than 256 rects. `AEYE_ANIMATE=full` forces full frames.
 - **Playback.** The root frame is `a=T`, the others `a=f`, then `a=a` sets the
-  gap and loops forever. kitty runs the loop itself; aeye adds no timers.
+  gap and loops forever. kitty runs the loop itself; aeye adds no timers. Each
+  escape is written to the tty separately so the kernel's chunking of large tty
+  writes can't interleave bubbletea output inside one.
 - **Eligibility.** kitty termname only (not Ghostty: it lacks animation frames),
   not bridged/relayed, and `AEYE_ANIMATE` not `0`. Otherwise the preview is static
   exactly as before.
 - **Zoom.** The visible crop animates. Only the crop window is rasterized, so a
   crop frame costs the same as a fit frame. During pan/zoom the preview is static;
   the animation re-attaches once the sharp crop lands.
-- **Visibility.** Nothing is rendered or attached while the viewer is hidden, and
-  kitty does not advance animations it is not drawing. A selection change stops
-  the old loop.
+- **Visibility.** No frame render starts and nothing is attached while the
+  viewer is hidden. An in-flight render is cancelled on the visible-to-hidden
+  edge, on a selection change and on a framing change (pan/zoom); an unchanged
+  framing is not restarted.
 - **Frame budget.** n = min(12, 96 MiB / box RGBA bytes); under 8 frames the
   diagram stays static. The gap is 100 ms, so a 12-frame loop is 1.2 s.
 

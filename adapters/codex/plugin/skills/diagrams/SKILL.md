@@ -106,11 +106,18 @@ is the usual cause. Fix the content per the next section; the proportions follow
 
 ## Motion
 
-Set `animated: true` on the few edges that carry data or request flow
+Set `style.animated: true` on the few edges that carry data or request flow
 (pipelines, request paths, event streams) so the eye follows them. Leave
 containment and structure edges static, and never animate every edge: motion
 everywhere is noise. Static is the default. The loop plays in the carousel on
 kitty only; elsewhere the diagram is static.
+
+```d2
+direction: right
+client -> api: request {style.animated: true}
+api -> db: query {style.animated: true}
+db -> client: response
+```
 
 ## Non-D2 producers
 
@@ -121,8 +128,10 @@ Hand a finished SVG over with `aeye publish-diagram <state-dir>/images/diagrams/
 - `aeye-pulse` on a shape: opacity pulse.
 - `aeye-glow` on a shape: soft brighten.
 
-The producer's inline `style` beats these rules. Text without a `font-family`
-renders in the diagram font (`AEYE_D2_FONT`).
+The file is shown as-is in light and dark themes (no theme, palette or contrast
+pass), so give it an opaque background. The producer's inline `style` beats
+these rules. Text without a `font-family` renders in the diagram font
+(`AEYE_D2_FONT`).
 
 ## What goes in a node
 

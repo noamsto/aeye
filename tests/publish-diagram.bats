@@ -184,3 +184,33 @@ STUB
 	bash "$APP" "$SRC/flow.d2"
 	[ -f "$shared" ]
 }
+
+@test "a failed .png copy leaves no partial variant and the next publish recovers" {
+	printf '\x89PNG-bytes' >"$SRC/shot.png"
+	real_cp="$(command -v cp)"
+	cat >"$STUB_BIN/cp" <<STUB
+#!/usr/bin/env bash
+for a in "\$@"; do
+	[[ \$a == *-light.png* ]] && exit 1
+done
+exec "$real_cp" "\$@"
+STUB
+	chmod +x "$STUB_BIN/cp"
+	run bash "$APP" "$SRC/shot.png"
+	[ "$status" -ne 0 ]
+	[[ $output == *"copy to "*" failed"* ]]
+	[ -z "$(ls "$DIAGRAMS"/*-light.png* 2>/dev/null)" ]
+	rm "$STUB_BIN/cp"
+	run bash "$APP" "$SRC/shot.png"
+	[ "$status" -eq 0 ]
+	png="$(jq -r .path "$MANIFEST")"
+	cmp "$png" "$SRC/shot.png"
+	cmp "${png/-dark/-light}" "$SRC/shot.png"
+}
+
+@test "a .D2 source keeps its uppercase extension in the name, as the agent hook names it" {
+	printf 'a -> b\n' >"$SRC/Flow.D2"
+	run bash "$APP" "$SRC/Flow.D2"
+	[ "$status" -eq 0 ]
+	[ "$(jq -r .name "$MANIFEST")" = Flow.D2 ]
+}

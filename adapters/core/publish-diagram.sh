@@ -77,7 +77,14 @@ if [[ $ext == png ]]; then
 	svg=""
 	for theme in dark light; do
 		variant="$(d2_png_for "$file" "$DIAGRAMS_DIR" "$theme")"
-		[[ -f $variant ]] || cp "$file" "$variant"
+		[[ -f $variant ]] && continue
+		# Copy atomically: a truncated variant would be reused by every later publish.
+		tmp="$(mktemp "$variant.XXXXXX")"
+		if ! { cp "$file" "$tmp" && mv -f "$tmp" "$variant"; }; then
+			rm -f "$tmp"
+			echo "aeye publish-diagram: copy to $variant failed" >&2
+			exit 1
+		fi
 	done
 else
 	svg="${png%.png}.svg"
@@ -98,7 +105,9 @@ fi
 
 printf -v now '%(%FT%T%z)T' -1
 # Name drops the extension, so flow.svg republished replaces a flow entry from flow.d2.
-diagram_replace_entry "$MANIFEST" "$png" "$svg" "$(basename "${file%.*}")" "$now"
+# A d2 source is named as the agent hooks name it (only a lowercase .d2 is stripped).
+if [[ $ext == d2 ]]; then name="$(basename "$file" .d2)"; else name="$(basename "${file%.*}")"; fi
+diagram_replace_entry "$MANIFEST" "$png" "$svg" "$name" "$now"
 
 if [[ -n $open ]]; then
 	"${AEYE_TOGGLE:-tmux-claude-images}" --ensure-open >/dev/null 2>&1 ||

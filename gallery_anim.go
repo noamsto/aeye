@@ -25,7 +25,7 @@ const (
 	animFull
 )
 
-// animModeFor picks the playback mode from TERM and AEYE_ANIMATE. Only kitty
+// animModeFor picks the playback mode from the terminal name and AEYE_ANIMATE. Only kitty
 // plays kitty animation frames: Ghostty speaks the graphics protocol but drops
 // frames, so it stays static.
 func animModeFor(termname, env string) animMode {

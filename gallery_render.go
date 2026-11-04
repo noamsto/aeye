@@ -552,7 +552,7 @@ func transmitVirtualRaw(id int, path string, pxW, pxH, cols, rows int) string {
 		id, pxW, pxH, cols, rows, enc))
 }
 
-// animNewFrame adds loop frame id from one rect of the blob. A partial frame
+// animNewFrame adds a loop frame to image id from one rect of the blob. A partial frame
 // composes onto the root (c=1) at X,Y and replaces pixels (X=1) rather than
 // blending them; a full frame is the whole image and needs neither.
 func animNewFrame(id int, r animRect, blob string, full bool, gapMS int) string {

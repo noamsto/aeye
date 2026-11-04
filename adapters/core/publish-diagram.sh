@@ -104,8 +104,8 @@ else
 fi
 
 printf -v now '%(%FT%T%z)T' -1
-# Name drops the extension, so flow.svg republished replaces a flow entry from flow.d2.
-# A d2 source is named as the agent hooks name it (only a lowercase .d2 is stripped).
+# The name drops the extension, so flow.svg replaces a flow entry from flow.d2; a
+# d2 source is named as the agent hooks name it (only a lowercase .d2 is stripped).
 if [[ $ext == d2 ]]; then name="$(basename "$file" .d2)"; else name="$(basename "${file%.*}")"; fi
 diagram_replace_entry "$MANIFEST" "$png" "$svg" "$name" "$now"
 

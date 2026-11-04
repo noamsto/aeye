@@ -3,12 +3,13 @@ module github.com/noamsto/aeye
 go 1.26.3
 
 require (
-	charm.land/bubbletea/v2 v2.1.0
+	charm.land/bubbletea/v2 v2.1.1
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/alecthomas/kong v1.16.1
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4
 	github.com/charmbracelet/x/term v0.2.2
+	github.com/mazznoer/csscolorparser v0.1.8
 	github.com/noamsto/mermaid2d2 v0.6.0
 	github.com/noamsto/themestate v0.1.0
 	golang.org/x/image v0.47.0
@@ -34,7 +35,6 @@ require (
 	github.com/google/pprof v0.0.0-20260825171938-4d453200e7d9 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mattn/go-runewidth v0.0.30 // indirect
-	github.com/mazznoer/csscolorparser v0.1.8 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/sammcj/mermaid-check v0.5.1 // indirect

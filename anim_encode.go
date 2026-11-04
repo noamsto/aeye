@@ -8,7 +8,7 @@ import (
 const (
 	animTile        = 16
 	animBudgetBytes = 96 << 20
-	animMaxRects    = 64
+	animMaxRects    = 256 // a dense 40-edge diagram diffs to ~85 rects over ~28% of the frame
 )
 
 type animRect struct {

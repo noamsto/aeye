@@ -21,7 +21,11 @@ setup() {
 	echo "d2 boom" >&2
 	exit 1
 }
-printf '<svg/>' >"${3%.png}.svg"
+if [[ $2 == *.svg ]]; then
+	cp "$2" "${3%.png}.svg"
+else
+	printf '<svg/>' >"${3%.png}.svg"
+fi
 printf 'PNG' >"$3"
 STUB
 	cat >"$STUB_BIN/tmux-claude-images" <<'STUB'
@@ -118,6 +122,57 @@ STUB
 	run bash "$APP" "$SRC/flow.d2" %5
 	[ "$status" -ne 0 ]
 	[ -z "$(ls "$CLAUDE_STATUS_DIR"/images/*.jsonl 2>/dev/null)" ]
+}
+
+@test "publishes an .svg source: both variants, sibling svg is the input, entry named for the basename" {
+	printf '<svg id="in"/>' >"$SRC/x.svg"
+	run bash "$APP" "$SRC/x.svg"
+	[ "$status" -eq 0 ]
+	png="$(jq -r .path "$MANIFEST")"
+	[ "$(jq -r .name "$MANIFEST")" = x ]
+	[ -f "$png" ]
+	[ -f "${png/-dark/-light}" ]
+	[ "$(jq -r .vector "$MANIFEST")" = "${png%.png}.svg" ]
+	cmp "${png%.png}.svg" "$SRC/x.svg"
+}
+
+@test "publishes a .png source as byte-identical dark and light copies with no vector" {
+	printf '\x89PNG-bytes' >"$SRC/shot.png"
+	run bash "$APP" "$SRC/shot.png"
+	[ "$status" -eq 0 ]
+	png="$(jq -r .path "$MANIFEST")"
+	[ "$(jq -r .name "$MANIFEST")" = shot ]
+	[ "$(jq -r .vector "$MANIFEST")" = "" ]
+	cmp "$png" "$SRC/shot.png"
+	cmp "${png/-dark/-light}" "$SRC/shot.png"
+}
+
+@test "refuses sources that are neither .d2, .svg nor .png" {
+	printf 'x' >"$SRC/notes.txt"
+	printf 'x' >"$SRC/photo.jpg"
+	for f in notes.txt photo.jpg; do
+		run bash "$APP" "$SRC/$f"
+		[ "$status" -eq 1 ]
+		[[ $output == *".d2, .svg or .png"* ]]
+	done
+	[ ! -e "$MANIFEST" ]
+}
+
+@test "an .svg published after a same-named .d2 replaces its entry" {
+	printf '<svg id="v2"/>' >"$SRC/flow.svg"
+	bash "$APP" "$SRC/flow.d2"
+	run bash "$APP" "$SRC/flow.svg"
+	[ "$status" -eq 0 ]
+	[ "$(wc -l <"$MANIFEST")" -eq 1 ]
+	[ "$(jq -r .name "$MANIFEST")" = flow ]
+	cmp "$(jq -r .vector "$MANIFEST")" "$SRC/flow.svg"
+}
+
+@test "an .svg containing foreignObject publishes: the check is for d2 output only" {
+	printf '<svg><foreignObject/></svg>' >"$SRC/foreign.svg"
+	run bash "$APP" "$SRC/foreign.svg"
+	[ "$status" -eq 0 ]
+	[ "$(jq -r .name "$MANIFEST")" = foreign ]
 }
 
 @test "replacing one entry keeps the render a same-content sibling still uses" {

@@ -172,8 +172,8 @@ const maxRasterSide = 8192
 
 // rasterCapArgs bounds resvg's output to the w×h canvas, scaled down so its long
 // side fits maxRasterSide. Both bounds always go out, and resvg fits within
-// both keeping its own aspect: if svgSize ever reads the file differently from
-// resvg, the output can only shrink, never grow past the cap.
+// both keeping its own aspect (scaling up or down): if svgSize ever reads the
+// file differently from resvg, the output may be resized but never past the cap.
 func rasterCapArgs(w, h float64) []string {
 	s := min(1, maxRasterSide/max(w, h))
 	side := func(v float64) string {

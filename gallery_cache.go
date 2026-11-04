@@ -186,7 +186,9 @@ func writePix(out string, pix []byte) string {
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil { //nolint:gosec // cache dir holds user-viewable images, not secrets
 		return ""
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(out), "raw-*")
+	// Prefix with the target's name so an orphan from a crash is matched by
+	// the animation cache's eviction glob and cleaned by the next render.
+	tmp, err := os.CreateTemp(filepath.Dir(out), filepath.Base(out)+".*")
 	if err != nil {
 		return ""
 	}

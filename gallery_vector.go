@@ -42,6 +42,10 @@ func cropViewBox(svg []byte, c cropFrac) ([]byte, bool) {
 	return out, true
 }
 
+// maxVectorHeight bounds the sharp render's height: twice the producer cap, so a
+// tall diagram at preview width still has headroom before it starts shrinking.
+const maxVectorHeight = 2 * maxRasterSide
+
 // renderVector rasterizes the crop window of the SVG to a scratch PNG at targetW
 // pixels wide via resvg, caching on (svg, mtime, crop, targetW). Returns the PNG
 // path, or "" if resvg is absent or the render fails (caller falls back to the
@@ -88,7 +92,10 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 			src = tmp
 		}
 	}
-	args := append(resvgFontArgs(), "--width", strconv.Itoa(targetW), src, out)
+	// The height bound only binds on a crop taller than maxVectorHeight at
+	// targetW (e.g. a 100x8000 svg at 1600 wide would be ~0.8 GB); resvg then
+	// fits within both. Anything shorter renders byte-identical to --width alone.
+	args := append(resvgFontArgs(), "--width", strconv.Itoa(targetW), "--height", strconv.Itoa(maxVectorHeight), src, out)
 	if err := exec.Command(bin, args...).Run(); err != nil { //nolint:gosec // args built by the tool, not shell-interpreted
 		os.Remove(out) //nolint:errcheck,gosec // best-effort temp cleanup
 		return ""

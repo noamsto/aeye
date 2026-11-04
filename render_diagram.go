@@ -170,17 +170,16 @@ func runRenderDiagram(in, out string) error {
 // the declared size, so a few bytes claiming 20000x20000 cost gigabytes.
 const maxRasterSide = 8192
 
-// rasterCapArgs scales a canvas whose long side exceeds maxRasterSide down to
-// it (resvg keeps the aspect); nil leaves the declared size alone.
+// rasterCapArgs bounds resvg's output to the w×h canvas, scaled down so its long
+// side fits maxRasterSide. Both bounds always go out, and resvg fits within
+// both keeping its own aspect: if svgSize ever reads the file differently from
+// resvg, the output can only shrink, never grow past the cap.
 func rasterCapArgs(w, h float64) []string {
-	switch {
-	case max(w, h) <= maxRasterSide:
-		return nil
-	case w >= h:
-		return []string{"--width", strconv.Itoa(maxRasterSide)}
-	default:
-		return []string{"--height", strconv.Itoa(maxRasterSide)}
+	s := min(1, maxRasterSide/max(w, h))
+	side := func(v float64) string {
+		return strconv.Itoa(int(max(1, min(maxRasterSide, math.Ceil(v*s)))))
 	}
+	return []string{"--width", side(w), "--height", side(h)}
 }
 
 var errNoSVGSize = errors.New("no width/height or viewBox")
@@ -212,20 +211,27 @@ func svgSize(svg []byte) (w, h float64, err error) {
 	}
 	switch {
 	case wSet && hSet:
-		return w, h, nil
 	case !hasVB:
 		return 0, 0, errNoSVGSize
 	case wSet:
-		return w, w * vb.h / vb.w, nil
+		h = w * vb.h / vb.w
 	case hSet:
-		return h * vb.w / vb.h, h, nil
+		w = h * vb.w / vb.h
 	default:
-		return vb.w, vb.h, nil
+		w, h = vb.w, vb.h
 	}
+	if w <= 0 || h <= 0 || math.IsInf(w+h, 0) {
+		return 0, 0, fmt.Errorf("invalid size %vx%v", w, h)
+	}
+	return w, h, nil
 }
 
-// svgRootAttrs returns the un-namespaced attributes of the document's root
-// element, which must be <svg>.
+// svgNS is the SVG namespace: resvg reads a root attribute prefixed into it
+// (s:width with xmlns:s set to it) the same as an unprefixed one.
+const svgNS = "http://www.w3.org/2000/svg"
+
+// svgRootAttrs returns the attributes resvg reads off the document's root
+// element, which must be <svg>: the un-namespaced ones and those in svgNS.
 func svgRootAttrs(svg []byte) (map[string]string, error) {
 	dec := xml.NewDecoder(bytes.NewReader(svg))
 	for {
@@ -242,17 +248,23 @@ func svgRootAttrs(svg []byte) (map[string]string, error) {
 		}
 		attrs := map[string]string{}
 		for _, a := range el.Attr {
-			if a.Name.Space == "" {
-				attrs[a.Name.Local] = strings.TrimSpace(a.Value)
+			if a.Name.Space != "" && a.Name.Space != svgNS {
+				continue
 			}
+			if _, dup := attrs[a.Name.Local]; dup {
+				return nil, fmt.Errorf("root <svg> sets %s twice", a.Name.Local)
+			}
+			attrs[a.Name.Local] = a.Value
 		}
 		return attrs, nil
 	}
 }
 
 // svgLength resolves a root width/height to px. set is false when it is missing,
-// or a percentage with no viewBox to resolve against.
+// or a percentage with no viewBox to resolve against. Like resvg it allows
+// leading whitespace but not trailing.
 func svgLength(name, v string, vbSide float64, hasVB bool) (px float64, set bool, err error) {
+	v = strings.TrimLeft(v, " \t\r\n")
 	if v == "" {
 		return 0, false, nil
 	}
@@ -263,8 +275,8 @@ func svgLength(name, v string, vbSide float64, hasVB bool) (px float64, set bool
 		i := strings.LastIndexFunc(v, func(r rune) bool { return r < 'a' || r > 'z' })
 		num, unit = v[:i+1], v[i+1:]
 	}
-	n, err := strconv.ParseFloat(num, 64)
-	if err != nil || math.IsInf(n, 0) || math.IsNaN(n) {
+	n, ok := parseSVGNumber(num)
+	if !ok {
 		return 0, false, fmt.Errorf("unreadable %s %q", name, v)
 	}
 	if unit == "%" {

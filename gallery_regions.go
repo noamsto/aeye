@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode"
 )
 
 // region is one navigable diagram object, bbox in source fractions (0..1).
@@ -35,14 +34,36 @@ var (
 // viewBox is an SVG coordinate space: origin (x,y) plus width/height.
 type viewBox struct{ x, y, w, h float64 }
 
+// svgNumber is a number as resvg reads one: plain decimal with optional sign,
+// fraction and exponent. strconv.ParseFloat alone also takes hex floats, "inf",
+// "nan" and digit underscores, all of which resvg rejects.
+const svgNumber = `[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?`
+
+var (
+	svgNumberRe = regexp.MustCompile(`^` + svgNumber + `$`)
+	// Separators are whitespace and/or one comma: ",," is an empty field resvg
+	// rejects, not a separator to collapse.
+	viewBoxRe = regexp.MustCompile(`^\s*(` + svgNumber + `)(?:\s*,\s*|\s+)(` + svgNumber + `)(?:\s*,\s*|\s+)(` +
+		svgNumber + `)(?:\s*,\s*|\s+)(` + svgNumber + `)\s*$`)
+)
+
+// parseSVGNumber parses a plain decimal svgNumber to a finite float.
+func parseSVGNumber(s string) (float64, bool) {
+	if !svgNumberRe.MatchString(s) {
+		return 0, false
+	}
+	n, err := strconv.ParseFloat(s, 64)
+	return n, err == nil
+}
+
 func parseViewBox(s string) (viewBox, bool) {
-	f := strings.FieldsFunc(s, func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
-	if len(f) != 4 {
+	m := viewBoxRe.FindStringSubmatch(s)
+	if m == nil {
 		return viewBox{}, false
 	}
 	var v [4]float64
-	for i := range f {
-		n, err := strconv.ParseFloat(f[i], 64)
+	for i := range v {
+		n, err := strconv.ParseFloat(m[i+1], 64)
 		if err != nil {
 			return viewBox{}, false
 		}

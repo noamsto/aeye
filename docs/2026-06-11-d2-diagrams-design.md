@@ -56,10 +56,7 @@ ordinary `type:"image"` entries, so the viewer needs **zero display changes**.
    the carousel, Mermaid for GitHub docs") — not part of this skill, and there is
    **no** Mermaid→D2 transpilation step (no reliable converter exists; the agent
    emits the right language per surface).
-3. **Animated diagrams.** The carousel rasterizes `svg → png` and displays a
-   static frame (the kitty *protocol* supports animation, but the viewer
-   transmits PNG via `f=100` and decodes only the first frame). D2 "animated
-   traffic flow" is SVG/CSS animation and dies on rasterization.
+3. ~~**Animated diagrams.**~~ Lifted in #371; see §Animated diagrams (#371).
 4. **D2 syntax auto-fix.** On a parse error the hook skips and logs (see §Error
    handling). We borrow the *validate* instinct, not the auto-fix machinery.
 
@@ -215,6 +212,81 @@ when a render actually happened (renderers absent stays a silent no-op). If rich
 text is ever needed, the cheaper path is a targeted hybrid — the detection
 already exists, so only those diagrams would opt into a browser raster behind an
 env flag (e.g. `AEYE_D2_BROWSER=1`), leaving the default hermetic.
+
+## Animated diagrams (#371)
+
+D2's `animated: true` is CSS (`animation: dashdraw`) that resvg ignores, so the
+static raster has no motion. The carousel now turns it into a looping kitty
+animation on the selected preview.
+
+- **Detection.** In the processed SVG: D2 `<path class="… animated-connection">`
+  edges, plus the producer hooks `aeye-flow` (a path or its group: dots flow
+  along the path direction), `aeye-pulse` (a shape: opacity pulse) and
+  `aeye-glow` (a shape: soft brighten). An SVG with neither is not animated: no
+  frames, no extra work, nothing extra transmitted.
+- **Frame text.** `animate.go` is a pure function over the SVG. Frame k of n
+  rewrites each animated path's `stroke-dashoffset` by k/n of one dash period,
+  in D2's direction (sign of the offset, negated by `animation-direction:
+  reverse`). The hooks get an injected `<style>` whose keyframe state is fixed per
+  frame. Frame k is identical to frame k mod n, so the loop is seamless.
+- **Rasterization.** One resvg run per frame at preview width, fitted to the box,
+  cached per framing under the `aeye-anim-` prefix (evicted only within it). At
+  most 4 run concurrently; a newer request cancels the in-flight ones
+  (`exec.CommandContext`). Any failure leaves the static image.
+- **Partial-rectangle frames.** Each frame is diffed against frame 0 in 16 px
+  tiles. The changed rectangles go into one blob of raw RGBA that kitty reads via
+  `O`/`S`; a frame's first rect creates it on a copy of the base (`c=1`,
+  `X=1` replaces pixels instead of blending) and its other rects edit it (`r=`).
+  A frame falls back to a full frame when the changed area exceeds 50 % or it
+  needs more than 256 rects. `AEYE_ANIMATE=full` forces full frames.
+- **Playback.** The root frame is `a=T`, the others `a=f`, then `a=a` sets the
+  gap and loops forever. kitty runs the loop itself; aeye adds no timers.
+- **Eligibility.** kitty termname only (not Ghostty: it lacks animation frames),
+  not bridged/relayed, and `AEYE_ANIMATE` not `0`. Otherwise the preview is static
+  exactly as before.
+- **Zoom.** The visible crop animates. Only the crop window is rasterized, so a
+  crop frame costs the same as a fit frame. During pan/zoom the preview is static;
+  the animation re-attaches once the sharp crop lands.
+- **Visibility.** Nothing is rendered or attached while the viewer is hidden, and
+  kitty does not advance animations it is not drawing. A selection change stops
+  the old loop.
+- **Frame budget.** n = min(12, 96 MiB / box RGBA bytes); under 8 frames the
+  diagram stays static. The gap is 100 ms, so a 12-frame loop is 1.2 s.
+
+### Measured
+
+Headless harness: Xvfb + kitty 0.49.2 with software GL (llvmpipe), a scratch tmux
+server with `allow-passthrough`, the real `aeye` binary. CPU in clock ticks at
+100 Hz over 20 s.
+
+Small diagram (3 nodes, 2 animated edges), visible:
+
+| mode | aeye | kitty |
+|---|---|---|
+| static | 6 | 10 |
+| partial | 10 | 1838 |
+| full | 8 | 2075 |
+
+Hidden (tmux window switched away): kitty 0 (partial) / 6 (full); aeye 6-9 (the
+existing 1.5 s poll).
+
+Large diagram (30 nodes, 40 animated edges; frames 539x1000 in a 1600x1000 box):
+
+| | partial | full |
+|---|---|---|
+| one resvg frame | 137 ms, peak RSS 52 MB | same |
+| 12 frames, wall (4 parallel) | ~550 ms | ~550 ms |
+| blob | 4.6 MB (1144 rects) | 23.7 MB |
+| escapes sent per attach | 261 KB | 2.7 KB |
+| Go allocations during render (transient) | 281 MiB | 378 MiB |
+| aeye RSS (static: 218 MB) | 273 MB | 288 MB |
+| visible kitty CPU, ticks per 20 s | 1918 | 1903 |
+
+The root frame is 2.2 MB. kitty RSS is unchanged (~182 MB) in all modes.
+
+Caveat: kitty's visible CPU here is software-GL redraw of a 1400x900 window at
+10 fps. On a GPU it should be far lower, but that was not measured. aeye's own
+CPU while looping matches the static baseline.
 
 ## Error handling (define errors out of existence)
 

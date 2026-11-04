@@ -270,6 +270,10 @@ must hand off to kitty at the pane edge. lazytmux ships this; for a hand-rolled
 `KITTY_LISTEN_ON` set, runs `kitty @ action neighboring_window <dir>` instead of
 `select-pane` (see `lazytmux` `scripts/tmux-smart-nav.sh`).
 
+Diagrams with animated edges (D2 `animated: true`) loop in the kitty carousel.
+`AEYE_ANIMATE=0` keeps them static; `AEYE_ANIMATE=full` sends whole frames
+instead of changed rectangles.
+
 ### Debugging the carousel
 
 Set `AEYE_DEBUG` to trace the viewer's first-frame lifecycle (issue #125-class

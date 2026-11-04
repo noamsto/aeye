@@ -96,6 +96,26 @@ labeled five-stage chain that renders as a 5:1 strip left-to-right comes out
 An extreme ratio in either axis is a symptom, not the bug — nodes carrying prose
 is the usual cause. Fix the content per the next section; the proportions follow.
 
+## Motion
+
+Set `animated: true` on the few edges that carry data or request flow
+(pipelines, request paths, event streams) so the eye follows them. Leave
+containment and structure edges static, and never animate every edge: motion
+everywhere is noise. Static is the default. The loop plays in the carousel on
+kitty only; elsewhere the diagram is static.
+
+## Non-D2 producers
+
+Hand a finished SVG over with `aeye publish-diagram <state-dir>/images/diagrams/src/<name>.svg`
+(`.png` also works, without vector zoom). Animation classes:
+
+- `aeye-flow` on a path or its group: dots flow along the path direction.
+- `aeye-pulse` on a shape: opacity pulse.
+- `aeye-glow` on a shape: soft brighten.
+
+The producer's inline `style` beats these rules. Text without a `font-family`
+renders in the diagram font (`AEYE_D2_FONT`).
+
 ## What goes in a node
 
 - **Nodes are the things; edges carry what happens between them.** Follow the

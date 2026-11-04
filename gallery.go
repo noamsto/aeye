@@ -255,6 +255,8 @@ type galleryModel struct {
 	regionIdx    int         // focused sibling index at the current level; -1 = not in region mode
 	vecGen       uint64      // debounce generation: only the latest scheduled vector kick fires
 	rasterGen    uint64      // debounce generation for the post-render sixel repaint
+	animMode     animMode    // kitty frame playback for animated diagrams; animOff elsewhere
+	anim         animState
 
 	// Transient one-line feedback (e.g. copy result), cleared on the next key.
 	status string
@@ -613,6 +615,7 @@ func (m *galleryModel) transmitView() {
 	}
 
 	if changed[0] {
+		m.stopAnim()
 		store(0, func() (string, bool) {
 			src, ok := m.images[m.cursor].Path, true
 			if m.curImg != nil && !m.crop.isFull() {
@@ -698,6 +701,7 @@ func (m *galleryModel) dropStore() {
 		m.slots[i].key, m.slots[i].path = "", ""
 	}
 	m.mini.stored = minimapStamp{}
+	m.anim.attached = animKey{}
 }
 
 // restoreView re-stores the images and repaints. Every route back from a state
@@ -1071,6 +1075,11 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.backend != backendKitty || m.tty == nil {
 			return m, nil
 		}
+		// Kitty is already looping this framing; a static re-store would stop it.
+		key := m.previewAnimKey(msg.vector, msg.crop)
+		if key == m.anim.attached {
+			return m, nil
+		}
 		// The raster IS the crop window (rendered at preview width), so fit it to
 		// the box and place it — no second crop. Reuses the per-pane zoom scratch
 		// file: Update is single-threaded and kitty fetches the t=f path when it
@@ -1080,6 +1089,11 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 			fitToBox(msg.raster, m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx()),
 			m.images[m.cursor].Path, fastPNG.Encode)
 		fmt.Fprint(m.tty, transmitVirtual(m.previewID(), src, m.l.previewW, m.l.previewH)) //nolint:errcheck // best-effort tty escape-sequence write
+		// The a=T above replaced any frames under this id.
+		m.anim.attached = animKey{}
+		return m, m.kickAnim(key, msg.animates)
+	case animReadyMsg:
+		m.attachAnim(msg)
 		return m, nil
 	case deleteCommitMsg:
 		if msg.gen != m.delGen || m.pending == nil {
@@ -1606,6 +1620,9 @@ func runGallery(pane string) error {
 		dragNative: os.Getenv("TMUX") == "" && strings.HasPrefix(termName(), "xterm-kitty") && probeDragProtocol(),
 		bridged:    bridgedPolicy(relayed),
 		tick:       &tickSnapshot{},
+	}
+	if backend == backendKitty {
+		m.animMode = animModeFor(termname, os.Getenv("AEYE_ANIMATE"))
 	}
 	// Record the initial selection and its size now, so zoom geometry works on the
 	// first keystroke. Its pixels decode once the first WindowSizeMsg sizes the

@@ -95,6 +95,15 @@ type animReadyMsg struct {
 	set *animSet
 }
 
+// animState tracks the preview's animation: gen supersedes earlier renders,
+// cancel aborts the running one, and attached is the framing kitty is looping
+// (zero when the preview holds a static image).
+type animState struct {
+	gen      uint64
+	cancel   context.CancelFunc
+	attached animKey
+}
+
 type animSetKey struct {
 	mtime      int64
 	crop       cropFrac
@@ -274,4 +283,56 @@ func renderAnimCmd(ctx context.Context, gen uint64, key animKey, targetW int, mo
 		}
 		return animReadyMsg{gen: gen, key: key, set: set}
 	}
+}
+
+// previewAnimKey is the framing the preview shows for vector at crop.
+func (m *galleryModel) previewAnimKey(vector string, crop cropFrac) animKey {
+	return animKey{id: m.previewID(), vector: vector, crop: crop,
+		boxW: m.l.previewW * m.cellWpx(), boxH: m.l.previewH * m.cellHpx()}
+}
+
+// kickAnim supersedes any running frame render with one for key, or returns nil
+// when the preview stays static: nothing animates, the terminal can't play
+// frames, a relay can't read the t=f frame files, or the pane is hidden.
+func (m *galleryModel) kickAnim(key animKey, animates bool) tea.Cmd {
+	if !animates || m.animMode == animOff || m.bridged || !m.visible {
+		return nil
+	}
+	m.cancelAnim()
+	m.anim.gen++
+	ctx, cancel := context.WithCancel(context.Background())
+	m.anim.cancel = cancel
+	return renderAnimCmd(ctx, m.anim.gen, key, m.l.previewW*m.cellWpx(), m.animMode)
+}
+
+func (m *galleryModel) cancelAnim() {
+	if m.anim.cancel != nil {
+		m.anim.cancel()
+		m.anim.cancel = nil
+	}
+}
+
+// attachAnim plays msg's frames on the preview if they still match what it
+// shows; the static image stays up otherwise.
+func (m *galleryModel) attachAnim(msg animReadyMsg) {
+	if msg.gen != m.anim.gen {
+		return
+	}
+	m.cancelAnim()
+	if msg.set == nil || !m.visible || m.bridged || m.backend != backendKitty || m.tty == nil ||
+		msg.key != m.previewAnimKey(m.curVector(), m.crop) {
+		return
+	}
+	fmt.Fprint(m.tty, animationStore(m.previewID(), msg.set, m.l.previewW, m.l.previewH)) //nolint:errcheck // best-effort tty escape-sequence write
+	m.anim.attached = msg.key
+}
+
+// stopAnim forgets the looping framing ahead of a preview re-store. The store
+// may land under the idle id, leaving the looping one up until the next
+// transmit reaps it, so its loop is stopped first.
+func (m *galleryModel) stopAnim() {
+	if m.anim.attached != (animKey{}) {
+		fmt.Fprint(m.tty, animStop(m.anim.attached.id)) //nolint:errcheck // best-effort tty escape-sequence write
+	}
+	m.anim.attached = animKey{}
 }

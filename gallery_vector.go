@@ -100,9 +100,10 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 // identify which request it answers, so a stale render (the selection or framing
 // moved on while resvg ran) is ignored.
 type vectorReadyMsg struct {
-	vector string
-	crop   cropFrac
-	raster image.Image
+	vector   string
+	crop     cropFrac
+	raster   image.Image
+	animates bool // the SVG has animated edges or aeye-* hooks to play
 }
 
 // renderVectorCmd rasterizes off the event loop (resvg subprocess) and decodes
@@ -122,7 +123,7 @@ func renderVectorCmd(vector string, crop cropFrac, targetW int) tea.Cmd {
 		if err != nil {
 			return nil
 		}
-		return vectorReadyMsg{vector: vector, crop: crop, raster: img}
+		return vectorReadyMsg{vector: vector, crop: crop, raster: img, animates: vectorAnimates(vector)}
 	}
 }
 
@@ -158,7 +159,9 @@ func (m *galleryModel) scheduleVector() tea.Cmd {
 
 // kickVector returns the async render cmd for the current d2 selection at the
 // current crop, or nil when there is nothing to sharpen (no vector / not kitty).
+// Any running frame render is cancelled: this render's result kicks its own.
 func (m *galleryModel) kickVector() tea.Cmd {
+	m.cancelAnim()
 	v := m.curVector()
 	if v == "" || m.backend != backendKitty {
 		return nil

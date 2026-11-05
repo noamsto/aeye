@@ -177,14 +177,22 @@ func writeRaw(out string, img *image.RGBA) string {
 	if img.Stride != img.Bounds().Dx()*4 {
 		return "" // a sub-image view; not tightly packed, so not safe to dump
 	}
+	return writePix(out, img.Pix)
+}
+
+// writePix writes pix to out via a temp file renamed into place, so a reader
+// never sees a partial file. Returns "" on any failure.
+func writePix(out string, pix []byte) string {
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil { //nolint:gosec // cache dir holds user-viewable images, not secrets
 		return ""
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(out), "raw-*")
+	// Prefix with the target's name so an orphan from a crash is matched by
+	// the animation cache's eviction glob and cleaned by the next render.
+	tmp, err := os.CreateTemp(filepath.Dir(out), filepath.Base(out)+".*")
 	if err != nil {
 		return ""
 	}
-	if _, err := tmp.Write(img.Pix); err != nil {
+	if _, err := tmp.Write(pix); err != nil {
 		tmp.Close()           //nolint:errcheck,gosec // already failing; the write error wins
 		os.Remove(tmp.Name()) //nolint:errcheck,gosec // best-effort temp cleanup
 		return ""

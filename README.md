@@ -175,6 +175,12 @@ structure — group by group — when one is selected:
 | `]` / `[` | Drill into / out of the focused region |
 | `0` / `Esc` | Reset zoom and return to the whole diagram |
 
+Diagrams with animated edges (D2 `style.animated: true`) loop in the kitty
+carousel, with or without kitty-pane mode. Inside tmux this needs
+`allow-passthrough on`, the same passthrough the carousel already uses to reach
+kitty. `AEYE_ANIMATE=0` keeps them static; `AEYE_ANIMATE=full` sends whole
+frames instead of changed rectangles.
+
 ### Rendering a diagram without the carousel
 
 `aeye render` runs the same D2 pipeline as a standalone renderer, with no

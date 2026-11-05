@@ -3,7 +3,7 @@ module github.com/noamsto/aeye
 go 1.26.3
 
 require (
-	charm.land/bubbletea/v2 v2.1.0
+	charm.land/bubbletea/v2 v2.1.1
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/alecthomas/kong v1.17.0
 	github.com/charmbracelet/colorprofile v0.4.3

@@ -43,6 +43,8 @@
         # non-kitty terminals.
         aeyeRuntimeDeps = [pkgs.resvg pkgs.chafa pkgs.jq];
       in {
+        pre-commit.settings.package = pkgs.prek;
+
         pre-commit.settings.hooks = {
           gofmt.enable = true;
           # govet and golangci-lint require network access (to resolve Go module

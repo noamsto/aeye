@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha1" //nolint:gosec // sha1 only names cache files; not a security use
 	"fmt"
 	"image"
@@ -15,14 +16,24 @@ import (
 	"golang.org/x/image/draw"
 )
 
-var svgViewBoxRe = regexp.MustCompile(`viewBox="(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)"`)
+var (
+	svgViewBoxRe = regexp.MustCompile(`viewBox="(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)"`)
+	// svgOpenRe finds each <svg open tag; the root's is the last one before the viewBox.
+	svgOpenRe = regexp.MustCompile(`<svg[\s>]`)
+	// svgSizeAttrRe matches a whole width or height attribute (preceded by
+	// whitespace, so stroke-width and data-width do not match).
+	svgSizeAttrRe = regexp.MustCompile(`\s(?:width|height)\s*=\s*(?:"[^"]*"|'[^']*')`)
+)
 
 // cropViewBox rewrites the SVG's outer viewBox to the crop sub-rectangle so
 // resvg rasterizes only the visible window — keeping render cost flat at any
 // zoom depth instead of scaling with 1/crop. The crop is normalized over the
 // full canvas, the same space the bitmap layer samples, so the sharp render
-// lands pixel-aligned over the instant preview. Returns (svg, false) unchanged
-// when there's no viewBox to rewrite.
+// lands pixel-aligned over the instant preview. The root tag also loses its
+// width and height, so resvg sizes the canvas from the crop's viewBox (its
+// aspect) instead of fitting the crop inside the full-size canvas. Nested svg
+// elements keep their sizes. Returns (svg, false) unchanged when there's no
+// viewBox to rewrite.
 func cropViewBox(svg []byte, c cropFrac) ([]byte, bool) {
 	loc := svgViewBoxRe.FindSubmatchIndex(svg)
 	if loc == nil {
@@ -35,10 +46,27 @@ func cropViewBox(svg []byte, c cropFrac) ([]byte, bool) {
 	minX, minY, vbW, vbH := num(1), num(2), num(3), num(4)
 	repl := fmt.Sprintf(`viewBox="%.4f %.4f %.4f %.4f"`,
 		minX+c.x0*vbW, minY+c.y0*vbH, c.w()*vbW, c.h()*vbH)
+
+	// The span to rewrite is the root tag, from the last "<svg" before the viewBox
+	// to the ">" closing it. Without one, only the viewBox itself is rewritten.
+	start, end, strip := loc[0], loc[1], false
+	if opens := svgOpenRe.FindAllIndex(svg[:loc[0]], -1); len(opens) > 0 {
+		if gt := bytes.IndexByte(svg[loc[1]:], '>'); gt >= 0 {
+			start, end, strip = opens[len(opens)-1][0], loc[1]+gt, true
+		}
+	}
+	tag := make([]byte, 0, end-start+len(repl))
+	tag = append(tag, svg[start:loc[0]]...)
+	tag = append(tag, repl...)
+	tag = append(tag, svg[loc[1]:end]...)
+	if strip {
+		tag = svgSizeAttrRe.ReplaceAll(tag, nil)
+	}
+
 	out := make([]byte, 0, len(svg)+len(repl))
-	out = append(out, svg[:loc[0]]...)
-	out = append(out, repl...)
-	out = append(out, svg[loc[1]:]...)
+	out = append(out, svg[:start]...)
+	out = append(out, tag...)
+	out = append(out, svg[end:]...)
 	return out, true
 }
 

@@ -140,17 +140,20 @@ func runRenderDiagram(in, out string) error {
 		if err != nil {
 			return fmt.Errorf("read %s: %w", in, err)
 		}
-		w, h, err := svgSize(svg)
+		sizeArgs, err = rasterSizeArgs(svg)
 		if err != nil {
 			return fmt.Errorf("svg %s: cannot determine its size (%w)", in, err)
 		}
-		sizeArgs = rasterCapArgs(w, h)
 	} else {
 		svg, err = renderD2SVG(in)
 		if err != nil {
 			return fmt.Errorf("compile %s: %w", in, err)
 		}
 		svg = fixFonts(svg)
+		sizeArgs, err = rasterSizeArgs(svg)
+		if err != nil {
+			return fmt.Errorf("compile %s: cannot determine its size (%w)", in, err)
+		}
 	}
 
 	svgPath := out[:len(out)-len(filepath.Ext(out))] + ".svg" // out has no ext -> out+".svg"
@@ -166,9 +169,22 @@ func runRenderDiagram(in, out string) error {
 	return nil
 }
 
-// maxRasterSide caps the long side of a rasterized .svg input: resvg renders at
-// the declared size, so a few bytes claiming 20000x20000 cost gigabytes.
+// maxRasterSide caps the long side of every rasterized diagram, whether a .svg
+// input or compiled d2: resvg renders at the declared size, so a few bytes
+// claiming 20000x20000 cost gigabytes.
 const maxRasterSide = 8192
+
+// rasterSizeArgs is the resvg size cap for svg, read from its own root element.
+// Every path that rasterizes a diagram goes through it, so an oversized canvas
+// is scaled down the same way whether it came from a .svg file or from d2. An
+// unreadable size is an error, never an uncapped render.
+func rasterSizeArgs(svg []byte) ([]string, error) {
+	w, h, err := svgSize(svg)
+	if err != nil {
+		return nil, err
+	}
+	return rasterCapArgs(w, h), nil
+}
 
 // rasterCapArgs bounds resvg's output to the w×h canvas, scaled down so its long
 // side fits maxRasterSide. Both bounds always go out, and resvg fits within

@@ -14,7 +14,7 @@ TINY_PNG_B64='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDw
 
 setup() {
 	command -v tmux >/dev/null || skip "needs a real tmux server"
-	command -v script >/dev/null || skip "needs util-linux script for a pty"
+	script --version 2>/dev/null | grep -q util-linux || skip "needs util-linux script for a pty"
 	command -v tic >/dev/null || skip "needs ncurses tic to synthesize a terminfo entry"
 
 	# The viewer only reaches its kitty store path when #{client_termname} looks

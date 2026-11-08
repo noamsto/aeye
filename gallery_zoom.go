@@ -505,7 +505,7 @@ func (m *galleryModel) storePreviewCrop() string {
 	}
 	b := dst.Bounds()
 	if !preferEncodedFrame(m.bridged) {
-		if out := writeRaw(m.zoomRawPath(), dst); out != "" {
+		if out := writeRawStraight(m.zoomRawPath(), dst); out != "" {
 			return transmitVirtualRaw(m.previewID(), out, b.Dx(), b.Dy(), m.l.previewW, m.l.previewH)
 		}
 	}

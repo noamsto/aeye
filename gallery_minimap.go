@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"golang.org/x/image/draw"
 )
@@ -121,11 +122,82 @@ func (s minimapStamp) baseKey() minimapBaseKey {
 // minimapState is the selected thumb's viewport-overlay bookkeeping. base and
 // frame are reused across pan frames so a steady-state overlay allocates no pixels.
 type minimapState struct {
-	stored    minimapStamp // what the selected slot holds now; zero = unknown
-	baseKey   minimapBaseKey
-	base      *image.RGBA    // selected thumb scaled to fit, no outline
-	frame     *image.RGBA    // base plus the outline; same bounds as base
-	failedKey minimapBaseKey // base that could not be built; not retried until the key changes
+	stored  minimapStamp // what the selected slot holds now; zero = unknown
+	baseKey minimapBaseKey
+	base    *image.RGBA    // selected thumb scaled to fit, no outline
+	frame   *image.RGBA    // base plus the outline; same bounds as base
+	failed  minimapFailure // base that could not be built, and when to try again
+}
+
+// minimapThumbSig identifies the thumbnail file a base was decoded from. A change
+// (rewritten or newly landed file) is the signal that a failed base may now work.
+type minimapThumbSig struct {
+	path  string
+	size  int64
+	mtime int64
+}
+
+// minimapFailure remembers a base that could not be built so the pan hot path
+// doesn't re-decode it every frame. A decode failure is sticky until the thumb
+// changes; an access failure (EMFILE, EIO, a passing EACCES) is retried after a
+// capped backoff, like the thumbnail cache's own transient retries (#352).
+type minimapFailure struct {
+	key     minimapBaseKey
+	thumb   minimapThumbSig
+	sticky  bool
+	tries   int
+	retryAt time.Time
+	set     bool
+}
+
+// minimapRetryDelay is the backoff between retries of a transiently failed base.
+var minimapRetryDelay = cacheWriteRetryDelay
+
+// minimapNow is the backoff clock; tests step it instead of sleeping.
+var minimapNow = time.Now
+
+// minimapDecodeHook, when set, runs each time a base decode is attempted. Tests only.
+var minimapDecodeHook func()
+
+// minimapSigOf stats the thumb that minimapBase would read for srcPath: the cache
+// file when present, else srcPath itself. It never decodes.
+func (m *galleryModel) minimapSigOf(srcPath string) minimapThumbSig {
+	p := srcPath
+	if out, ok := pngCacheName(srcPath, m.l.stripW, m.l.stripH); ok {
+		if _, err := os.Stat(out); err == nil {
+			p = out
+		}
+	}
+	sig := minimapThumbSig{path: p}
+	if fi, err := os.Stat(p); err == nil {
+		sig.size, sig.mtime = fi.Size(), fi.ModTime().UnixNano()
+	}
+	return sig
+}
+
+// minimapBlocked reports whether key's base is not to be retried now.
+func (m *galleryModel) minimapBlocked(key minimapBaseKey, srcPath string) bool {
+	f := &m.mini.failed
+	if !f.set || f.key != key {
+		return false
+	}
+	if m.minimapSigOf(srcPath) != f.thumb {
+		return false
+	}
+	return f.sticky || minimapNow().Before(f.retryAt)
+}
+
+// noteMinimapFailed records that key's base could not be built from sig.
+func (m *galleryModel) noteMinimapFailed(key minimapBaseKey, sig minimapThumbSig, sticky bool) {
+	f := &m.mini.failed
+	tries := 1
+	if f.set && f.key == key && f.thumb == sig && !f.sticky {
+		tries = f.tries + 1
+	}
+	*f = minimapFailure{key: key, thumb: sig, sticky: sticky, tries: tries, set: true}
+	if !sticky {
+		f.retryAt = minimapNow().Add(minimapRetryDelay(tries))
+	}
 }
 
 // minimapWant is the stamp the selected slot should hold now. It does no pixel work.
@@ -148,7 +220,7 @@ func (m *galleryModel) minimapWant() minimapStamp {
 	}
 	o := w
 	o.overlay, o.fit = true, fit
-	if o.baseKey() == m.mini.failedKey {
+	if m.minimapBlocked(o.baseKey(), o.path) {
 		return w
 	}
 	o.rect = minimapRect(fit, m.crop)
@@ -195,17 +267,18 @@ func (m *galleryModel) overlayStore(w minimapStamp) string {
 // when the base thumb can't be read. The frame is reused across calls.
 func (m *galleryModel) minimapFrame(w minimapStamp) *image.RGBA {
 	if key := w.baseKey(); key != m.mini.baseKey {
-		if key == m.mini.failedKey {
+		if m.minimapBlocked(key, w.path) {
 			return nil
 		}
 		thumb, ok := m.cachedPNGOrMiss(w.path, m.l.stripW, m.l.stripH)
 		if !ok {
 			return nil
 		}
-		base := m.minimapBase(thumb, w.fit)
+		sig := m.minimapSigOf(w.path) // before the decode: a rewrite racing it reads as a change
+		base, sticky := m.minimapBase(thumb, w.fit)
 		if base == nil {
 			tracef("minimap base failed: %s", w.path)
-			m.mini.failedKey = key
+			m.noteMinimapFailed(key, sig, sticky)
 			return nil
 		}
 		m.mini.base, m.mini.baseKey = base, key
@@ -218,20 +291,25 @@ func (m *galleryModel) minimapFrame(w minimapStamp) *image.RGBA {
 	return m.mini.frame
 }
 
-// minimapBase is the strip thumb at thumbPath scaled to fit, or nil when it can't be read.
-func (m *galleryModel) minimapBase(thumbPath string, fit image.Point) *image.RGBA {
+// minimapBase is the strip thumb at thumbPath scaled to fit, or nil when it can't
+// be read. sticky is true for a decode failure (a fact about the bytes), false for
+// an open failure (access or resource trouble that may pass).
+func (m *galleryModel) minimapBase(thumbPath string, fit image.Point) (base *image.RGBA, sticky bool) {
+	if minimapDecodeHook != nil {
+		minimapDecodeHook()
+	}
 	f, err := os.Open(thumbPath) //nolint:gosec // cache file or the user's own image
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	defer f.Close() //nolint:errcheck // read-only file; close error is irrelevant
 	src, _, err := image.Decode(f)
 	if err != nil {
-		return nil
+		return nil, true
 	}
 	dst := image.NewRGBA(image.Rect(0, 0, fit.X, fit.Y))
 	draw.ApproxBiLinear.Scale(dst, dst.Bounds(), src, src.Bounds(), draw.Src, nil)
-	return dst
+	return dst, false
 }
 
 // The chafa-symbols backend draws no minimap: its thumb is cached cell text a few

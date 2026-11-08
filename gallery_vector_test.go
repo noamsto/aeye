@@ -149,7 +149,7 @@ func TestRenderVectorCropAspectRealResvg(t *testing.T) {
 	if !ok {
 		t.Fatalf("cannot read png size of %s", out)
 	}
-	want := (crop.h() * 548) / (crop.w() * 532) // crop height / crop width
+	want := (crop.h() * 548) / (crop.w() * 532)
 	got := float64(size.Y) / float64(size.X)
 	if math.Abs(got-want) > 0.01 {
 		t.Fatalf("rendered %v (aspect %.3f), want crop aspect %.3f", size, got, want)

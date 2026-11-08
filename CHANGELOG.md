@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1](https://github.com/noamsto/aeye/compare/v1.11.0...v1.11.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* **vector:** drop root width/height when cropping an SVG ([#377](https://github.com/noamsto/aeye/issues/377)) ([cd41db4](https://github.com/noamsto/aeye/commit/cd41db4c8e8b28444007644c25d70be8500d8b59))
+
 ## [1.11.0](https://github.com/noamsto/aeye/compare/v1.10.3...v1.11.0) (2026-11-04)
 
 

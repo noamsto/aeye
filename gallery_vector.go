@@ -18,8 +18,6 @@ import (
 
 var (
 	svgViewBoxRe = regexp.MustCompile(`viewBox="(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)"`)
-	// svgOpenRe finds each <svg open tag; the root's is the last one before the viewBox.
-	svgOpenRe = regexp.MustCompile(`<svg[\s>]`)
 )
 
 // closeTagIndex returns the index of the first '>' at or after from that lies
@@ -102,19 +100,79 @@ func stripSizeAttrs(tag []byte) []byte {
 	return out
 }
 
-// cropViewBox rewrites the SVG's outer viewBox to the crop sub-rectangle so
+// rootTagEnd returns the index of the root <svg start tag and of the '>' closing
+// it. The root is the first element, so the XML declaration, DOCTYPE and
+// comments before it are skipped (a comment may mention "<svg"). ok is false
+// when anything else comes first or the tag never closes.
+func rootTagEnd(svg []byte) (start, gt int, ok bool) {
+	for i := 0; i < len(svg); {
+		j := bytes.IndexByte(svg[i:], '<')
+		if j < 0 {
+			return 0, 0, false
+		}
+		i += j
+		rest := svg[i:]
+		switch {
+		case bytes.HasPrefix(rest, []byte("<!--")):
+			k := bytes.Index(rest[4:], []byte("-->"))
+			if k < 0 {
+				return 0, 0, false
+			}
+			i += 4 + k + 3
+		case bytes.HasPrefix(rest, []byte("<?")):
+			k := bytes.Index(rest[2:], []byte("?>"))
+			if k < 0 {
+				return 0, 0, false
+			}
+			i += 2 + k + 2
+		case bytes.HasPrefix(rest, []byte("<!")):
+			// DOCTYPE: its '>' ends it unless an internal [subset] is open.
+			depth, k := 0, 2
+			for ; k < len(rest); k++ {
+				if c := rest[k]; c == '[' {
+					depth++
+				} else if c == ']' {
+					depth--
+				} else if c == '>' && depth <= 0 {
+					break
+				}
+			}
+			if k >= len(rest) {
+				return 0, 0, false
+			}
+			i += k + 1
+		case bytes.HasPrefix(rest, []byte("<svg")) && len(rest) > 4 && (isXMLSpace(rest[4]) || rest[4] == '>' || rest[4] == '/'):
+			gt = closeTagIndex(svg, i+4)
+			return i, gt, gt >= 0
+		default:
+			return 0, 0, false
+		}
+	}
+	return 0, 0, false
+}
+
+// cropViewBox rewrites the SVG's root viewBox to the crop sub-rectangle so
 // resvg rasterizes only the visible window — keeping render cost flat at any
 // zoom depth instead of scaling with 1/crop. The crop is normalized over the
 // full canvas, the same space the bitmap layer samples, so the sharp render
 // lands pixel-aligned over the instant preview. The root tag also loses its
 // width and height, so resvg sizes the canvas from the crop's viewBox (its
 // aspect) instead of fitting the crop inside the full-size canvas. Nested svg
-// elements keep their sizes. Returns (svg, false) unchanged when there's no
-// viewBox to rewrite.
+// elements keep their sizes. Returns (svg, false) unchanged unless the root
+// start tag itself carries the viewBox: a viewBox on a nested marker, symbol or
+// svg would not crop the render, so the caller must not treat it as cropped.
 func cropViewBox(svg []byte, c cropFrac) ([]byte, bool) {
-	loc := svgViewBoxRe.FindSubmatchIndex(svg)
-	if loc == nil {
+	start, gt, ok := rootTagEnd(svg)
+	if !ok {
 		return svg, false
+	}
+	m := svgViewBoxRe.FindSubmatchIndex(svg[start:gt])
+	if m == nil {
+		return svg, false
+	}
+	loc := make([]int, len(m))
+	for i, v := range m {
+		loc[i] = start + v
 	}
 	num := func(pair int) float64 {
 		v, _ := strconv.ParseFloat(string(svg[loc[2*pair]:loc[2*pair+1]]), 64)
@@ -124,29 +182,16 @@ func cropViewBox(svg []byte, c cropFrac) ([]byte, bool) {
 	repl := fmt.Sprintf(`viewBox="%.4f %.4f %.4f %.4f"`,
 		minX+c.x0*vbW, minY+c.y0*vbH, c.w()*vbW, c.h()*vbH)
 
-	// The span to rewrite is the root tag, from the last "<svg" before the viewBox
-	// to the ">" closing it. The viewBox belongs to the root only if no other tag
-	// opens between them (a root without a viewBox can enclose a nested one, e.g.
-	// a symbol). Otherwise only the viewBox itself is rewritten.
-	start, end, strip := loc[0], loc[1], false
-	if opens := svgOpenRe.FindAllIndex(svg[:loc[0]], -1); len(opens) > 0 {
-		root := opens[len(opens)-1][0]
-		if gt := closeTagIndex(svg, loc[1]); gt >= 0 && bytes.IndexByte(svg[root+1:loc[0]], '<') < 0 {
-			start, end, strip = root, gt, true
-		}
-	}
-	tag := make([]byte, 0, end-start+len(repl))
+	tag := make([]byte, 0, gt-start+len(repl))
 	tag = append(tag, svg[start:loc[0]]...)
 	tag = append(tag, repl...)
-	tag = append(tag, svg[loc[1]:end]...)
-	if strip {
-		tag = stripSizeAttrs(tag)
-	}
+	tag = append(tag, svg[loc[1]:gt]...)
+	tag = stripSizeAttrs(tag)
 
 	out := make([]byte, 0, len(svg)+len(repl))
 	out = append(out, svg[:start]...)
 	out = append(out, tag...)
-	out = append(out, svg[end:]...)
+	out = append(out, svg[gt:]...)
 	return out, true
 }
 
@@ -176,29 +221,37 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 	if _, err := exec.LookPath(bin); err != nil {
 		return ""
 	}
+	// A zoomed render needs the crop applied to the root viewBox; without it resvg
+	// would render the whole diagram under a frame of the wrong region, so fall
+	// back to the bitmap crop. Checked before evicting the cached framings.
+	var cropped []byte
+	if !crop.isFull() {
+		data, err := os.ReadFile(vector) //nolint:gosec // path is the user's own image/manifest file
+		if err != nil {
+			return ""
+		}
+		var ok bool
+		if cropped, ok = cropViewBox(data, crop); !ok {
+			return ""
+		}
+	}
 	// Evict stale framings for this svg before rendering the new one.
 	olds, _ := filepath.Glob(filepath.Join(os.TempDir(), stem+"-*.png"))
 	for _, o := range olds {
 		os.Remove(o) //nolint:errcheck,gosec // best-effort temp cleanup
 	}
 	src := vector
-	if !crop.isFull() {
-		data, err := os.ReadFile(vector) //nolint:gosec // path is the user's own image/manifest file
-		if err != nil {
+	if cropped != nil {
+		// Crop in the name too: two debounced renders of the same diagram at
+		// different framings can overlap, and a shared name would race (one
+		// overwriting the other's viewBox, or unlinking it before resvg opens it).
+		tmp := filepath.Join(os.TempDir(), fmt.Sprintf("%s-%.4f_%.4f_%.4f_%.4f-crop.svg",
+			stem, crop.x0, crop.y0, crop.x1, crop.y1))
+		if err := os.WriteFile(tmp, cropped, 0o644); err != nil { //nolint:gosec // scratch SVG in tmp for the local rasterizer
 			return ""
 		}
-		if cropped, ok := cropViewBox(data, crop); ok {
-			// Crop in the name too: two debounced renders of the same diagram at
-			// different framings can overlap, and a shared name would race (one
-			// overwriting the other's viewBox, or unlinking it before resvg opens it).
-			tmp := filepath.Join(os.TempDir(), fmt.Sprintf("%s-%.4f_%.4f_%.4f_%.4f-crop.svg",
-				stem, crop.x0, crop.y0, crop.x1, crop.y1))
-			if err := os.WriteFile(tmp, cropped, 0o644); err != nil { //nolint:gosec // scratch SVG in tmp for the local rasterizer
-				return ""
-			}
-			defer os.Remove(tmp) //nolint:errcheck // best-effort temp cleanup
-			src = tmp
-		}
+		defer os.Remove(tmp) //nolint:errcheck // best-effort temp cleanup
+		src = tmp
 	}
 	// The height bound only binds on a crop taller than maxVectorHeight at
 	// targetW (e.g. a 100x8000 svg at 1600 wide would be ~0.8 GB); resvg then

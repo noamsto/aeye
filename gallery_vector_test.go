@@ -60,28 +60,38 @@ func TestCropViewBoxKeepsSimilarAttrs(t *testing.T) {
 	}
 }
 
-// TestCropViewBoxNestedViewBoxKeepsSizes: a root without a viewBox whose first
-// viewBox sits on a nested element must not have sizes stripped from the
-// elements in between.
-func TestCropViewBoxNestedViewBoxKeepsSizes(t *testing.T) {
-	cases := map[string][2]string{
-		"symbol": {
-			`<svg width="10"><rect width="5" height="5"/><symbol viewBox="0 0 100 100"></symbol></svg>`,
-			`<svg width="10"><rect width="5" height="5"/><symbol viewBox="0.0000 0.0000 50.0000 50.0000"></symbol></svg>`,
-		},
-		"marker": {
-			`<svg width="100" height="100"><rect width="50" height="50"/><image width="10" height="10" href="x.png"/><marker id="m" viewBox="0 0 10 10" markerWidth="4"></marker></svg>`,
-			`<svg width="100" height="100"><rect width="50" height="50"/><image width="10" height="10" href="x.png"/><marker id="m" viewBox="0.0000 0.0000 5.0000 5.0000" markerWidth="4"></marker></svg>`,
-		},
+// TestCropViewBoxNestedViewBoxRefused: a root without a viewBox whose first
+// viewBox sits on a nested element (symbol, marker, nested svg) must not be
+// cropped: rewriting the nested one would not crop the render, so the caller
+// has to fall back. The input comes back byte-identical.
+func TestCropViewBoxNestedViewBoxRefused(t *testing.T) {
+	cases := map[string]string{
+		"symbol":     `<svg width="10"><rect width="5" height="5"/><symbol viewBox="0 0 100 100"></symbol></svg>`,
+		"marker":     `<svg width="100" height="100"><rect width="50" height="50"/><marker id="m" viewBox="0 0 10 10" markerWidth="4"></marker></svg>`,
+		"nested-svg": `<svg width="100" height="100"><svg viewBox="0 0 10 10" width="5" height="5"></svg></svg>`,
 	}
-	for name, c := range cases {
-		out, ok := cropViewBox([]byte(c[0]), cropFrac{0, 0, 0.5, 0.5})
-		if !ok {
-			t.Fatalf("%s: expected crop applied", name)
+	for name, in := range cases {
+		out, ok := cropViewBox([]byte(in), cropFrac{0, 0, 0.5, 0.5})
+		if ok {
+			t.Errorf("%s: crop applied to a nested viewBox: %s", name, out)
 		}
-		if string(out) != c[1] {
-			t.Errorf("%s: got %s\nwant %s", name, out, c[1])
+		if string(out) != in {
+			t.Errorf("%s: input changed: %s", name, out)
 		}
+	}
+}
+
+// TestCropViewBoxSkipsProlog: an XML declaration, DOCTYPE and comments before
+// the root (one of which mentions <svg) do not confuse root detection.
+func TestCropViewBoxSkipsProlog(t *testing.T) {
+	in := `<?xml version="1.0"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "x.dtd"><!-- <svg viewBox="1 1 1 1"> --><svg width="100" viewBox="0 0 100 100"><marker viewBox="0 0 1 1"/></svg>`
+	want := `<?xml version="1.0"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "x.dtd"><!-- <svg viewBox="1 1 1 1"> --><svg viewBox="0.0000 0.0000 50.0000 50.0000"><marker viewBox="0 0 1 1"/></svg>`
+	out, ok := cropViewBox([]byte(in), cropFrac{0, 0, 0.5, 0.5})
+	if !ok {
+		t.Fatal("expected crop applied")
+	}
+	if string(out) != want {
+		t.Errorf("got %s\nwant %s", out, want)
 	}
 }
 

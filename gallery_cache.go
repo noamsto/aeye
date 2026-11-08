@@ -180,6 +180,22 @@ func writeRaw(out string, img *image.RGBA) string {
 	return writePix(out, img.Pix)
 }
 
+// writeRawStraight is writeRaw for kitty's f=32, which reads straight (non
+// premultiplied) alpha while image.RGBA is premultiplied. A fully opaque frame is
+// identical in both and written as is, with no allocation; otherwise it is
+// un-premultiplied first.
+func writeRawStraight(out string, img *image.RGBA) string {
+	if img.Stride != img.Bounds().Dx()*4 {
+		return "" // a sub-image view; not tightly packed, so not safe to dump
+	}
+	for i := 3; i < len(img.Pix); i += 4 {
+		if img.Pix[i] != 0xff {
+			return writePix(out, straightAlpha(img).Pix)
+		}
+	}
+	return writePix(out, img.Pix)
+}
+
 // writePix writes pix to out via a temp file renamed into place, so a reader
 // never sees a partial file. Returns "" on any failure.
 func writePix(out string, pix []byte) string {

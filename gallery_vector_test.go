@@ -60,7 +60,22 @@ func TestCropViewBoxKeepsSimilarAttrs(t *testing.T) {
 	}
 }
 
-// TestCropViewBoxD2Unchanged: a root without size attributes (D2) is rewritten
+// TestCropViewBoxNestedViewBoxKeepsSizes: a root without a viewBox whose first
+// viewBox sits on a nested element must not have sizes stripped from the
+// elements in between.
+func TestCropViewBoxNestedViewBoxKeepsSizes(t *testing.T) {
+	svg := []byte(`<svg width="10"><rect width="5" height="5"/><symbol viewBox="0 0 100 100"></symbol></svg>`)
+	out, ok := cropViewBox(svg, cropFrac{0, 0, 0.5, 0.5})
+	if !ok {
+		t.Fatal("expected crop applied")
+	}
+	want := `<svg width="10"><rect width="5" height="5"/><symbol viewBox="0.0000 0.0000 50.0000 50.0000"></symbol></svg>`
+	if string(out) != want {
+		t.Errorf("got %s\nwant %s", out, want)
+	}
+}
+
+// TestCropViewBoxD2Unchanged:a root without size attributes (D2) is rewritten
 // exactly as before: only the viewBox changes.
 func TestCropViewBoxD2Unchanged(t *testing.T) {
 	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><g/></svg>`)

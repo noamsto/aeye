@@ -48,11 +48,14 @@ func cropViewBox(svg []byte, c cropFrac) ([]byte, bool) {
 		minX+c.x0*vbW, minY+c.y0*vbH, c.w()*vbW, c.h()*vbH)
 
 	// The span to rewrite is the root tag, from the last "<svg" before the viewBox
-	// to the ">" closing it. Without one, only the viewBox itself is rewritten.
+	// to the ">" closing it. The viewBox belongs to the root only if no other tag
+	// opens between them (a root without a viewBox can enclose a nested one, e.g.
+	// a symbol). Otherwise only the viewBox itself is rewritten.
 	start, end, strip := loc[0], loc[1], false
 	if opens := svgOpenRe.FindAllIndex(svg[:loc[0]], -1); len(opens) > 0 {
-		if gt := bytes.IndexByte(svg[loc[1]:], '>'); gt >= 0 {
-			start, end, strip = opens[len(opens)-1][0], loc[1]+gt, true
+		root := opens[len(opens)-1][0]
+		if gt := bytes.IndexByte(svg[loc[1]:], '>'); gt >= 0 && bytes.IndexByte(svg[root+1:loc[0]], '<') < 0 {
+			start, end, strip = root, loc[1]+gt, true
 		}
 	}
 	tag := make([]byte, 0, end-start+len(repl))

@@ -342,6 +342,142 @@ func TestRunRenderDiagramSVGRasterCapRealResvg(t *testing.T) {
 	})
 }
 
+// d2HugeSrc declares a canvas far past maxRasterSide: d2 compiles it to a
+// viewBox of about 30200 units, which resvg would rasterize at full size.
+const d2HugeSrc = "big: {width: 30000; height: 30000}\n"
+
+// stubResvgArgs installs a resvg stub that logs its arguments and writes a
+// placeholder PNG, returning the log path. Nothing near the canvas is allocated.
+func stubResvgArgs(t *testing.T, dir string) string {
+	t.Helper()
+	runLog := filepath.Join(dir, "resvg.log")
+	stub := filepath.Join(dir, "resvg")
+	script := "#!/bin/sh\necho \"$*\" >> " + runLog + "\nfor a; do :; done\necho png > \"$a\"\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil { //nolint:gosec // test stub must be executable
+		t.Fatal(err)
+	}
+	t.Setenv("AEYE_RESVG", stub)
+	return runLog
+}
+
+// requireCap fails unless resvg was given a --width and --height of 8192.
+func requireCap(t *testing.T, runLog string) {
+	t.Helper()
+	logged, err := os.ReadFile(runLog) //nolint:gosec // temp-dir path
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Fields(string(logged))
+	flag := func(name string) string {
+		if i := slices.Index(args, name); i >= 0 && i+1 < len(args) {
+			return args[i+1]
+		}
+		return ""
+	}
+	if flag("--width") != "8192" || flag("--height") != "8192" {
+		t.Fatalf("resvg args %v, want --width 8192 --height 8192", args)
+	}
+}
+
+// TestRunRenderDiagramD2RasterCap: a D2 diagram declaring a huge canvas must be
+// handed to resvg capped, like a .svg input, not at its declared size.
+func TestRunRenderDiagramD2RasterCap(t *testing.T) {
+	dir := t.TempDir()
+	runLog := stubResvgArgs(t, dir)
+	in := filepath.Join(dir, "big.d2")
+	if err := os.WriteFile(in, []byte(d2HugeSrc), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	if err := runRenderDiagram(in, filepath.Join(dir, "big-dark.png")); err != nil {
+		t.Fatalf("runRenderDiagram: %v", err)
+	}
+	requireCap(t, runLog)
+}
+
+// TestRunRenderD2RasterCap: the same cap on the aeye render entry point, which
+// pipes the compiled SVG to resvg on stdin rather than through a sibling file.
+func TestRunRenderD2RasterCap(t *testing.T) {
+	dir := t.TempDir()
+	runLog := stubResvgArgs(t, dir)
+	in := filepath.Join(dir, "big.d2")
+	if err := os.WriteFile(in, []byte(d2HugeSrc), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	if err := runRender("d2", in, filepath.Join(dir, "big.png"), nil); err != nil {
+		t.Fatalf("runRender: %v", err)
+	}
+	requireCap(t, runLog)
+}
+
+// TestD2RasterCapRealResvg runs the oversized diagram through the real resvg on
+// both D2 paths: the PNG must come out at most maxRasterSide on its long side.
+// A normal diagram must keep exactly the pixel size resvg gives it uncapped.
+func TestD2RasterCapRealResvg(t *testing.T) {
+	if _, err := exec.LookPath("resvg"); err != nil {
+		t.Skip("resvg not on PATH")
+	}
+	t.Setenv("AEYE_RESVG", "")
+	dir := t.TempDir()
+	// 8500 is just past the cap, keeping the uncapped render cheap.
+	big := filepath.Join(dir, "big.d2")
+	if err := os.WriteFile(big, []byte("big: {width: 8500; height: 8500}\n"), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	paths := []struct {
+		name string
+		run  func(in, out string) error
+	}{
+		{"runRenderDiagram", runRenderDiagram},
+		{"runRender", func(in, out string) error { return runRender("d2", in, out, nil) }},
+	}
+	for _, p := range paths {
+		t.Run(p.name+" oversized", func(t *testing.T) {
+			out := filepath.Join(dir, p.name+"-big.png")
+			if err := p.run(big, out); err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			size, ok := pngSize(out)
+			if !ok || max(size.X, size.Y) > maxRasterSide {
+				t.Fatalf("rasterized at %v (ok=%v), want long side <= %d", size, ok, maxRasterSide)
+			}
+		})
+	}
+
+	// Normal size: the cap must not change the pixels. The reference is resvg
+	// run on the same compiled SVG with no size arguments.
+	small := filepath.Join(dir, "small.d2")
+	if err := os.WriteFile(small, []byte("a -> b -> c\n"), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	svg, err := renderD2SVG(small)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svgPath := filepath.Join(dir, "ref.svg")
+	if err := os.WriteFile(svgPath, fixFonts(svg), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	ref := filepath.Join(dir, "ref.png")
+	if b, err := exec.Command("resvg", append(resvgFontArgs(), svgPath, ref)...).CombinedOutput(); err != nil { //nolint:gosec // args built by the test
+		t.Fatalf("reference resvg: %v: %s", err, b)
+	}
+	want, ok := pngSize(ref)
+	if !ok {
+		t.Fatal("reference PNG unreadable")
+	}
+	for _, p := range paths {
+		t.Run(p.name+" normal", func(t *testing.T) {
+			out := filepath.Join(dir, p.name+"-small.png")
+			if err := p.run(small, out); err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			if got, ok := pngSize(out); !ok || got != want {
+				t.Fatalf("rasterized at %v (ok=%v), want %v as uncapped", got, ok, want)
+			}
+		})
+	}
+}
+
 // TestRenderD2SVGHonorsInFileLayout guards the regression where presetting
 // CompileOptions.Layout silently defeats in-file `layout-engine: elk` (d2 only
 // reads d2-config's engine when Layout is nil). Same graph, elk vs dagre: if

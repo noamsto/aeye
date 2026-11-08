@@ -74,7 +74,7 @@ func TestMinimapRecoversWhenThumbRewritten(t *testing.T) {
 }
 
 // A permanently undecodable thumb is decoded once, however many frames follow,
-// through both the kitty path and the raster path.
+// by minimapFrame, the guard both the kitty and raster paths share.
 func TestMinimapPermanentFailureNotRedecoded(t *testing.T) {
 	m, rec := zoomedMinimapModel(t)
 	breakThumb(t, m, rec)
@@ -105,6 +105,9 @@ func TestMinimapRecoversFromTransientOpenFailure(t *testing.T) {
 		t.Skip("root ignores file modes")
 	}
 	m, rec := zoomedMinimapModel(t)
+	now := time.Now()
+	minimapNow = func() time.Time { return now }
+	t.Cleanup(func() { minimapNow = time.Now })
 	minimapRetryDelay = func(int) time.Duration { return 40 * time.Millisecond }
 	t.Cleanup(func() { minimapRetryDelay = cacheWriteRetryDelay })
 
@@ -132,7 +135,7 @@ func TestMinimapRecoversFromTransientOpenFailure(t *testing.T) {
 		t.Errorf("retried %d times inside the backoff, want 0", decodes)
 	}
 
-	time.Sleep(60 * time.Millisecond)
+	now = now.Add(time.Second)
 	before = rec.Len()
 	m.mini.stored = minimapStamp{}
 	m.syncMinimap()

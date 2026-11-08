@@ -153,6 +153,9 @@ type minimapFailure struct {
 // minimapRetryDelay is the backoff between retries of a transiently failed base.
 var minimapRetryDelay = cacheWriteRetryDelay
 
+// minimapNow is the backoff clock; tests step it instead of sleeping.
+var minimapNow = time.Now
+
 // minimapDecodeHook, when set, runs each time a base decode is attempted. Tests only.
 var minimapDecodeHook func()
 
@@ -181,7 +184,7 @@ func (m *galleryModel) minimapBlocked(key minimapBaseKey, srcPath string) bool {
 	if m.minimapSigOf(srcPath) != f.thumb {
 		return false
 	}
-	return f.sticky || time.Now().Before(f.retryAt)
+	return f.sticky || minimapNow().Before(f.retryAt)
 }
 
 // noteMinimapFailed records that key's base could not be built from sig.
@@ -193,7 +196,7 @@ func (m *galleryModel) noteMinimapFailed(key minimapBaseKey, sig minimapThumbSig
 	}
 	*f = minimapFailure{key: key, thumb: sig, sticky: sticky, tries: tries, set: true}
 	if !sticky {
-		f.retryAt = time.Now().Add(minimapRetryDelay(tries))
+		f.retryAt = minimapNow().Add(minimapRetryDelay(tries))
 	}
 }
 

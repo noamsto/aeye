@@ -22,6 +22,9 @@ func zoomedMinimapModel(t *testing.T) (*galleryModel, *transmitRecorder) {
 // thumbOf is the cache file the selected slot's minimap is built from.
 func thumbOf(t *testing.T, m *galleryModel) string {
 	t.Helper()
+	if m.cursor >= len(m.images) {
+		t.Fatal("cursor past the images")
+	}
 	out, ok := pngCacheName(m.images[m.cursor].Path, m.l.stripW, m.l.stripH)
 	if !ok {
 		t.Fatal("selected image has no cache name")

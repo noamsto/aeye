@@ -2,11 +2,159 @@ package main
 
 import (
 	"bytes"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 )
+
+// graphvizSVG is shaped like Graphviz output: the root carries width and height
+// in pt, and a newline separates them from viewBox.
+const graphvizSVG = `<svg xmlns="http://www.w3.org/2000/svg" width="532pt" height="548pt"
+ viewBox="0.00 0.00 532.00 548.00">
+<rect x="0" y="0" width="532" height="548" fill="#ffffff"/>
+<rect x="0" y="0" width="532" height="60" fill="#ff0000"/>
+<rect x="0" y="488" width="532" height="60" fill="#0000ff"/>
+</svg>
+`
+
+// TestCropViewBoxDropsRootSize: a cropped root must not keep its fixed size, or
+// resvg sizes the canvas from it and fits the crop inside (letterboxing).
+func TestCropViewBoxDropsRootSize(t *testing.T) {
+	out, ok := cropViewBox([]byte(graphvizSVG), cropFrac{0.25, 0.40, 0.75, 0.60})
+	if !ok {
+		t.Fatal("expected crop applied")
+	}
+	want := "<svg xmlns=\"http://www.w3.org/2000/svg\"\n viewBox=\"133.0000 219.2000 266.0000 109.6000\">"
+	if !bytes.Contains(out, []byte(want)) {
+		t.Errorf("root size not dropped / viewBox not rewritten:\n%s", out)
+	}
+}
+
+// TestCropViewBoxKeepsNestedSize: only the root tag loses its size; a nested
+// <svg> (D2 nests one) keeps its width and height.
+func TestCropViewBoxKeepsNestedSize(t *testing.T) {
+	svg := []byte(`<svg width="10" viewBox="0 0 100 100"><svg width="40" height="50" viewBox="0 0 1 1"></svg></svg>`)
+	out, ok := cropViewBox(svg, cropFrac{0, 0, 0.5, 0.5})
+	if !ok {
+		t.Fatal("expected crop applied")
+	}
+	want := `<svg viewBox="0.0000 0.0000 50.0000 50.0000"><svg width="40" height="50" viewBox="0 0 1 1"></svg></svg>`
+	if string(out) != want {
+		t.Errorf("got %s\nwant %s", out, want)
+	}
+}
+
+// TestCropViewBoxKeepsSimilarAttrs: whole-name matching only; stroke-width and
+// data-width on the root are not size attributes and must survive.
+func TestCropViewBoxKeepsSimilarAttrs(t *testing.T) {
+	svg := []byte(`<svg width="10" stroke-width="2" data-width="3" height="20" viewBox="0 0 100 100"></svg>`)
+	out, ok := cropViewBox(svg, cropFrac{0, 0, 0.5, 0.5})
+	if !ok {
+		t.Fatal("expected crop applied")
+	}
+	want := `<svg stroke-width="2" data-width="3" viewBox="0.0000 0.0000 50.0000 50.0000"></svg>`
+	if string(out) != want {
+		t.Errorf("got %s\nwant %s", out, want)
+	}
+}
+
+// TestCropViewBoxNestedViewBoxKeepsSizes: a root without a viewBox whose first
+// viewBox sits on a nested element must not have sizes stripped from the
+// elements in between.
+func TestCropViewBoxNestedViewBoxKeepsSizes(t *testing.T) {
+	cases := map[string][2]string{
+		"symbol": {
+			`<svg width="10"><rect width="5" height="5"/><symbol viewBox="0 0 100 100"></symbol></svg>`,
+			`<svg width="10"><rect width="5" height="5"/><symbol viewBox="0.0000 0.0000 50.0000 50.0000"></symbol></svg>`,
+		},
+		"marker": {
+			`<svg width="100" height="100"><rect width="50" height="50"/><image width="10" height="10" href="x.png"/><marker id="m" viewBox="0 0 10 10" markerWidth="4"></marker></svg>`,
+			`<svg width="100" height="100"><rect width="50" height="50"/><image width="10" height="10" href="x.png"/><marker id="m" viewBox="0.0000 0.0000 5.0000 5.0000" markerWidth="4"></marker></svg>`,
+		},
+	}
+	for name, c := range cases {
+		out, ok := cropViewBox([]byte(c[0]), cropFrac{0, 0, 0.5, 0.5})
+		if !ok {
+			t.Fatalf("%s: expected crop applied", name)
+		}
+		if string(out) != c[1] {
+			t.Errorf("%s: got %s\nwant %s", name, out, c[1])
+		}
+	}
+}
+
+// TestCropViewBoxQuotedValues: a '>' or a width="..." inside a quoted attribute
+// value is not a tag boundary or a size attribute.
+func TestCropViewBoxQuotedValues(t *testing.T) {
+	cases := map[string][2]string{
+		"gt-in-value": {
+			`<svg viewBox="0 0 100 100" aria-label="a>b" width="100" height="100"></svg>`,
+			`<svg viewBox="0.0000 0.0000 50.0000 50.0000" aria-label="a>b"></svg>`,
+		},
+		"size-text-in-value": {
+			`<svg width="10" data-x='a width="3"' viewBox="0 0 100 100"></svg>`,
+			`<svg data-x='a width="3"' viewBox="0.0000 0.0000 50.0000 50.0000"></svg>`,
+		},
+		"comment-before-root": {
+			`<!-- <svg> --><svg width="100" viewBox="0 0 100 100"></svg>`,
+			`<!-- <svg> --><svg viewBox="0.0000 0.0000 50.0000 50.0000"></svg>`,
+		},
+	}
+	for name, c := range cases {
+		out, ok := cropViewBox([]byte(c[0]), cropFrac{0, 0, 0.5, 0.5})
+		if !ok {
+			t.Fatalf("%s: expected crop applied", name)
+		}
+		if string(out) != c[1] {
+			t.Errorf("%s: got %s\nwant %s", name, out, c[1])
+		}
+	}
+}
+
+// TestCropViewBoxD2Unchanged:a root without size attributes (D2) is rewritten
+// exactly as before: only the viewBox changes.
+func TestCropViewBoxD2Unchanged(t *testing.T) {
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50"><g/></svg>`)
+	out, ok := cropViewBox(svg, cropFrac{0.2, 0.2, 0.6, 0.7})
+	if !ok {
+		t.Fatal("expected crop applied")
+	}
+	want := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="20.0000 10.0000 40.0000 25.0000"><g/></svg>`
+	if string(out) != want {
+		t.Errorf("got %s\nwant %s", out, want)
+	}
+}
+
+// TestRenderVectorCropAspectRealResvg: a crop of a sized (Graphviz-shaped) svg
+// must render at the crop's aspect ratio, not the full diagram's.
+func TestRenderVectorCropAspectRealResvg(t *testing.T) {
+	if _, err := exec.LookPath("resvg"); err != nil {
+		t.Skip("resvg not on PATH")
+	}
+	t.Setenv("AEYE_RESVG", "")
+	dir := t.TempDir()
+	t.Setenv("TMPDIR", dir)
+	svg := filepath.Join(dir, "graph.svg")
+	if err := os.WriteFile(svg, []byte(graphvizSVG), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	crop := cropFrac{0.25, 0.40, 0.75, 0.60}
+	out := renderVector(svg, crop, 1200)
+	if out == "" {
+		t.Fatal("renderVector failed")
+	}
+	size, ok := pngSize(out)
+	if !ok {
+		t.Fatalf("cannot read png size of %s", out)
+	}
+	want := (crop.h() * 548) / (crop.w() * 532)
+	got := float64(size.Y) / float64(size.X)
+	if math.Abs(got-want) > 0.01 {
+		t.Fatalf("rendered %v (aspect %.3f), want crop aspect %.3f", size, got, want)
+	}
+}
 
 func TestCropViewBox(t *testing.T) {
 	svg := []byte(`<svg viewBox="0 0 100 50"><g/></svg>`)

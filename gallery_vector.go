@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha1" //nolint:gosec // sha1 only names cache files; not a security use
 	"fmt"
 	"image"
@@ -15,14 +16,101 @@ import (
 	"golang.org/x/image/draw"
 )
 
-var svgViewBoxRe = regexp.MustCompile(`viewBox="(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)"`)
+var (
+	svgViewBoxRe = regexp.MustCompile(`viewBox="(-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)"`)
+	// svgOpenRe finds each <svg open tag; the root's is the last one before the viewBox.
+	svgOpenRe = regexp.MustCompile(`<svg[\s>]`)
+)
+
+// closeTagIndex returns the index of the first '>' at or after from that lies
+// outside a quoted attribute value, or -1. from must be outside any quote.
+func closeTagIndex(b []byte, from int) int {
+	var q byte
+	for i := from; i < len(b); i++ {
+		switch c := b[i]; {
+		case q != 0:
+			if c == q {
+				q = 0
+			}
+		case c == '"' || c == '\'':
+			q = c
+		case c == '>':
+			return i
+		}
+	}
+	return -1
+}
+
+func isXMLSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
+
+// sizeAttrLen returns the length of a leading width or height attribute
+// (name, '=', quoted value) in b, or 0 if b does not start with one.
+func sizeAttrLen(b []byte) int {
+	var name int
+	switch {
+	case bytes.HasPrefix(b, []byte("width")):
+		name = len("width")
+	case bytes.HasPrefix(b, []byte("height")):
+		name = len("height")
+	default:
+		return 0
+	}
+	i := name
+	for i < len(b) && isXMLSpace(b[i]) {
+		i++
+	}
+	if i >= len(b) || b[i] != '=' {
+		return 0
+	}
+	i++
+	for i < len(b) && isXMLSpace(b[i]) {
+		i++
+	}
+	if i >= len(b) || (b[i] != '"' && b[i] != '\'') {
+		return 0
+	}
+	j := bytes.IndexByte(b[i+1:], b[i])
+	if j < 0 {
+		return 0
+	}
+	return i + 1 + j + 1
+}
+
+// stripSizeAttrs removes width and height attributes from a start tag. It walks
+// the tag outside quoted values, so attribute-like text inside a value (or a
+// name such as data-width, or stroke-width) is left alone.
+func stripSizeAttrs(tag []byte) []byte {
+	out := make([]byte, 0, len(tag))
+	var q byte
+	for i := 0; i < len(tag); i++ {
+		c := tag[i]
+		switch {
+		case q != 0:
+			if c == q {
+				q = 0
+			}
+		case c == '"' || c == '\'':
+			q = c
+		case isXMLSpace(c):
+			if n := sizeAttrLen(tag[i+1:]); n > 0 {
+				i += n // drop the whitespace and the attribute; the loop's i++ moves past it
+				continue
+			}
+		}
+		out = append(out, c)
+	}
+	return out
+}
 
 // cropViewBox rewrites the SVG's outer viewBox to the crop sub-rectangle so
 // resvg rasterizes only the visible window — keeping render cost flat at any
 // zoom depth instead of scaling with 1/crop. The crop is normalized over the
 // full canvas, the same space the bitmap layer samples, so the sharp render
-// lands pixel-aligned over the instant preview. Returns (svg, false) unchanged
-// when there's no viewBox to rewrite.
+// lands pixel-aligned over the instant preview. The root tag also loses its
+// width and height, so resvg sizes the canvas from the crop's viewBox (its
+// aspect) instead of fitting the crop inside the full-size canvas. Nested svg
+// elements keep their sizes. Returns (svg, false) unchanged when there's no
+// viewBox to rewrite.
 func cropViewBox(svg []byte, c cropFrac) ([]byte, bool) {
 	loc := svgViewBoxRe.FindSubmatchIndex(svg)
 	if loc == nil {
@@ -35,10 +123,30 @@ func cropViewBox(svg []byte, c cropFrac) ([]byte, bool) {
 	minX, minY, vbW, vbH := num(1), num(2), num(3), num(4)
 	repl := fmt.Sprintf(`viewBox="%.4f %.4f %.4f %.4f"`,
 		minX+c.x0*vbW, minY+c.y0*vbH, c.w()*vbW, c.h()*vbH)
+
+	// The span to rewrite is the root tag, from the last "<svg" before the viewBox
+	// to the ">" closing it. The viewBox belongs to the root only if no other tag
+	// opens between them (a root without a viewBox can enclose a nested one, e.g.
+	// a symbol). Otherwise only the viewBox itself is rewritten.
+	start, end, strip := loc[0], loc[1], false
+	if opens := svgOpenRe.FindAllIndex(svg[:loc[0]], -1); len(opens) > 0 {
+		root := opens[len(opens)-1][0]
+		if gt := closeTagIndex(svg, loc[1]); gt >= 0 && bytes.IndexByte(svg[root+1:loc[0]], '<') < 0 {
+			start, end, strip = root, gt, true
+		}
+	}
+	tag := make([]byte, 0, end-start+len(repl))
+	tag = append(tag, svg[start:loc[0]]...)
+	tag = append(tag, repl...)
+	tag = append(tag, svg[loc[1]:end]...)
+	if strip {
+		tag = stripSizeAttrs(tag)
+	}
+
 	out := make([]byte, 0, len(svg)+len(repl))
-	out = append(out, svg[:loc[0]]...)
-	out = append(out, repl...)
-	out = append(out, svg[loc[1]:]...)
+	out = append(out, svg[:start]...)
+	out = append(out, tag...)
+	out = append(out, svg[end:]...)
 	return out, true
 }
 

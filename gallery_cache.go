@@ -170,9 +170,9 @@ func writePNGEnc(out string, img image.Image, fallback string, encode func(io.Wr
 // renamed into place so a reader never sees a partial frame. Returns "" on any
 // failure, leaving the caller to fall back to an encoded write.
 //
-// This is the pan/zoom hot path: kitty accepts raw RGBA (f=32) and skipping the PNG
-// encode measured 2.5x faster per frame. img.Pix is already tightly packed RGBA for
-// an image created at its own bounds, which is what cropRaster produces.
+// Skipping the PNG encode measured 2.5x faster per frame. img.Pix is premultiplied
+// and dumped as is, so the bytes are valid kitty f=32 (straight alpha) only for an
+// opaque frame: use writeRawStraight for frames that may be translucent.
 func writeRaw(out string, img *image.RGBA) string {
 	if img.Stride != img.Bounds().Dx()*4 {
 		return "" // a sub-image view; not tightly packed, so not safe to dump

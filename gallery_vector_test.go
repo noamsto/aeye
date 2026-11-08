@@ -107,6 +107,10 @@ func TestCropViewBoxQuotedValues(t *testing.T) {
 			`<svg width="10" data-x='a width="3"' viewBox="0 0 100 100"></svg>`,
 			`<svg data-x='a width="3"' viewBox="0.0000 0.0000 50.0000 50.0000"></svg>`,
 		},
+		"prefixed-root": {
+			`<svg:svg xmlns:svg="http://www.w3.org/2000/svg" width="100" viewBox="0 0 100 100"></svg:svg>`,
+			`<svg:svg xmlns:svg="http://www.w3.org/2000/svg" viewBox="0.0000 0.0000 50.0000 50.0000"></svg:svg>`,
+		},
 		"comment-before-root": {
 			`<!-- <svg> --><svg width="100" viewBox="0 0 100 100"></svg>`,
 			`<!-- <svg> --><svg viewBox="0.0000 0.0000 50.0000 50.0000"></svg>`,

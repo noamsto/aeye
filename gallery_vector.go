@@ -100,6 +100,27 @@ func stripSizeAttrs(tag []byte) []byte {
 	return out
 }
 
+// svgRootNameLen returns the length of "<svg" or a namespace-prefixed "<p:svg" at
+// the start of rest when followed by a tag delimiter, else 0.
+func svgRootNameLen(rest []byte) int {
+	n := 1 // past '<'
+	for n < len(rest) && rest[n] != ':' && !isXMLSpace(rest[n]) && rest[n] != '>' && rest[n] != '/' {
+		n++
+	}
+	if n < len(rest) && rest[n] == ':' {
+		n++
+	} else {
+		n = 1 // no prefix: the name starts right after '<'
+	}
+	if !bytes.HasPrefix(rest[n:], []byte("svg")) || n+3 >= len(rest) {
+		return 0
+	}
+	if c := rest[n+3]; isXMLSpace(c) || c == '>' || c == '/' {
+		return n + 3
+	}
+	return 0
+}
+
 // rootTagEnd returns the index of the root <svg start tag and of the '>' closing
 // it. The root is the first element, so the XML declaration, DOCTYPE and
 // comments before it are skipped (a comment may mention "<svg"). ok is false
@@ -141,8 +162,8 @@ func rootTagEnd(svg []byte) (start, gt int, ok bool) {
 				return 0, 0, false
 			}
 			i += k + 1
-		case bytes.HasPrefix(rest, []byte("<svg")) && len(rest) > 4 && (isXMLSpace(rest[4]) || rest[4] == '>' || rest[4] == '/'):
-			gt = closeTagIndex(svg, i+4)
+		case svgRootNameLen(rest) > 0:
+			gt = closeTagIndex(svg, i+svgRootNameLen(rest))
 			return i, gt, gt >= 0
 		default:
 			return 0, 0, false

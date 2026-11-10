@@ -17,11 +17,9 @@ import (
 )
 
 const (
-	// resvgMemLimitMiB is the default memory bound for one resvg render.
 	resvgMemLimitMiB = 2048
 	// resvgMemEnv overrides the bound with a positive integer MiB.
-	resvgMemEnv = "AEYE_RESVG_MEM_MB"
-	// resvgTimeout is the wall-clock limit for one resvg render.
+	resvgMemEnv  = "AEYE_RESVG_MEM_MB"
 	resvgTimeout = 60 * time.Second
 	// resvgMaxMemLimitMiB caps the env override at 1 TiB so the MiB-to-byte and
 	// KiB conversions cannot overflow.

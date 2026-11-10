@@ -283,7 +283,12 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 	// The height bound only binds on a crop taller than maxVectorHeight at
 	// targetW (e.g. a 100x8000 svg at 1600 wide would be ~0.8 GB); resvg then
 	// fits within both. Anything shorter renders byte-identical to --width alone.
-	args := append(resvgFontArgs(), "--width", strconv.Itoa(targetW), "--height", strconv.Itoa(maxVectorHeight), src, out)
+	args := append(resvgFontArgs(), "--width", strconv.Itoa(targetW), "--height", strconv.Itoa(maxVectorHeight))
+	if src != vector {
+		// The rewritten copy lives in tmp: keep the original's relative hrefs resolving.
+		args = append(args, "--resources-dir", filepath.Dir(vector))
+	}
+	args = append(args, src, out)
 	if err := exec.Command(bin, args...).Run(); err != nil { //nolint:gosec // args built by the tool, not shell-interpreted
 		os.Remove(out) //nolint:errcheck,gosec // best-effort temp cleanup
 		return ""

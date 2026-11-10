@@ -103,6 +103,27 @@ else
 	fi
 fi
 
+# A diagram's sidecar legend (<stem>.legend.svg, or <stem>-<theme>.legend.svg for
+# one variant) rides beside each theme render as <hash>-<theme>.legend.svg, where
+# the carousel looks for it. A publish with no sidecar clears any earlier copy:
+# the render hash covers the source only, so the legend can change under it.
+for theme in dark light; do
+	dest="${png%-dark.png}-$theme.legend.svg"
+	legend="${file%.*}-$theme.legend.svg"
+	[[ -f $legend ]] || legend="${file%.*}.legend.svg"
+	if [[ -f $legend ]]; then
+		# Copy atomically: the carousel may read the legend mid-publish.
+		tmp="$(mktemp "$dest.XXXXXX")"
+		if ! { cp "$legend" "$tmp" && mv -f "$tmp" "$dest"; }; then
+			rm -f "$tmp"
+			echo "aeye publish-diagram: copy to $dest failed" >&2
+			exit 1
+		fi
+	else
+		rm -f "$dest"
+	fi
+done
+
 printf -v now '%(%FT%T%z)T' -1
 # The name drops the extension, so flow.svg replaces a flow entry from flow.d2; a
 # d2 source is named as the agent hooks name it (only a lowercase .d2 is stripped).

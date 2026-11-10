@@ -166,11 +166,14 @@ func runRenderDiagram(in, out string) error {
 	// animation loads, so it carries the loop's first frame (dashes of an
 	// aeye-flow hook) while the sibling SVG keeps its own animation hooks.
 	rasterIn := svgPath
+	args := append(resvgFontArgs(), sizeArgs...)
 	var stdin io.Reader
 	if svgAnimates(svg) {
+		// From stdin resvg has no file to resolve relative hrefs against.
 		rasterIn, stdin = "-", bytes.NewReader(animFrameSVG(svg, 0, animFrameMax))
+		args = append(args, "--resources-dir", filepath.Dir(svgPath))
 	}
-	args := append(append(resvgFontArgs(), sizeArgs...), rasterIn, out)
+	args = append(args, rasterIn, out)
 	cmd := exec.Command(resvgBin(), args...) //nolint:gosec // args built by the tool, not shell-interpreted
 	cmd.Stdin = stdin
 	if stderr, err := cmd.CombinedOutput(); err != nil {

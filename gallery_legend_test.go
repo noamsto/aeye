@@ -159,3 +159,75 @@ func TestLegendFollowsSelectionAndRestore(t *testing.T) {
 		t.Errorf("restore did not re-store the legend: %q", got)
 	}
 }
+
+// A sidecar resvg cannot render is reported once and never retried per frame.
+func TestLegendRenderFailureReportedAndNotRetried(t *testing.T) {
+	svg, _ := animStub(t)
+	m, _ := newAnimModel(t, 1, svg, animOff)
+	writeLegend(t, m.images[0].Path, legendSuffix)
+	log := filepath.Join(t.TempDir(), "calls.log")
+	script := filepath.Join(t.TempDir(), "resvg")
+	body := fmt.Sprintf("#!/bin/sh\necho x >> %q\nexit 1\n", log)
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	t.Setenv("AEYE_RESVG", script)
+
+	pressLegend(m)
+	if m.status != "Legend failed to render" || m.legend.on {
+		t.Fatalf("status=%q on=%v, want the failure hint and the toggle off", m.status, m.legend.on)
+	}
+	if n := logLines(t, log); n != 1 {
+		t.Fatalf("resvg ran %d times for one failed toggle", n)
+	}
+
+	// Left on (as if an earlier render had worked), a pan frame must not retry.
+	m.legend.on = true
+	m.transmitPreviewOnly()
+	m.transmitPreviewOnly()
+	if n := logLines(t, log); n != 1 {
+		t.Errorf("failed legend re-rendered on pan frames: resvg ran %d times", n)
+	}
+}
+
+func TestPlaceholderBlockOver(t *testing.T) {
+	const id, ovID = 0x010203, 0x040506
+	if got, want := placeholderBlockOver(id, 6, 4, ovID, 0, 0), placeholderBlock(id, 6, 4); got != want {
+		t.Errorf("no overlay must equal the plain block:\n got %q\nwant %q", got, want)
+	}
+	// The overlay replaces the last two cells of the last row, indexed from its own origin.
+	cell := func(id, r, c int) string {
+		return fmt.Sprintf("\x1b[38;2;%d;%d;%dm", (id>>16)&0xff, (id>>8)&0xff, id&0xff) +
+			placeholderRune + string(rowColDiacritics[r]) + string(rowColDiacritics[c])
+	}
+	rows := strings.Split(placeholderBlockOver(id, 3, 2, ovID, 2, 1), "\n")
+	if len(rows) != 2 {
+		t.Fatalf("got %d rows, want 2", len(rows))
+	}
+	plain := strings.Split(placeholderBlock(id, 3, 2), "\n")
+	if rows[0] != plain[0] {
+		t.Errorf("row above the overlay changed:\n got %q\nwant %q", rows[0], plain[0])
+	}
+	want := cell(id, 1, 0) + "\x1b[39m" + cell(ovID, 0, 0) + placeholderRune + string(rowColDiacritics[0]) + string(rowColDiacritics[1]) + "\x1b[39m"
+	if rows[1] != want {
+		t.Errorf("overlay row:\n got %q\nwant %q", rows[1], want)
+	}
+	// A stale overlay larger than the preview is clamped to it: no panic, the
+	// preview id gone only because the overlay now covers all of it.
+	if got := placeholderBlockOver(id, 2, 2, ovID, 9, 9); strings.Count(got, placeholderRune) != 4 {
+		t.Errorf("oversized overlay changed the cell count: %q", got)
+	}
+}
+
+// legendID must never collide with a filmstrip slot id, however wide the pane.
+func TestLegendIDReserved(t *testing.T) {
+	m := &galleryModel{pane: "%9"}
+	l := computeLayout(1<<20, 50)
+	for slot := 0; slot <= l.stripCols; slot++ {
+		for bit := range 2 {
+			if m.slotIDFor(slot, bit) == m.legendID() {
+				t.Fatalf("slot %d bit %d uses the legend id %d", slot, bit, m.legendID())
+			}
+		}
+	}
+}

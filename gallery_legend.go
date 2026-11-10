@@ -57,6 +57,7 @@ type legendKey struct {
 type legendState struct {
 	on     bool
 	stored legendKey
+	failed legendKey // last inputs renderLegend could not turn into an overlay
 }
 
 // legendID is the image id of the overlay: the one id of the pane's block that
@@ -92,8 +93,13 @@ func (m *galleryModel) toggleLegend() {
 		return
 	default:
 		m.legend.on = true
+		m.legend.failed = legendKey{}
 	}
 	m.syncLegend()
+	if m.legend.on && m.legend.failed != (legendKey{}) {
+		m.legend.on = false
+		m.status = "Legend failed to render"
+	}
 }
 
 // syncLegend brings the stored overlay in line with the selection: stores the
@@ -119,11 +125,14 @@ func (m *galleryModel) syncLegend() {
 	boxCols, boxRows := m.legendBox()
 	key := legendKey{svg: svg, mtime: fi.ModTime().UnixNano(), boxCols: boxCols, boxRows: boxRows,
 		cellW: m.cellWpx(), cellH: m.cellHpx()}
-	if m.legend.stored.sameInputs(key) {
+	if m.legend.stored.sameInputs(key) || m.legend.failed == key {
 		return
 	}
 	out, cols, rows := renderLegend(key)
 	if out == "" {
+		// Remembered, so a sidecar that cannot render is not re-read and
+		// re-rasterized on every pan frame.
+		m.legend.failed = key
 		m.dropLegend()
 		return
 	}
@@ -226,6 +235,8 @@ func renderLegend(key legendKey) (path string, cols, rows int) {
 // the image it belongs to, so the legend sits over the preview without touching
 // it: the preview's own crop, pan and zoom are not involved.
 func placeholderBlockOver(id, w, h, ovID, ovCols, ovRows int) string {
+	// A stored overlay can outlive a shrink of the preview (a failed re-store).
+	ovCols, ovRows = min(ovCols, w), min(ovRows, h)
 	var b strings.Builder
 	for r := range h {
 		cur := -1

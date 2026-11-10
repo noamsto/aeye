@@ -60,7 +60,8 @@ type layout struct {
 func computeLayout(paneW, paneH int) layout {
 	stripH := clamp(paneH/4, 5, 12)
 	stripW := stripThumbW
-	// +2 per thumb for its border frame.
+	// +2 per thumb for its border frame. The cap leaves id base+altOffset-1 to the
+	// legend overlay (legendID).
 	stripCols := clamp((paneW+stripGutter)/(stripW+2+stripGutter), 1, altOffset-2)
 
 	// Rows the preview can't have: title(1) + subtitle(1) + legend(2) +
@@ -113,7 +114,8 @@ func paneImageIDBaseOn(host, pane string) int {
 // slot s is stored under base+s or base+s+altOffset. The viewer stores a changed
 // image under the idle one and only then abandons the other, so a placeholder
 // cell never points at a deleted image. computeLayout bounds the strip so every
-// slot index stays below altOffset.
+// slot index stays below altOffset-1: base+altOffset-1 is the legend overlay's id
+// (legendID).
 var altOffset = (maxCellDim + 1) / 2
 
 // slotState is one stored image slot (0 = preview, 1+s = filmstrip cell s).

@@ -214,3 +214,32 @@ STUB
 	[ "$status" -eq 0 ]
 	[ "$(jq -r .name "$MANIFEST")" = Flow.D2 ]
 }
+
+@test "a sidecar legend is copied beside each theme render, variant legends first" {
+	printf '<svg id="shared"/>' >"$SRC/flow.legend.svg"
+	printf '<svg id="light"/>' >"$SRC/flow-light.legend.svg"
+	run bash "$APP" "$SRC/flow.d2"
+	[ "$status" -eq 0 ]
+	base="$(jq -r .path "$MANIFEST")"
+	base="${base%-dark.png}"
+	[ "$(cat "$base-dark.legend.svg")" = '<svg id="shared"/>' ]
+	[ "$(cat "$base-light.legend.svg")" = '<svg id="light"/>' ]
+}
+
+@test "republishing keeps the legend in step: dropped with the old render, removed with its sidecar" {
+	printf '<svg id="shared"/>' >"$SRC/flow.legend.svg"
+	bash "$APP" "$SRC/flow.d2"
+	old="$(jq -r .path "$MANIFEST")"
+	old="${old%-dark.png}"
+	printf 'a -> c\n' >"$SRC/flow.d2"
+	bash "$APP" "$SRC/flow.d2"
+	new="$(jq -r .path "$MANIFEST")"
+	new="${new%-dark.png}"
+	[ ! -e "$old-dark.legend.svg" ]
+	[ ! -e "$old-light.legend.svg" ]
+	[ -f "$new-dark.legend.svg" ]
+	rm "$SRC/flow.legend.svg"
+	bash "$APP" "$SRC/flow.d2"
+	[ ! -e "$new-dark.legend.svg" ]
+	[ ! -e "$new-light.legend.svg" ]
+}

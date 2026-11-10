@@ -146,6 +146,7 @@ session reads/writes/screenshots images.
 | `d` | Drag the selected image out — in kitty just drag it with the mouse; `d` opens a `ripdrag`/`dragon` window elsewhere, else copies to the clipboard |
 | `x` | Delete the selected image — marks it for deletion with a 5s undo window; press `u` to undo, or it's removed from disk when the countdown ends |
 | `s` | Toggle the carousel between a side and bottom split (tmux only; no-op when the carousel is a floating pane) |
+| `L` | Toggle the image's legend: a diagram's `<image stem>.legend.svg` sidecar, drawn over the preview's bottom-right corner (kitty only). It follows the image's light/dark variant — `foo-dark.legend.svg` before the shared `foo.legend.svg` — and never changes the image's zoom or pan. An image with no sidecar shows a "No legend" hint |
 | `r` | Reload the manifest |
 | `q` / `Ctrl-C` | Quit |
 

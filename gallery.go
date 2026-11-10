@@ -213,6 +213,7 @@ type galleryModel struct {
 	pinned          bool                 // follow the newest image until the user first navigates
 	crop            cropFrac             // visible sub-rectangle of the source (fullCrop = fit)
 	mini            minimapState         // selected thumb's viewport overlay (see syncMinimap)
+	legend          legendState          // on-demand sidecar legend over the preview's corner (see syncLegend)
 	crops           map[string]savedCrop // per-image crops remembered across selection changes, by cropKey (see ensureDecoded)
 	curCropKey      string               // cropKey of the selection; where rememberCrop files its crop
 	curStamp        imageStamp           // cropStamp of the selection when selected; validates a remembered crop
@@ -517,6 +518,8 @@ func (m *galleryModel) transmitView() {
 	if m.backend != backendKitty || m.tty == nil || len(m.images) == 0 {
 		return
 	}
+	// The legend rides on the selection but not on the transmit signature.
+	m.syncLegend()
 	sig := m.computeTransmitSig()
 	if m.lastTransmitSig != nil && *m.lastTransmitSig == sig {
 		return
@@ -702,6 +705,7 @@ func (m *galleryModel) dropStore() {
 		m.slots[i].key, m.slots[i].path = "", ""
 	}
 	m.mini.stored = minimapStamp{}
+	m.legend.stored = legendKey{}
 	m.anim.attached = animKey{}
 }
 
@@ -1040,6 +1044,9 @@ func (m galleryModel) handle(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			m.toggleSplitAxis()
 			return m, nil
+		case "L":
+			m.toggleLegend()
+			return m, m.schedulePaint()
 		default:
 			if d := digitKey(msg.String()); d >= 1 && d-1 < len(m.images) {
 				m.selectIndex(d - 1)
@@ -1387,7 +1394,7 @@ func (m galleryModel) View() tea.View {
 // actionRow is the footer's second line: the pending-deletion countdown when a
 // deletion is in flight, else a transient status, else the action-key hints.
 func (m galleryModel) actionRow() string {
-	actionKeys := "↵ open · O folder · y copy · d drag · x del · s split · r reload · q quit"
+	actionKeys := "↵ open · O folder · y copy · d drag · x del · s split · L legend · r reload · q quit"
 	if m.pending != nil {
 		line := fmt.Sprintf("✗ Deleting %s  %s — u to undo",
 			m.pending.name, countdownBar(time.Until(m.pending.deadline), undoWindow, 5))
@@ -1422,7 +1429,11 @@ func (m galleryModel) renderView() string {
 	var preview string
 	switch m.backend {
 	case backendKitty:
-		preview = placeholderBlock(m.previewID(), m.l.previewW, m.l.previewH)
+		if lg := m.legend.stored; lg.cols > 0 {
+			preview = placeholderBlockOver(m.previewID(), m.l.previewW, m.l.previewH, m.legendID(), lg.cols, lg.rows)
+		} else {
+			preview = placeholderBlock(m.previewID(), m.l.previewW, m.l.previewH)
+		}
 	case backendRaster:
 		preview = blankBlock(m.l.previewW, m.l.previewH)
 	default:

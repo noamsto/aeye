@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -161,8 +162,17 @@ func runRenderDiagram(in, out string) error {
 		return fmt.Errorf("write %s: %w", svgPath, err)
 	}
 
-	args := append(append(resvgFontArgs(), sizeArgs...), svgPath, out)
+	// The PNG is the gallery's pan bitmap and the still shown before the
+	// animation loads, so it carries the loop's first frame (dashes of an
+	// aeye-flow hook) while the sibling SVG keeps its own animation hooks.
+	rasterIn := svgPath
+	var stdin io.Reader
+	if svgAnimates(svg) {
+		rasterIn, stdin = "-", bytes.NewReader(animFrameSVG(svg, 0, animFrameMax))
+	}
+	args := append(append(resvgFontArgs(), sizeArgs...), rasterIn, out)
 	cmd := exec.Command(resvgBin(), args...) //nolint:gosec // args built by the tool, not shell-interpreted
+	cmd.Stdin = stdin
 	if stderr, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("resvg: %w: %s", err, stderr)
 	}

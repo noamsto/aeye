@@ -232,9 +232,10 @@ func TestLegendIDReserved(t *testing.T) {
 	}
 }
 
-// An image whose legend failed must not show the previous image's overlay when
-// the selection comes back to it.
-func TestLegendFailedImageDropsOtherImagesOverlay(t *testing.T) {
+// failingLegendModel is two images with legends on: image 0's sidecar cannot be
+// rendered (the stub rejects it), image 1's can.
+func failingLegendModel(t *testing.T) *galleryModel {
+	t.Helper()
 	svg, _ := animStub(t)
 	m, _ := newAnimModel(t, 2, svg, animOff)
 	okPNG := filepath.Join(t.TempDir(), "ok.png")
@@ -251,8 +252,14 @@ func TestLegendFailedImageDropsOtherImagesOverlay(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeLegend(t, m.images[1].Path, legendSuffix)
-
 	m.legend.on = true
+	return m
+}
+
+// An image whose legend failed must not show the previous image's overlay when
+// the selection comes back to it.
+func TestLegendFailedImageDropsOtherImagesOverlay(t *testing.T) {
+	m := failingLegendModel(t)
 	m.syncLegend() // A fails
 	m.selectIndex(1)
 	m.syncLegend() // B renders
@@ -266,5 +273,35 @@ func TestLegendFailedImageDropsOtherImagesOverlay(t *testing.T) {
 	}
 	if got := legendRowCount(m); got != 0 {
 		t.Errorf("A's preview still draws %d legend rows", got)
+	}
+}
+
+// Reaching an image whose legend fails says so, whether the selection moved by
+// key or by the mouse (which clears the status after its own actions).
+func TestLegendFailureOnSelectionChangeSaysSo(t *testing.T) {
+	const want = "Legend failed to render"
+	for name, move := range map[string]func(m *galleryModel){
+		"key": func(m *galleryModel) { handleMsg(m, tea.KeyPressMsg{Code: 'k', Text: "k"}) },
+		"wheel": func(m *galleryModel) {
+			y := m.height - m.l.stripH - 4 + 1
+			handleMsg(m, tea.MouseWheelMsg{X: 1, Y: y, Button: tea.MouseWheelUp})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := failingLegendModel(t)
+			m.selectIndex(1)
+			m.syncLegend()
+			if m.legend.stored.cols == 0 {
+				t.Fatal("B's legend did not render")
+			}
+			m.status = ""
+			move(m)
+			if m.cursor != 0 {
+				t.Fatalf("cursor = %d, want 0", m.cursor)
+			}
+			if m.status != want {
+				t.Errorf("status = %q, want %q", m.status, want)
+			}
+		})
 	}
 }

@@ -187,6 +187,7 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 	}
 	e := msg.Mouse()
 	changed := false
+	prevStatus := m.status
 	var panCmd tea.Cmd // trailing flush when a drag frame was throttled
 	switch msg.(type) {
 	case tea.MouseWheelMsg:
@@ -259,6 +260,10 @@ func (m galleryModel) handleMouse(msg tea.MouseMsg) (galleryModel, tea.Cmd) {
 	if !changed {
 		return m, nil
 	}
-	m.status = "" // a navigation/zoom dismisses the transient message, like a keypress
+	// A navigation/zoom dismisses the transient message, like a keypress, but not
+	// one the action itself raised (a legend that failed to render).
+	if m.status == prevStatus {
+		m.status = ""
+	}
 	return m, tea.Batch(panCmd, m.scheduleVector())
 }

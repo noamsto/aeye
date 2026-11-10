@@ -215,5 +215,5 @@ Rendering needs `aeye` (it embeds the d2 compiler) and `resvg` on PATH. If eithe
 is missing the hook no-ops silently (no diagram, no error) — install both to
 enable diagrams. Theme choice and the contrast pass run inside `aeye`.
 
-Renders cap at 2 GiB and 60 s: on `diagram too large to render`, simplify it
-(`AEYE_RESVG_MEM_MB` raises the cap).
+Renders cap at 2 GiB and 60 s: on `diagram too large to render`, cut nodes or
+split it. Only the user raises the cap (`AEYE_RESVG_MEM_MB`, launch env).

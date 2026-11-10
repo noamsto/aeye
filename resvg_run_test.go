@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -186,6 +187,103 @@ func TestRunResvgStdin(t *testing.T) {
 	}
 }
 
+// TestRunResvgConcurrencyCap holds every slot with a sleeping stub, then checks
+// that one more render waits for a slot, honours its ctx while waiting without
+// running, and runs once a slot frees.
+func TestRunResvgConcurrencyCap(t *testing.T) {
+	t.Setenv("AEYE_RESVG", writeResvgStub(t, `for a; do m=$a; done
+echo run >> "$m"
+case "$m" in */hold) sleep 1;; esac`))
+	dir := t.TempDir()
+	hold := filepath.Join(dir, "hold")
+	var wg sync.WaitGroup
+	for range resvgMaxConcurrent {
+		wg.Go(func() {
+			if _, err := runResvg(context.Background(), nil, hold); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		b, _ := os.ReadFile(hold) //nolint:gosec // test temp path
+		if bytes.Count(b, []byte("run\n")) == resvgMaxConcurrent {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("holders did not all start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	blocked := filepath.Join(dir, "blocked")
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := runResvg(ctx, nil, blocked); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
+	}
+	if _, err := os.Stat(blocked); err == nil {
+		t.Fatal("render ran without a free slot")
+	}
+
+	wg.Wait()
+	freed := filepath.Join(dir, "freed")
+	if _, err := runResvg(context.Background(), nil, freed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(freed); err != nil {
+		t.Fatalf("render did not run after slots freed: %v", err)
+	}
+}
+
+func TestTailWriterKeepsEnd(t *testing.T) {
+	var w tailWriter
+	noise := bytes.Repeat([]byte("noise line\n"), (1<<20)/11+1)
+	line := []byte("memory allocation of 99 bytes failed\n")
+	for _, p := range [][]byte{noise, line} {
+		if n, err := w.Write(p); n != len(p) || err != nil {
+			t.Fatalf("Write = %d, %v, want %d, nil", n, err, len(p))
+		}
+	}
+	got := w.Bytes()
+	if len(got) > resvgOutputTail {
+		t.Fatalf("kept %d bytes, want <= %d", len(got), resvgOutputTail)
+	}
+	if !bytes.HasSuffix(got, line) {
+		t.Fatalf("tail lost the last line: %q", got[max(0, len(got)-80):])
+	}
+}
+
+func TestTailWriterSmallWritesAccumulate(t *testing.T) {
+	var w tailWriter
+	for _, s := range []string{"a", "bc", "def"} {
+		if _, err := w.Write([]byte(s)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := string(w.Bytes()); got != "abcdef" {
+		t.Fatalf("Bytes() = %q, want abcdef", got)
+	}
+}
+
+func TestRunBoundedCapsOutput(t *testing.T) {
+	stub := writeResvgStub(t, "head -c 1500000 /dev/zero | tr '\\0' x >&2\necho 'memory allocation of 1 bytes failed' >&2\nexit 1")
+	for _, mode := range runBoundedModes() {
+		t.Run([]string{"rlimit", "watch"}[mode], func(t *testing.T) {
+			out, err := runBounded(context.Background(), nil, stub, nil, mode, 1<<30, time.Minute)
+			if err == nil {
+				t.Fatal("want an error")
+			}
+			if len(out) > resvgOutputTail {
+				t.Fatalf("captured %d bytes, want <= %d", len(out), resvgOutputTail)
+			}
+			if !bytes.Contains(out, []byte("memory allocation of")) {
+				t.Fatal("output lost its last line")
+			}
+		})
+	}
+}
+
 func TestResvgMemLimit(t *testing.T) {
 	tests := []struct {
 		name string
@@ -199,6 +297,7 @@ func TestResvgMemLimit(t *testing.T) {
 		{"zero", true, "0", resvgMemLimitMiB},
 		{"negative", true, "-5", resvgMemLimitMiB},
 		{"not a number", true, "abc", resvgMemLimitMiB},
+		{"huge clamps", true, "99999999999999", 1 << 20},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

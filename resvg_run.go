@@ -23,9 +23,21 @@ const (
 	resvgMemEnv = "AEYE_RESVG_MEM_MB"
 	// resvgTimeout is the wall-clock limit for one resvg render.
 	resvgTimeout = 60 * time.Second
+	// resvgMaxMemLimitMiB caps the env override at 1 TiB so the MiB-to-byte and
+	// KiB conversions cannot overflow.
+	resvgMaxMemLimitMiB = 1 << 20
+	// resvgOutputTail is how much of a render's output is kept for error text.
+	resvgOutputTail = 64 << 10
+	// resvgMaxConcurrent is how many resvg renders may run at once in this process.
+	resvgMaxConcurrent = 4
 
 	rssPollInterval = 50 * time.Millisecond
 )
+
+// resvgSlots is a counting semaphore over running renders. The memory bound is
+// per render, so this caps aeye's aggregate at resvgMaxConcurrent times that
+// bound (animation frames already run up to 4 at once).
+var resvgSlots = make(chan struct{}, resvgMaxConcurrent)
 
 // errDiagramTooLarge marks a render stopped by the memory bound or the timeout.
 var errDiagramTooLarge = errors.New("diagram too large to render")
@@ -57,13 +69,28 @@ func resvgAvailable() bool {
 }
 
 // resvgMemLimit is the memory bound in MiB: resvgMemEnv when it is a positive
-// integer, else resvgMemLimitMiB.
+// integer (clamped to resvgMaxMemLimitMiB), else resvgMemLimitMiB.
 func resvgMemLimit() int {
 	if n, err := strconv.Atoi(os.Getenv(resvgMemEnv)); err == nil && n > 0 {
-		return n
+		return min(n, resvgMaxMemLimitMiB)
 	}
 	return resvgMemLimitMiB
 }
+
+// tailWriter keeps the last resvgOutputTail bytes written to it. It is not safe
+// for concurrent use; exec serializes writes when Stdout and Stderr are the
+// same writer.
+type tailWriter struct{ buf []byte }
+
+func (w *tailWriter) Write(p []byte) (int, error) {
+	w.buf = append(w.buf, p...)
+	if extra := len(w.buf) - resvgOutputTail; extra > 0 {
+		w.buf = w.buf[:copy(w.buf, w.buf[extra:])]
+	}
+	return len(p), nil
+}
+
+func (w *tailWriter) Bytes() []byte { return w.buf }
 
 // runResvg runs resvg with resvgFontArgs() ahead of args, under the memory bound
 // and timeout, and returns its combined output. stdin may be nil. A limit hit
@@ -76,6 +103,12 @@ func runResvg(ctx context.Context, stdin io.Reader, args ...string) ([]byte, err
 	mode := boundWatch
 	if runtime.GOOS == "linux" {
 		mode = boundRLimit
+	}
+	select {
+	case resvgSlots <- struct{}{}:
+		defer func() { <-resvgSlots }()
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
 	out, err := runBounded(ctx, stdin, path, append(resvgFontArgs(), args...), mode, int64(resvgMemLimit())<<20, resvgTimeout)
 	if err == nil || errors.Is(err, errDiagramTooLarge) || ctx.Err() != nil {
@@ -93,14 +126,14 @@ func runBounded(ctx context.Context, stdin io.Reader, path string, args []string
 
 	var cmd *exec.Cmd
 	if mode == boundRLimit {
-		wrapped := append([]string{"-c", `ulimit -S -v ` + strconv.FormatInt(limitBytes>>10, 10) + ` 2>/dev/null; exec "$@"`, "sh", path}, args...)
+		wrapped := append([]string{"-c", `ulimit -S -v ` + strconv.FormatInt(limitBytes>>10, 10) + ` 2>/dev/null || [ "$(ulimit -H -v)" != unlimited ] || exit 125; exec "$@"`, "sh", path}, args...)
 		cmd = exec.CommandContext(runCtx, "/bin/sh", wrapped...) //nolint:gosec // args built by the tool; the shell only runs the fixed ulimit/exec line
 	} else {
 		cmd = exec.CommandContext(runCtx, path, args...) //nolint:gosec // args built by the tool, not shell-interpreted
 	}
 	cmd.Stdin = stdin
 	cmd.WaitDelay = 2 * time.Second
-	var out bytes.Buffer
+	var out tailWriter
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	if err := cmd.Start(); err != nil {

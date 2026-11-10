@@ -296,7 +296,8 @@ The launcher forwards it into the spawned viewer on every host (tmux/kitty/wezte
 
 Every `resvg` rasterization (`render-diagram`, `aeye render`, the carousel's sharp
 vector render and animated frames) runs under a memory bound (default 2048 MiB) and
-a 60 s timeout. A diagram that exceeds either fails with `diagram too large to
+a 60 s timeout. Both apply per `resvg` process, and at most four run at once, so
+aeye as a whole stays under four times the bound. A diagram that exceeds either fails with `diagram too large to
 render`; the carousel keeps its static fallback. Output size is capped separately at
 8192 px per side.
 

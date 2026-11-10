@@ -231,3 +231,40 @@ func TestLegendIDReserved(t *testing.T) {
 		}
 	}
 }
+
+// An image whose legend failed must not show the previous image's overlay when
+// the selection comes back to it.
+func TestLegendFailedImageDropsOtherImagesOverlay(t *testing.T) {
+	svg, _ := animStub(t)
+	m, _ := newAnimModel(t, 2, svg, animOff)
+	okPNG := filepath.Join(t.TempDir(), "ok.png")
+	writeAnimPNG(t, okPNG, false)
+	stub := filepath.Join(t.TempDir(), "resvg")
+	body := fmt.Sprintf("#!/bin/sh\nfor a; do in=$out; out=$a; done\n"+
+		"if grep -q failme \"$in\"; then exit 1; fi\ncp %q \"$out\"\n", okPNG)
+	if err := os.WriteFile(stub, []byte(body), 0o755); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	t.Setenv("AEYE_RESVG", stub)
+	bad := writeLegend(t, m.images[0].Path, legendSuffix)
+	if err := os.WriteFile(bad, []byte(legendFixtureSVG+"<!--failme-->"), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
+	writeLegend(t, m.images[1].Path, legendSuffix)
+
+	m.legend.on = true
+	m.syncLegend() // A fails
+	m.selectIndex(1)
+	m.syncLegend() // B renders
+	if m.legend.stored.cols == 0 {
+		t.Fatal("B's legend did not render")
+	}
+	m.selectIndex(0)
+	m.syncLegend() // A again: remembered failure, B's overlay must go
+	if m.legend.stored != (legendKey{}) {
+		t.Errorf("B's overlay stayed up over A: %+v", m.legend.stored)
+	}
+	if got := legendRowCount(m); got != 0 {
+		t.Errorf("A's preview still draws %d legend rows", got)
+	}
+}

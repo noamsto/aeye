@@ -98,7 +98,6 @@ func (m *galleryModel) toggleLegend() {
 	m.syncLegend()
 	if m.legend.on && m.legend.failed != (legendKey{}) {
 		m.legend.on = false
-		m.status = "Legend failed to render"
 	}
 }
 
@@ -125,7 +124,12 @@ func (m *galleryModel) syncLegend() {
 	boxCols, boxRows := m.legendBox()
 	key := legendKey{svg: svg, mtime: fi.ModTime().UnixNano(), boxCols: boxCols, boxRows: boxRows,
 		cellW: m.cellWpx(), cellH: m.cellHpx()}
-	if m.legend.stored.sameInputs(key) || m.legend.failed == key {
+	if m.legend.stored.sameInputs(key) {
+		return
+	}
+	if m.legend.failed == key {
+		// Another image's overlay must not stay up over this one.
+		m.dropLegend()
 		return
 	}
 	out, cols, rows := renderLegend(key)
@@ -133,6 +137,7 @@ func (m *galleryModel) syncLegend() {
 		// Remembered, so a sidecar that cannot render is not re-read and
 		// re-rasterized on every pan frame.
 		m.legend.failed = key
+		m.status = "Legend failed to render"
 		m.dropLegend()
 		return
 	}

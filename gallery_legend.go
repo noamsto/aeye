@@ -42,7 +42,6 @@ func legendSidecar(imagePath string) string {
 	return ""
 }
 
-// legendKey is everything that decides the overlay's pixels and cell box.
 type legendKey struct {
 	svg          string
 	mtime        int64
@@ -66,12 +65,10 @@ func (m *galleryModel) legendID() int {
 	return paneImageIDBase(m.pane) + altOffset - 1
 }
 
-// legendBox is the corner of the preview the overlay may take, in cells.
 func (m *galleryModel) legendBox() (cols, rows int) {
 	return max(1, m.l.previewW*2/5), max(1, m.l.previewH*2/5)
 }
 
-// legendCells fits an svgW×svgH legend into a box of cells, keeping its aspect.
 func legendCells(svgW, svgH float64, boxCols, boxRows, cellW, cellH int) (cols, rows int) {
 	s := min(float64(boxCols*cellW)/svgW, float64(boxRows*cellH)/svgH, legendMaxScale)
 	cols = max(1, min(boxCols, int(svgW*s)/cellW))
@@ -147,7 +144,6 @@ func (m *galleryModel) syncLegend() {
 	}
 }
 
-// dropLegend removes a stored overlay.
 func (m *galleryModel) dropLegend() {
 	if m.legend.stored == (legendKey{}) {
 		return
@@ -156,7 +152,6 @@ func (m *galleryModel) dropLegend() {
 	m.legend.stored = legendKey{}
 }
 
-// sameInputs reports whether k would render what s already holds.
 func (s legendKey) sameInputs(k legendKey) bool {
 	s.cols, s.rows = 0, 0
 	return s == k

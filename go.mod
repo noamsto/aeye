@@ -13,7 +13,7 @@ require (
 	github.com/noamsto/mermaid2d2 v0.7.0
 	github.com/noamsto/themestate v0.1.0
 	golang.org/x/image v0.47.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/sys v0.50.0
 	oss.terrastruct.com/d2 v0.7.2
 	oss.terrastruct.com/util-go v0.1.0
 )

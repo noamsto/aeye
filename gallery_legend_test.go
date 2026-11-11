@@ -14,6 +14,14 @@ import (
 const legendFixtureSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 60">` +
 	`<rect width="120" height="60" fill="#222"/></svg>`
 
+func writeLegendFor(t *testing.T, m *galleryModel, i int) string {
+	t.Helper()
+	if m.images == nil || i >= len(m.images) {
+		t.Fatalf("model has no image %d", i)
+	}
+	return writeLegend(t, m.images[i].Path, legendSuffix)
+}
+
 func writeLegend(t *testing.T, imagePath, suffix string) string {
 	t.Helper()
 	p := strings.TrimSuffix(imagePath, filepath.Ext(imagePath)) + suffix
@@ -66,7 +74,7 @@ func TestLegendSidecarThemeVariants(t *testing.T) {
 func TestLegendToggleShowsAndHidesOverlay(t *testing.T) {
 	svg, _ := animStub(t)
 	m, rec := newAnimModel(t, 2, svg, animOff)
-	writeLegend(t, m.images[0].Path, legendSuffix)
+	writeLegendFor(t, m, 0)
 	crop := cropAtMagnification(2, .5, .5, boxAspectFrac(40, 30, m.l.previewW*m.cellWpx(), m.l.previewH*m.cellHpx()))
 	m.crop = crop
 
@@ -131,7 +139,7 @@ func TestLegendToggleNoSidecarIsAHint(t *testing.T) {
 func TestLegendFollowsSelectionAndRestore(t *testing.T) {
 	svg, _ := animStub(t)
 	m, rec := newAnimModel(t, 2, svg, animOff)
-	writeLegend(t, m.images[0].Path, legendSuffix)
+	writeLegendFor(t, m, 0)
 	pressLegend(m)
 	if m.legend.stored.cols == 0 {
 		t.Fatal("legend not shown on the image with a sidecar")
@@ -164,7 +172,7 @@ func TestLegendFollowsSelectionAndRestore(t *testing.T) {
 func TestLegendRenderFailureReportedAndNotRetried(t *testing.T) {
 	svg, _ := animStub(t)
 	m, _ := newAnimModel(t, 1, svg, animOff)
-	writeLegend(t, m.images[0].Path, legendSuffix)
+	writeLegendFor(t, m, 0)
 	log := filepath.Join(t.TempDir(), "calls.log")
 	script := filepath.Join(t.TempDir(), "resvg")
 	body := fmt.Sprintf("#!/bin/sh\necho x >> %q\nexit 1\n", log)
@@ -247,11 +255,11 @@ func failingLegendModel(t *testing.T) *galleryModel {
 		t.Fatal(err)
 	}
 	t.Setenv("AEYE_RESVG", stub)
-	bad := writeLegend(t, m.images[0].Path, legendSuffix)
+	bad := writeLegendFor(t, m, 0)
 	if err := os.WriteFile(bad, []byte(legendFixtureSVG+"<!--failme-->"), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 		t.Fatal(err)
 	}
-	writeLegend(t, m.images[1].Path, legendSuffix)
+	writeLegendFor(t, m, 1)
 	m.legend.on = true
 	return m
 }

@@ -156,48 +156,80 @@ func TestColdSwitchDoesNotTranscodeOnLoop(t *testing.T) {
 	}
 }
 
+// warmKick is one pending warm debounce: when it comes due and what it fires.
+type warmKick struct {
+	due time.Duration
+	fn  func(time.Time) tea.Msg
+}
+
+// warmClock replaces the debounce timer with a clock a test advances by hand.
+type warmClock struct {
+	now   time.Duration
+	kicks []warmKick
+}
+
+// driveWarmClock points warmTick at a hand-driven clock for the duration of t.
+func driveWarmClock(t *testing.T) *warmClock {
+	t.Helper()
+	old := warmTick
+	c := &warmClock{}
+	warmTick = func(d time.Duration, fn func(time.Time) tea.Msg) tea.Cmd {
+		c.kicks = append(c.kicks, warmKick{due: c.now + d, fn: fn})
+		return nil
+	}
+	t.Cleanup(func() { warmTick = old })
+	return c
+}
+
+// advance moves the clock by d and returns the kicks whose window has elapsed.
+func (c *warmClock) advance(d time.Duration) []func(time.Time) tea.Msg {
+	c.now += d
+	var due []func(time.Time) tea.Msg
+	var rest []warmKick
+	for _, k := range c.kicks {
+		if k.due <= c.now {
+			due = append(due, k.fn)
+		} else {
+			rest = append(rest, k)
+		}
+	}
+	c.kicks = rest
+	return due
+}
+
+// tickWarm advances c by d and delivers every due kick through the model.
+func tickWarm(m galleryModel, c *warmClock, d time.Duration) galleryModel {
+	for _, kick := range c.advance(d) {
+		next, cmd := m.Update(kick(time.Now()))
+		m = pump(next.(galleryModel), runCmd(cmd)...)
+	}
+	return m
+}
+
 func TestResizeStormTranscodesOnlySettledSize(t *testing.T) {
 	old := warmDebounce
 	warmDebounce = 100 * time.Millisecond
 	t.Cleanup(func() { warmDebounce = old })
+	clock := driveWarmClock(t)
 	rec := newTransmitRecorder(t)
 	m := newColdModel(t, rec, 3)
-	*m = pump(*m, tea.WindowSizeMsg{Width: m.width, Height: m.height})
-	coldCache(t) // the layout before the storm is stale by the time it ends
 
-	// Cmds run in real time, as the runtime would: a kick that isn't debounced
-	// arrives while the storm is still going and starts a transcode for its size.
-	msgs := make(chan tea.Msg, 1024)
-	run := func(cmd tea.Cmd) {
-		go func() {
-			for _, msg := range runCmd(cmd) {
-				msgs <- msg
-			}
-		}()
-	}
-	cur := *m
-	step := func(msg tea.Msg) {
-		next, cmd := cur.Update(msg)
-		cur = next.(galleryModel)
-		run(cmd)
-	}
-	deliver := func(wait time.Duration) bool {
-		select {
-		case msg := <-msgs:
-			next, cmd := cur.Update(msg)
-			cur = next.(galleryModel)
-			run(cmd)
-			return true
-		case <-time.After(wait):
-			return false
-		}
-	}
+	next, cmd := m.Update(tea.WindowSizeMsg{Width: m.width, Height: m.height})
+	cur := pump(next.(galleryModel), runCmd(cmd)...)
+	cur = tickWarm(cur, clock, 0)
+	coldCache(t)
+
 	const steps = 12
 	for i := range steps {
-		step(tea.WindowSizeMsg{Width: 90 + i, Height: 40})
-		for deliver(10 * time.Millisecond) {
-		}
+		next, cmd := cur.Update(tea.WindowSizeMsg{Width: 90 + i, Height: 40})
+		cur = pump(next.(galleryModel), runCmd(cmd)...)
+		// Advance by the resize interval, not the debounce: a kick comes due only
+		// after its own warmDebounce window, so a superseded layout's kick arrives
+		// stale and must transcode nothing.
+		cur = tickWarm(cur, clock, 10*time.Millisecond)
 	}
+	cur = tickWarm(cur, clock, warmDebounce)
+
 	want := map[string]bool{}
 	for _, im := range cur.images {
 		for _, sz := range [][2]int{{cur.l.previewW, cur.l.previewH}, {cur.l.stripW, cur.l.stripH}} {
@@ -205,18 +237,6 @@ func TestResizeStormTranscodesOnlySettledSize(t *testing.T) {
 			want[out] = true
 		}
 	}
-	// Wait for the settled size to be warmed, then a little longer for a
-	// transcode that shouldn't be there to show up.
-	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline); {
-		got := cacheFiles(t)
-		if len(got) >= len(want) {
-			break
-		}
-		deliver(50 * time.Millisecond)
-	}
-	for deliver(150 * time.Millisecond) {
-	}
-
 	got := cacheFiles(t)
 	for f := range got {
 		if !want[f] {

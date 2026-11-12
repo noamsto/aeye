@@ -13,6 +13,10 @@ import (
 // the size it settles on is worth the work.
 var warmDebounce = 150 * time.Millisecond
 
+// warmTick is a package var so tests can drive the debounce by hand instead of
+// racing real timers.
+var warmTick = tea.Tick
+
 // transcodeSlots bounds concurrent transcodes. Each holds a full-resolution
 // decode, so a burst of superseded fills must not all run at once.
 var transcodeSlots = make(chan struct{}, 2)
@@ -119,7 +123,7 @@ func (m *galleryModel) armCache(prev layout) tea.Cmd {
 	if resized && prev != (layout{}) {
 		delay = warmDebounce
 	}
-	return tea.Tick(delay, func(time.Time) tea.Msg { return cacheKickMsg{gen: g, target: target} })
+	return warmTick(delay, func(time.Time) tea.Msg { return cacheKickMsg{gen: g, target: target} })
 }
 
 func (m *galleryModel) startCache(msg cacheKickMsg) tea.Cmd {

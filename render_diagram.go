@@ -9,7 +9,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -166,20 +165,15 @@ func runRenderDiagram(in, out string) error {
 	// animation loads, so it carries the loop's first frame (dashes of an
 	// aeye-flow hook) while the sibling SVG keeps its own animation hooks.
 	rasterIn := svgPath
-	args := append(resvgFontArgs(), sizeArgs...)
+	args := sizeArgs
 	var stdin io.Reader
 	if svgAnimates(svg) {
 		// From stdin resvg has no file to resolve relative hrefs against.
 		rasterIn, stdin = "-", bytes.NewReader(animFrameSVG(svg, 0, animFrameMax))
 		args = append(args, "--resources-dir", filepath.Dir(svgPath))
 	}
-	args = append(args, rasterIn, out)
-	cmd := exec.Command(resvgBin(), args...) //nolint:gosec // args built by the tool, not shell-interpreted
-	cmd.Stdin = stdin
-	if stderr, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("resvg: %w: %s", err, stderr)
-	}
-	return nil
+	_, err = runResvg(context.Background(), stdin, append(args, rasterIn, out)...)
+	return err
 }
 
 // maxRasterSide caps the long side of every rasterized diagram, whether a .svg
@@ -316,14 +310,6 @@ func svgLength(name, v string, vbSide float64, hasVB bool) (px float64, set bool
 		return 0, false, fmt.Errorf("unsupported %s unit %q", name, v)
 	}
 	return n * scale, true, nil
-}
-
-// resvgBin is the resvg executable: AEYE_RESVG when set, else resvg on PATH.
-func resvgBin() string {
-	if bin := os.Getenv("AEYE_RESVG"); bin != "" {
-		return bin
-	}
-	return "resvg"
 }
 
 // resvgFontArgs makes resvg's default and generic serif/sans-serif families the

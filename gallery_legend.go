@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha1" //nolint:gosec // sha1 only names cache files; not a security use
 	"fmt"
 	"image"
@@ -8,7 +9,6 @@ import (
 	"image/draw"
 	"image/png"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -192,9 +192,8 @@ func renderLegend(key legendKey) (path string, cols, rows int) {
 	}
 	raw.Close()                 //nolint:errcheck,gosec // only the name is needed; resvg writes it
 	defer os.Remove(raw.Name()) //nolint:errcheck // best-effort temp cleanup
-	args := append(resvgFontArgs(), "--width", strconv.Itoa(boxW), "--height", strconv.Itoa(boxH), key.svg, raw.Name())
-	if err := exec.Command(resvgBin(), args...).Run(); err != nil { //nolint:gosec // args built by the tool, not shell-interpreted
-		tracef("legend %s: resvg: %v", key.svg, err)
+	if _, err := runResvg(context.Background(), nil, "--width", strconv.Itoa(boxW), "--height", strconv.Itoa(boxH), key.svg, raw.Name()); err != nil {
+		tracef("legend %s: %v", key.svg, err)
 		return "", 0, 0
 	}
 	f, err := os.Open(raw.Name()) //nolint:gosec // scratch PNG this function just rendered

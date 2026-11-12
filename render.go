@@ -2,10 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -50,10 +50,6 @@ func runRender(from, in, out string, stdin io.Reader) error {
 	if err != nil {
 		return fmt.Errorf("compile %s: cannot determine its size (%w)", in, err)
 	}
-	cmd := exec.Command(resvgBin(), append(append(resvgFontArgs(), sizeArgs...), "-", out)...) //nolint:gosec // args built by the tool, not shell-interpreted
-	cmd.Stdin = bytes.NewReader(fixFonts(svg))
-	if stderr, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("resvg: %w: %s", err, stderr)
-	}
-	return nil
+	_, err = runResvg(context.Background(), bytes.NewReader(fixFonts(svg)), append(sizeArgs, "-", out)...)
+	return err
 }

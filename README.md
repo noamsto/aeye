@@ -292,6 +292,24 @@ To leave it on, set it where the *launcher* runs:
 
 The launcher forwards it into the spawned viewer on every host (tmux/kitty/wezterm/ghostty/iterm) when set.
 
+### Render limits
+
+Every `resvg` rasterization (`render-diagram`, `aeye render`, the carousel's sharp
+vector render and animated frames) runs under a memory bound (default 2048 MiB) and
+a 60 s timeout. Both apply per `resvg` process, and at most four run at once, so
+aeye as a whole stays under four times the bound. A diagram that exceeds either fails with `diagram too large to
+render`; the carousel keeps its static fallback. Output size is capped separately at
+8192 px per side.
+
+- `AEYE_RESVG_MEM_MB=<MiB>` → overrides the memory bound for an unusual diagram
+  (positive integer; empty or invalid values are ignored).
+
+How the bound is enforced depends on the OS:
+- Linux: hard virtual-address-space cap (`RLIMIT_AS`, via `ulimit -v`).
+- macOS and other Unix: resident-memory ceiling polled every 50 ms (`RLIMIT_AS` isn't
+  enforced there), plus the timeout.
+- Windows: timeout only.
+
 ## Architecture
 
 <picture>

@@ -7,7 +7,6 @@ import (
 	"image"
 	"image/png"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -279,8 +278,7 @@ func rasterizeAnimFrame(ctx context.Context, work string, svg []byte, k, n int, 
 	}
 	// resvg fits within both bounds keeping aspect, so a tall diagram is never
 	// rasterized at full box width only to be shrunk.
-	args := append(resvgFontArgs(), "--width", strconv.Itoa(boxW), "--height", strconv.Itoa(boxH), in, out)
-	if err := exec.CommandContext(ctx, resvgBin(), args...).Run(); err != nil { //nolint:gosec // args built by the tool, not shell-interpreted
+	if _, err := runResvg(ctx, nil, "--width", strconv.Itoa(boxW), "--height", strconv.Itoa(boxH), in, out); err != nil {
 		if ctx.Err() == nil {
 			tracef("anim frame %d: resvg: %v", k, err)
 		}

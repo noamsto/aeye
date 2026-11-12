@@ -2,11 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha1" //nolint:gosec // sha1 only names cache files; not a security use
+	"errors"
 	"fmt"
 	"image"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -229,7 +230,6 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 	if err != nil {
 		return ""
 	}
-	bin := resvgBin()
 	// One cached PNG per (svg, mtime); crop + width are the filename suffix so we
 	// can evict prior framings — /tmp then holds at most one vector scratch per
 	// diagram, not one per pan/zoom step.
@@ -239,7 +239,7 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 	if _, err := os.Stat(out); err == nil {
 		return out
 	}
-	if _, err := exec.LookPath(bin); err != nil {
+	if !resvgAvailable() {
 		return ""
 	}
 	// A zoomed render needs the crop applied to the root viewBox; without it resvg
@@ -277,8 +277,10 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 	// The height bound only binds on a crop taller than maxVectorHeight at
 	// targetW (e.g. a 100x8000 svg at 1600 wide would be ~0.8 GB); resvg then
 	// fits within both. Anything shorter renders byte-identical to --width alone.
-	args := append(resvgFontArgs(), "--width", strconv.Itoa(targetW), "--height", strconv.Itoa(maxVectorHeight), src, out)
-	if err := exec.Command(bin, args...).Run(); err != nil { //nolint:gosec // args built by the tool, not shell-interpreted
+	if _, err := runResvg(context.Background(), nil, "--width", strconv.Itoa(targetW), "--height", strconv.Itoa(maxVectorHeight), src, out); err != nil {
+		if errors.Is(err, errDiagramTooLarge) {
+			tracef("vector render: %v", err)
+		}
 		os.Remove(out) //nolint:errcheck,gosec // best-effort temp cleanup
 		return ""
 	}

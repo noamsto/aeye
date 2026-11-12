@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -161,12 +160,8 @@ func runRenderDiagram(in, out string) error {
 		return fmt.Errorf("write %s: %w", svgPath, err)
 	}
 
-	args := append(append(resvgFontArgs(), sizeArgs...), svgPath, out)
-	cmd := exec.Command(resvgBin(), args...) //nolint:gosec // args built by the tool, not shell-interpreted
-	if stderr, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("resvg: %w: %s", err, stderr)
-	}
-	return nil
+	_, err = runResvg(context.Background(), nil, append(sizeArgs, svgPath, out)...)
+	return err
 }
 
 // maxRasterSide caps the long side of every rasterized diagram, whether a .svg
@@ -303,14 +298,6 @@ func svgLength(name, v string, vbSide float64, hasVB bool) (px float64, set bool
 		return 0, false, fmt.Errorf("unsupported %s unit %q", name, v)
 	}
 	return n * scale, true, nil
-}
-
-// resvgBin is the resvg executable: AEYE_RESVG when set, else resvg on PATH.
-func resvgBin() string {
-	if bin := os.Getenv("AEYE_RESVG"); bin != "" {
-		return bin
-	}
-	return "resvg"
 }
 
 // resvgFontArgs makes resvg's default and generic serif/sans-serif families the

@@ -2,13 +2,21 @@ package main
 
 import (
 	"bytes"
+	"compress/zlib"
+	"encoding/base64"
+	"encoding/binary"
+	"errors"
+	"hash/crc32"
 	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFixFonts(t *testing.T) {
@@ -287,10 +295,65 @@ func TestRunRenderDiagramSVGUnknownSize(t *testing.T) {
 	}
 }
 
+// zeroPNG returns a w x h 8-bit grayscale PNG of zero pixels. It streams one
+// reused zero row through zlib, so a canvas far larger than memory costs little.
+func zeroPNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	var idat bytes.Buffer
+	zw, err := zlib.NewWriterLevel(&idat, zlib.BestSpeed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := make([]byte, 1+w) // filter byte 0 (none) + w zero pixels
+	for range h {
+		if _, err := zw.Write(row); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var png bytes.Buffer
+	png.WriteString("\x89PNG\r\n\x1a\n")
+	chunk := func(typ string, data []byte) {
+		_ = binary.Write(&png, binary.BigEndian, uint32(len(data))) //nolint:gosec // test chunk sizes are small
+		body := append([]byte(typ), data...)
+		png.Write(body)
+		_ = binary.Write(&png, binary.BigEndian, crc32.ChecksumIEEE(body))
+	}
+	ihdr := make([]byte, 13)
+	binary.BigEndian.PutUint32(ihdr[0:], uint32(w)) //nolint:gosec // test image sides are positive and small
+	binary.BigEndian.PutUint32(ihdr[4:], uint32(h)) //nolint:gosec // test image sides are positive and small
+	ihdr[8] = 8                                     // bit depth; color type 0 (grayscale), the rest zero
+	chunk("IHDR", ihdr)
+	chunk("IDAT", idat.Bytes())
+	chunk("IEND", nil)
+	return png.Bytes()
+}
+
+// pngProbeSVG is a 10x10 svg embedding a side x side PNG as a data: URI.
+func pngProbeSVG(t *testing.T, side int) string {
+	t.Helper()
+	return `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10">` +
+		`<image width="10" height="10" href="data:image/png;base64,` +
+		base64.StdEncoding.EncodeToString(zeroPNG(t, side, side)) + `"/></svg>`
+}
+
+// patternProbeSVG is a 10x10 svg whose pattern fill is scaled by scale, so resvg
+// allocates a (10*scale)^2 pixmap for a 300-byte file.
+func patternProbeSVG(scale int) string {
+	return `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10"><defs>` +
+		`<pattern id="p" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="scale(` + strconv.Itoa(scale) + `)">` +
+		`<rect width="10" height="10" fill="red"/></pattern></defs><rect width="10" height="10" fill="url(#p)"/></svg>`
+}
+
 // TestRunRenderDiagramSVGRasterCapRealResvg runs the security probes through
 // the real resvg: each PNG must come out capped (or the file be refused), never
 // at the oversized canvas resvg reads. All but the first are written so a naive
-// size estimate disagrees with resvg's own parse.
+// size estimate disagrees with resvg's own parse. The memory probes stay under
+// the size cap, so only the memory bound stops them: they must fail fast with
+// errDiagramTooLarge.
 func TestRunRenderDiagramSVGRasterCapRealResvg(t *testing.T) {
 	if _, err := exec.LookPath("resvg"); err != nil {
 		t.Skip("resvg not on PATH")
@@ -298,21 +361,53 @@ func TestRunRenderDiagramSVGRasterCapRealResvg(t *testing.T) {
 	t.Setenv("AEYE_RESVG", "")
 	const ns = `xmlns="http://www.w3.org/2000/svg"`
 	const big = `<rect width="8500" height="8500"/>`
-	for _, tt := range []struct{ name, svg string }{
-		{"declared huge", `<svg ` + ns + ` width="20000" height="20000"/>`},
-		{"svg-namespaced size", `<svg ` + ns + ` xmlns:s="http://www.w3.org/2000/svg" s:width="8500" s:height="8500" viewBox="0 0 10 10"/>`},
-		{"hex-float size", `<svg ` + ns + ` width="0x1p3" height="0x1p3" viewBox="0 0 8500 8500"/>`},
-		{"empty viewBox fields", `<svg ` + ns + ` width="100%" height="100%" viewBox="0,,0,,10,,10">` + big + `</svg>`},
-		{"hex-float viewBox", `<svg ` + ns + ` viewBox="0 0 0x1p3 0x1p3">` + big + `</svg>`},
+	for _, tt := range []struct {
+		name         string
+		svg          string
+		build        func(t *testing.T) string // svg generated at run time, only when the row runs
+		memMB        string                    // AEYE_RESVG_MEM_MB override; empty keeps the default
+		wantTooLarge bool
+		linuxOnly    bool // needs the hard RLIMIT_AS bound
+	}{
+		{name: "declared huge", svg: `<svg ` + ns + ` width="20000" height="20000"/>`},
+		{name: "svg-namespaced size", svg: `<svg ` + ns + ` xmlns:s="http://www.w3.org/2000/svg" s:width="8500" s:height="8500" viewBox="0 0 10 10"/>`},
+		{name: "hex-float size", svg: `<svg ` + ns + ` width="0x1p3" height="0x1p3" viewBox="0 0 8500 8500"/>`},
+		{name: "empty viewBox fields", svg: `<svg ` + ns + ` width="100%" height="100%" viewBox="0,,0,,10,,10">` + big + `</svg>`},
+		{name: "hex-float viewBox", svg: `<svg ` + ns + ` viewBox="0 0 0x1p3 0x1p3">` + big + `</svg>`},
+		{name: "scaled_pattern", svg: patternProbeSVG(1500), memMB: "256", wantTooLarge: true},
+		{name: "scaled_png", build: func(t *testing.T) string { return pngProbeSVG(t, 16000) }, memMB: "256", wantTooLarge: true},
+		{name: "pattern_scale_5000", svg: patternProbeSVG(5000), wantTooLarge: true, linuxOnly: true},
+		{name: "embedded_png_40000", build: func(t *testing.T) string { return pngProbeSVG(t, 40000) }, wantTooLarge: true, linuxOnly: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.linuxOnly && runtime.GOOS != "linux" {
+				t.Skip("needs the RLIMIT_AS bound")
+			}
+			if tt.memMB != "" {
+				t.Setenv(resvgMemEnv, tt.memMB)
+			}
+			svg := tt.svg
+			if tt.build != nil {
+				svg = tt.build(t)
+			}
 			dir := t.TempDir()
 			in := filepath.Join(dir, "probe.svg")
-			if err := os.WriteFile(in, []byte(tt.svg), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+			if err := os.WriteFile(in, []byte(svg), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
 				t.Fatal(err)
 			}
 			out := filepath.Join(dir, "probe-dark.png")
-			if err := runRenderDiagram(in, out); err != nil {
+			start := time.Now()
+			err := runRenderDiagram(in, out)
+			if tt.wantTooLarge {
+				if !errors.Is(err, errDiagramTooLarge) {
+					t.Fatalf("runRenderDiagram err = %v, want errDiagramTooLarge", err)
+				}
+				if d := time.Since(start); d > 20*time.Second {
+					t.Fatalf("refusal took %v, want well under the %v timeout", d, resvgTimeout)
+				}
+				return
+			}
+			if err != nil {
 				if !strings.Contains(err.Error(), "cannot determine its size") {
 					t.Fatalf("runRenderDiagram: %v", err)
 				}
@@ -340,6 +435,12 @@ func TestRunRenderDiagramSVGRasterCapRealResvg(t *testing.T) {
 			t.Fatalf("rasterized at %v (ok=%v), want long side <= 10", size, ok)
 		}
 	})
+
+	// A coarse, process-wide bound: the peak resident size of any child this test
+	// binary has waited for, not just the probes above.
+	if maxKiB, ok := childMaxRSSKiB(); ok && maxKiB > resvgMemLimitMiB*1024 {
+		t.Fatalf("largest child peaked at %d KiB, want <= %d KiB (the default bound)", maxKiB, resvgMemLimitMiB*1024)
+	}
 }
 
 // d2HugeSrc declares a canvas far past maxRasterSide: d2 compiles it to a
@@ -430,17 +531,23 @@ func TestD2RasterCapRealResvg(t *testing.T) {
 		{"runRenderDiagram", runRenderDiagram},
 		{"runRender", func(in, out string) error { return runRender("d2", in, out, nil) }},
 	}
+	huge := filepath.Join(dir, "huge.d2")
+	if err := os.WriteFile(huge, []byte(d2HugeSrc), 0o644); err != nil { //nolint:gosec // test fixture in a temp dir
+		t.Fatal(err)
+	}
 	for _, p := range paths {
-		t.Run(p.name+" oversized", func(t *testing.T) {
-			out := filepath.Join(dir, p.name+"-big.png")
-			if err := p.run(big, out); err != nil {
-				t.Fatalf("render: %v", err)
-			}
-			size, ok := pngSize(out)
-			if !ok || max(size.X, size.Y) > maxRasterSide {
-				t.Fatalf("rasterized at %v (ok=%v), want long side <= %d", size, ok, maxRasterSide)
-			}
-		})
+		for _, in := range []struct{ name, path string }{{"oversized", big}, {"30000", huge}} {
+			t.Run(p.name+" "+in.name, func(t *testing.T) {
+				out := filepath.Join(dir, p.name+"-"+in.name+".png")
+				if err := p.run(in.path, out); err != nil {
+					t.Fatalf("render: %v", err)
+				}
+				size, ok := pngSize(out)
+				if !ok || max(size.X, size.Y) > maxRasterSide {
+					t.Fatalf("rasterized at %v (ok=%v), want long side <= %d", size, ok, maxRasterSide)
+				}
+			})
+		}
 	}
 
 	// Normal size: the cap must not change the pixels. The reference is resvg

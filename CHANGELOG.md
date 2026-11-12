@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.11.2](https://github.com/noamsto/aeye/compare/v1.11.1...v1.11.2) (2026-11-12)
+
+
+### Bug Fixes
+
+* **gallery:** keep animation on pan; add L legend overlay ([#388](https://github.com/noamsto/aeye/issues/388)) ([fab45ee](https://github.com/noamsto/aeye/commit/fab45eec3dd3b450e22655a883fb12728cf5adbc))
+* **minimap:** recover the overlay after a transient thumbnail failure ([#384](https://github.com/noamsto/aeye/issues/384)) ([1b32729](https://github.com/noamsto/aeye/commit/1b327290c6ad71310d5700c7f13384047a2976b3))
+* **render:** bound resvg memory and time through one helper ([#387](https://github.com/noamsto/aeye/issues/387)) ([406fa57](https://github.com/noamsto/aeye/commit/406fa57adec4f2f9f158a8b856aa78d7e420c481))
+* **render:** cap resvg output size on the D2 render paths ([#382](https://github.com/noamsto/aeye/issues/382)) ([99becc1](https://github.com/noamsto/aeye/commit/99becc113c872ed8650d034bddfe0c866c77ccd7))
+* **zoom:** straight alpha for zoomed frames and fall back on failed viewBox crop ([#383](https://github.com/noamsto/aeye/issues/383)) ([dbf7c88](https://github.com/noamsto/aeye/commit/dbf7c88b369ded00d7410c1ad3ff719fd0c1b002))
+
 ## [1.11.1](https://github.com/noamsto/aeye/compare/v1.11.0...v1.11.1) (2026-11-08)
 
 

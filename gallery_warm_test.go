@@ -156,24 +156,19 @@ func TestColdSwitchDoesNotTranscodeOnLoop(t *testing.T) {
 	}
 }
 
-// warmKick is one pending warmTick callback: the synthetic clock time it comes
-// due and the message it will carry when it fires.
+// warmKick is one pending warm debounce: when it comes due and what it fires.
 type warmKick struct {
 	due time.Duration
 	fn  func(time.Time) tea.Msg
 }
 
-// warmClock replaces tea.Tick in tests: it records pending kicks against a
-// clock that advance moves by hand, so debounce windows are exercised without
-// racing real timers.
+// warmClock replaces the debounce timer with a clock a test advances by hand.
 type warmClock struct {
 	now   time.Duration
 	kicks []warmKick
 }
 
-// driveWarmClock swaps warmTick for a hand-driven clock for the duration of t.
-// Every armCache call appends a kick instead of scheduling a real tick, and a
-// test fires the kicks it wants by advancing the clock.
+// driveWarmClock points warmTick at a hand-driven clock for the duration of t.
 func driveWarmClock(t *testing.T) *warmClock {
 	t.Helper()
 	old := warmTick
@@ -186,8 +181,7 @@ func driveWarmClock(t *testing.T) *warmClock {
 	return c
 }
 
-// advance moves the clock forward by d and returns the callbacks whose debounce
-// window has now elapsed, keeping the still-pending ones.
+// advance moves the clock by d and returns the kicks whose window has elapsed.
 func (c *warmClock) advance(d time.Duration) []func(time.Time) tea.Msg {
 	c.now += d
 	var due []func(time.Time) tea.Msg
@@ -203,8 +197,7 @@ func (c *warmClock) advance(d time.Duration) []func(time.Time) tea.Msg {
 	return due
 }
 
-// tickWarm advances c by d and delivers every kick that comes due through the
-// model, running the Cmds each Update produces.
+// tickWarm advances c by d and delivers every due kick through the model.
 func tickWarm(m galleryModel, c *warmClock, d time.Duration) galleryModel {
 	for _, kick := range c.advance(d) {
 		next, cmd := m.Update(kick(time.Now()))
@@ -230,10 +223,9 @@ func TestResizeStormTranscodesOnlySettledSize(t *testing.T) {
 	for i := range steps {
 		next, cmd := cur.Update(tea.WindowSizeMsg{Width: 90 + i, Height: 40})
 		cur = pump(next.(galleryModel), runCmd(cmd)...)
-		// Advance by the same interval as the real resize storm, so a kick only
-		// comes due once its own warmDebounce window has fully elapsed. A layout
-		// the next resize superseded therefore never gets to fire while current:
-		// its kick arrives stale and must transcode nothing.
+		// Advance by the resize interval, not the debounce: a kick comes due only
+		// after its own warmDebounce window, so a superseded layout's kick arrives
+		// stale and must transcode nothing.
 		cur = tickWarm(cur, clock, 10*time.Millisecond)
 	}
 	cur = tickWarm(cur, clock, warmDebounce)

@@ -27,8 +27,8 @@ func TestFilesToDeleteD2Cluster(t *testing.T) {
 	got := e.filesToDelete()
 	sort.Strings(got)
 	want := []string{
-		"/d/hash-dark.png", "/d/hash-dark.svg",
-		"/d/hash-light.png", "/d/hash-light.svg",
+		"/d/hash-dark.legend.svg", "/d/hash-dark.png", "/d/hash-dark.svg",
+		"/d/hash-light.legend.svg", "/d/hash-light.png", "/d/hash-light.svg",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("filesToDelete() = %v, want %v", got, want)
@@ -43,8 +43,8 @@ func TestFilesToDeleteD2Cluster(t *testing.T) {
 func TestFilesToDeleteD2NoVector(t *testing.T) {
 	e := imageEntry{Path: "/d/hash-dark.png", Source: "d2"}
 	got := e.filesToDelete()
-	if len(got) != 2 {
-		t.Fatalf("filesToDelete() = %v, want the two png variants only", got)
+	if len(got) != 4 {
+		t.Fatalf("filesToDelete() = %v, want the two png variants and their two legend sidecars", got)
 	}
 }
 

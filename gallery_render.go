@@ -222,16 +222,25 @@ func (e imageEntry) filesToDelete() []string {
 	}
 	var out []string
 	seen := map[string]bool{}
+	add := func(v string) {
+		if !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
 	for _, p := range []string{e.Path, e.Vector} {
 		if p == "" {
 			continue
 		}
 		for _, mode := range []string{"light", "dark"} {
-			v := withTheme(p, mode)
-			if !seen[v] {
-				seen[v] = true
-				out = append(out, v)
-			}
+			add(withTheme(p, mode))
+		}
+	}
+	// A published diagram's legend sidecars sit beside its renders.
+	if e.Path != "" {
+		for _, mode := range []string{"light", "dark"} {
+			v := withTheme(e.Path, mode)
+			add(strings.TrimSuffix(v, filepath.Ext(v)) + legendSuffix)
 		}
 	}
 	return out

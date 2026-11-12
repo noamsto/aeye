@@ -245,15 +245,21 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 	// A zoomed render needs the crop applied to the root viewBox; without it resvg
 	// would render the whole diagram under a frame of the wrong region, so fall
 	// back to the bitmap crop. Checked before evicting the cached framings.
-	var cropped []byte
-	if !crop.isFull() {
+	// An animating diagram renders as its loop's first frame, so this static
+	// raster shows the dashes the playing animation does, not the solid stroke
+	// of an aeye-flow hook.
+	var rewritten []byte
+	if !crop.isFull() || vectorAnimates(vector) {
 		data, err := os.ReadFile(vector) //nolint:gosec // path is the user's own image/manifest file
 		if err != nil {
 			return ""
 		}
-		var ok bool
-		if cropped, ok = cropViewBox(data, crop); !ok {
-			return ""
+		rewritten = animFrameSVG(data, 0, animFrameMax)
+		if !crop.isFull() {
+			var ok bool
+			if rewritten, ok = cropViewBox(rewritten, crop); !ok {
+				return ""
+			}
 		}
 	}
 	// Evict stale framings for this svg before rendering the new one.
@@ -262,13 +268,13 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 		os.Remove(o) //nolint:errcheck,gosec // best-effort temp cleanup
 	}
 	src := vector
-	if cropped != nil {
+	if rewritten != nil {
 		// Crop in the name too: two debounced renders of the same diagram at
 		// different framings can overlap, and a shared name would race (one
 		// overwriting the other's viewBox, or unlinking it before resvg opens it).
 		tmp := filepath.Join(os.TempDir(), fmt.Sprintf("%s-%.4f_%.4f_%.4f_%.4f-crop.svg",
 			stem, crop.x0, crop.y0, crop.x1, crop.y1))
-		if err := os.WriteFile(tmp, cropped, 0o644); err != nil { //nolint:gosec // scratch SVG in tmp for the local rasterizer
+		if err := os.WriteFile(tmp, rewritten, 0o644); err != nil { //nolint:gosec // scratch SVG in tmp for the local rasterizer
 			return ""
 		}
 		defer os.Remove(tmp) //nolint:errcheck // best-effort temp cleanup
@@ -277,7 +283,12 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 	// The height bound only binds on a crop taller than maxVectorHeight at
 	// targetW (e.g. a 100x8000 svg at 1600 wide would be ~0.8 GB); resvg then
 	// fits within both. Anything shorter renders byte-identical to --width alone.
-	if _, err := runResvg(context.Background(), nil, "--width", strconv.Itoa(targetW), "--height", strconv.Itoa(maxVectorHeight), src, out); err != nil {
+	args := []string{"--width", strconv.Itoa(targetW), "--height", strconv.Itoa(maxVectorHeight)}
+	if src != vector {
+		// The rewritten copy lives in tmp: keep the original's relative hrefs resolving.
+		args = append(args, "--resources-dir", filepath.Dir(vector))
+	}
+	if _, err := runResvg(context.Background(), nil, append(args, src, out)...); err != nil {
 		if errors.Is(err, errDiagramTooLarge) {
 			tracef("vector render: %v", err)
 		}

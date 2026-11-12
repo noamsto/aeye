@@ -125,8 +125,8 @@ _d2_render_fail() {
 # share the <hash> prefix, so strip the -dark.png suffix and sweep the lot.
 d2_rm_render_set() {
 	local base="${1%-dark.png}"
-	rm -f "$base-dark.png" "$base-dark.svg" "$base-dark.err" \
-		"$base-light.png" "$base-light.svg" "$base-light.err"
+	rm -f "$base-dark.png" "$base-dark.svg" "$base-dark.err" "$base-dark.legend.svg" \
+		"$base-light.png" "$base-light.svg" "$base-light.err" "$base-light.legend.svg"
 }
 
 # d2_render SRC DIAGRAMS_DIR -> renders both theme variants of SRC (each only if

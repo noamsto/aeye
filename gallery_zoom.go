@@ -522,6 +522,7 @@ func (m *galleryModel) transmitPreviewOnly() {
 		return
 	}
 	m.syncMinimap()
+	m.syncLegend()
 	// Pixels pending: the only frame this could produce is the rest frame, which
 	// transmitView already stored. A full crop still re-stores: on a d2 entry a sharp
 	// zoomed vector frame may be up and must be replaced on zoom-out.

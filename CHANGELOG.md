@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.3](https://github.com/noamsto/aeye/compare/v1.11.2...v1.11.3) (2026-11-12)
+
+
+### Bug Fixes
+
+* **gallery:** make TestResizeStormTranscodesOnlySettledSize deterministic ([#397](https://github.com/noamsto/aeye/issues/397)) ([6f92c4a](https://github.com/noamsto/aeye/commit/6f92c4a176eb5e1d12caefc9c0b4885660299319))
+
 ## [1.11.2](https://github.com/noamsto/aeye/compare/v1.11.1...v1.11.2) (2026-11-12)
 
 

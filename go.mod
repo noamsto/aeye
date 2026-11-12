@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4
 	github.com/charmbracelet/x/term v0.2.2
-	github.com/mazznoer/csscolorparser v0.1.8
+	github.com/mazznoer/csscolorparser v0.2.0
 	github.com/noamsto/mermaid2d2 v0.7.0
 	github.com/noamsto/themestate v0.1.0
 	golang.org/x/image v0.47.0

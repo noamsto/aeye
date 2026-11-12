@@ -58,8 +58,8 @@ github.com/lucasb-eyer/go-colorful v1.4.1 h1:1EO+WB73+EH8EVbzlrG3KLAfEypQWVHIBql
 github.com/lucasb-eyer/go-colorful v1.4.1/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/mattn/go-runewidth v0.0.30 h1:+KUuiDA4fF0R1p5FeueHefjDm+GIM+kWfFnDjybOPgk=
 github.com/mattn/go-runewidth v0.0.30/go.mod h1:3qAiGCV4Koz/yuveO58qUefmUTRm8r0IGEXZ9jeHp/8=
-github.com/mazznoer/csscolorparser v0.1.8 h1:i7w3wHW99d0q0KZv1ONkU/efXFAKcw1mgEgW6gj8KUA=
-github.com/mazznoer/csscolorparser v0.1.8/go.mod h1:OQRVvgCyHDCAquR1YWfSwwaDcM0LhnSffGnlbOew/3I=
+github.com/mazznoer/csscolorparser v0.2.0 h1:jX2HVimzgKxWr9Wo5cRC0tdJb3C7kveK0h7XPsYm/9M=
+github.com/mazznoer/csscolorparser v0.2.0/go.mod h1:8lLAVvBKTTG/ux1I1CZJ6HCCKW1it97MjYB02xs9rSg=
 github.com/muesli/cancelreader v0.2.2 h1:3I4Kt4BQjOR54NavqnDogx/MIoWBFa0StPA8ELUXHmA=
 github.com/muesli/cancelreader v0.2.2/go.mod h1:3XuTXfFS2VjM+HTLZY9Ak0l6eUKfijIfMUZ4EgX0QYo=
 github.com/noamsto/mermaid2d2 v0.7.0 h1:Gt640fFBGAUbxD4Zw9LoCbemFBAxIUQX2QM/ytFA7P0=

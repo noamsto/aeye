@@ -1,0 +1,7 @@
+# actionlint's bundled metadata for create-github-app-token@v3 predates its
+# client-id input (v3's action.yml defines client-id and deprecates app-id).
+paths:
+  .github/workflows/dependabot-vendor-hash.yml:
+    ignore:
+      - 'missing input "app-id" which is required by action "actions/create-github-app-token@v3"'
+      - 'input "client-id" is not defined in action "actions/create-github-app-token@v3"'

@@ -3,18 +3,32 @@ name: release
 on:
   push:
     branches: [main]
-  # Dispatched by release-automerge.yml after it merges the release PR: a
-  # GITHUB_TOKEN push does not trigger workflows, but workflow_dispatch is the
+  # Dispatched by release-automerge.yml after it merges the release PR and by
+  # dependabot-auto-merge.yml after a dependabot PR lands: a GITHUB_TOKEN
+  # merge/push does not trigger workflows, but workflow_dispatch is the
   # documented exception, so this is what actually cuts the release.
   workflow_dispatch:
+  # Backstop in case such a dispatch never happens. release-please is
+  # idempotent, so an extra run only refreshes the release PR.
+  schedule:
+    - cron: "17 6 * * *"
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
+
+# Queue, never overlap or cancel: concurrent release-please runs trip over each
+# other's release and labels, both fail, and goreleaser is skipped. GitHub keeps
+# one pending run per group and replaces an older pending one, which is harmless
+# because the surviving run reads the same or newer main.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
       tag_name: ${{ steps.rp.outputs.tag_name }}
@@ -29,6 +43,8 @@ jobs:
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v7
         with:

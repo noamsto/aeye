@@ -15,12 +15,10 @@ on:
 
 permissions: {}
 
-# Runs queue instead of overlapping: two concurrent release-please runs both
-# failed (one on already_exists for the release, the other on a label the first
-# had swapped), so goreleaser was skipped and v1.11.2 shipped no binaries. Never
-# cancel a running release; GitHub keeps one pending run per group and replaces
-# an older pending one, which is harmless because the surviving run reads the
-# same or newer main.
+# Queue, never overlap or cancel: concurrent release-please runs trip over each
+# other's release and labels, both fail, and goreleaser is skipped. GitHub keeps
+# one pending run per group and replaces an older pending one, which is harmless
+# because the surviving run reads the same or newer main.
 concurrency:
   group: release
   cancel-in-progress: false

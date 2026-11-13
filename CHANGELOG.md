@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.4](https://github.com/noamsto/aeye/compare/v1.11.3...v1.11.4) (2026-11-13)
+
+
+### Bug Fixes
+
+* **ci:** make dependabot merges refresh release-please and stop release races ([#400](https://github.com/noamsto/aeye/issues/400)) ([82bc691](https://github.com/noamsto/aeye/commit/82bc69123989b1cc81f77e1abecd8d355786a58c))
+
 ## [1.11.3](https://github.com/noamsto/aeye/compare/v1.11.2...v1.11.3) (2026-11-12)
 
 

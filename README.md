@@ -250,6 +250,29 @@ crash, `kill-window`, or terminal close that agent end-hooks miss. A carousel
 opened by hand, or launched over the remote bridge (where the viewer can run on
 a different host), gets no pid and behaves exactly as before.
 
+**Surviving a tmux server restore.** The manifest key carries the tmux server pid
+and pane id, both of which change when a session manager such as
+tmux-remux restarts the server and
+replays the layout. aeye re-finds the images through the agent session id
+instead, and needs no tmux-remux configuration:
+
+- When the viewer opens with a known session, the launcher sets the viewer
+  pane's `@remux_relaunch` option to `<tmux-claude-images> --attach <session>
+  --bin <aeye> --dir <state dir>` and `@remux_relaunch_pinned` to `1`. Without
+  tmux-remux the options are inert. Nothing is stamped outside tmux or without a
+  session id. A normal viewer exit clears both, and so does the agent exiting
+  first; closing the pane drops them with it.
+- On restore, `--attach` waits (up to `AEYE_ATTACH_WAIT` seconds, default 60) for
+  the restored agent to write a manifest on the new server, then runs the viewer
+  on it and stamps the new pane again, so a second restore works too. If none
+  appears it falls back to the freshest manifest the session left under an old
+  key; the agent-exit watch is off for that fallback, and a toggle may then open
+  a second viewer.
+- A restored agent pane with no manifest adopts the previous one for the same
+  session, unless that agent is still running.
+- Manifests of a dead tmux server are kept until the 7-day TTL instead of being
+  swept at once, so a restore can claim them.
+
 ### Enable kitty-pane mode (native drag-out inside tmux)
 
 Native drag-out needs a real kitty pane — tmux can't carry the protocol. To make

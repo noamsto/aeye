@@ -235,8 +235,16 @@ launch_tmux() {
 	env_args+=(-e AEYE_HOST_PANE="$PANE")
 	local cmd
 	printf -v cmd '%q %q' "$VIEWER_BIN" "$KEY"
-	# shellcheck disable=SC2016 # $TMUX_PANE must expand in the viewer pane's shell
-	[[ -n $SESSION ]] && cmd+='; tmux set-option -p -u -t "$TMUX_PANE" @remux_relaunch; tmux set-option -p -u -t "$TMUX_PANE" @remux_relaunch_pinned'
+	# Stamp from inside the pane, before the viewer runs, so the exit-time clear can
+	# never precede the stamp. $TMUX_PANE must expand in the viewer pane's shell.
+	if [[ -n $SESSION ]]; then
+		local relaunch
+		printf -v relaunch '%q' "$(relaunch_cmd "$SESSION")"
+		# shellcheck disable=SC2016
+		cmd="tmux set-option -p -t \"\$TMUX_PANE\" @remux_relaunch $relaunch; tmux set-option -p -t \"\$TMUX_PANE\" @remux_relaunch_pinned 1; $cmd"
+		# shellcheck disable=SC2016
+		cmd+='; tmux set-option -p -u -t "$TMUX_PANE" @remux_relaunch; tmux set-option -p -u -t "$TMUX_PANE" @remux_relaunch_pinned'
+	fi
 	# Split along the host window's longer axis (overridable via AEYE_SPLIT); record
 	# the choice as a pane option so the viewer's `s` toggle knows the current state.
 	local w h axis
@@ -280,21 +288,24 @@ launch_tmux() {
 	fi
 	tmux set-option -p -t "$viewer" @claude_img_src "$KEY"
 	tmux set-option -p -t "$viewer" @claude_img_axis "$axis"
-	[[ -n $SESSION ]] && stamp_relaunch "$viewer" "$SESSION"
 	return 0
 }
 
-# stamp_relaunch PANE SESSION -> record, as tmux-remux's @remux_relaunch pane
-# option, the command that reattaches a restored viewer pane to SESSION's
-# manifest (the pane key itself changes on restore). The _pinned companion keeps
-# remux's own agent hooks from overwriting it. Inert without tmux-remux. No
-# leading `env`, for the same shell-wrapper reason as launch_tmux's -e flags:
-# --attach exports AEYE_BIN/AEYE_DIR itself.
-stamp_relaunch() {
-	local self cmd
+# relaunch_cmd SESSION -> the command tmux-remux's @remux_relaunch pane option
+# holds to reattach a restored viewer pane to SESSION's manifest (the pane key
+# itself changes on restore). No leading `env`, for the same shell-wrapper reason
+# as launch_tmux's -e flags: --attach exports AEYE_BIN/AEYE_DIR itself.
+relaunch_cmd() {
+	local self
 	self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/$(basename "${BASH_SOURCE[0]}")"
-	printf -v cmd '%q --attach %q --bin %q --dir %q' "$self" "$2" "$VIEWER_BIN" "$STATE_DIR"
-	tmux set-option -p -t "$1" @remux_relaunch "$cmd"
+	printf '%q --attach %q --bin %q --dir %q' "$self" "$1" "$VIEWER_BIN" "$STATE_DIR"
+}
+
+# stamp_relaunch PANE SESSION -> set @remux_relaunch and its _pinned companion,
+# which keeps remux's own agent hooks from overwriting it. Inert without
+# tmux-remux.
+stamp_relaunch() {
+	tmux set-option -p -t "$1" @remux_relaunch "$(relaunch_cmd "$2")"
 	tmux set-option -p -t "$1" @remux_relaunch_pinned 1
 }
 

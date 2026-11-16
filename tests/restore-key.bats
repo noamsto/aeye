@@ -36,8 +36,6 @@ seed() {
 
 	[ -s "$IMAGES/222-9.jsonl" ]
 	[ "$(<"$IMAGES/222-9.owner")" = sess-A ]
-	[ ! -e "$IMAGES/111-5.jsonl" ]
-	[ ! -e "$IMAGES/111-5.owner" ]
 }
 
 @test "adoption works when the old key recorded no owner pid" {
@@ -76,7 +74,17 @@ seed() {
 	owner_selfheal 222-9 sess-A
 	[ -s "$IMAGES/222-9.jsonl" ]
 	[ -s "$IMAGES/111-5.jsonl" ]
-	[ ! -e "$IMAGES/111-6.jsonl" ]
+	[ -s "$IMAGES/111-6.jsonl" ]
+	cmp "$IMAGES/111-6.jsonl" "$IMAGES/222-9.jsonl"
+}
+
+@test "adoption copies: the old key's manifest survives for an attached viewer" {
+	seed 111-5 sess-A "$DEAD"
+	owner_selfheal 222-9 sess-A
+	[ -s "$IMAGES/111-5.jsonl" ]
+	[ "$(<"$IMAGES/111-5.owner")" = sess-A ]
+	[ "$(<"$IMAGES/222-9.owner")" = sess-A ]
+	cmp "$IMAGES/111-5.jsonl" "$IMAGES/222-9.jsonl"
 }
 
 @test "gc_sweep keeps a dead server's key under the TTL and drops it past the TTL" {

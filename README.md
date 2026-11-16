@@ -268,8 +268,9 @@ instead, and needs no tmux-remux configuration:
   appears it falls back to the freshest manifest the session left under an old
   key; the agent-exit watch is off for that fallback, and a toggle may then open
   a second viewer.
-- A restored agent pane with no manifest adopts the previous one for the same
-  session, unless that agent is still running.
+- A resumed agent pane (same session id) with no manifest copies the previous
+  one for that session, unless that agent is still running; the old key is left
+  to the 7-day TTL so an attached viewer keeps its images.
 - Manifests of a dead tmux server are kept until the 7-day TTL instead of being
   swept at once, so a restore can claim them.
 

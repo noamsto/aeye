@@ -123,11 +123,12 @@ owner_claim() {
 
 # owner_adopt PANE_FILE SESSION_ID -> after a tmux server restore the pane key
 # changes (new server pid, new pane id) while the agent session id does not, so
-# a pane with no manifest takes over the freshest one another key holds for the
-# same session — unless that key's agent is still alive (a nested agent's
-# parent, #234). Moved under the source key's lock so a racing hook append
-# cannot land on the file mid-move. Covers a resume whose transcript backfill
-# found nothing, and agents that are not resumed at all.
+# a pane with no manifest copies the freshest one another key holds for the same
+# session — unless that key's agent is still alive (a nested agent's parent,
+# #234). Copied, not moved: a viewer already attached to the old key (the
+# --attach fallback) keeps its manifest, and the 7-day TTL reaps it. Covers a
+# resumed session (same session id) whose transcript backfill produced no
+# manifest.
 owner_adopt() {
 	local pane_file="$1" session_id="$2"
 	local o base src="" best=-1 mtime pid
@@ -145,15 +146,9 @@ owner_adopt() {
 		((mtime > best)) && best=$mtime src=$base
 	done
 	[[ -n $src ]] || return 0
-	(
-		exec 8>"$IMAGES_DIR/$src.lock"
-		command -v flock >/dev/null 2>&1 && flock 8
-		[[ -f $IMAGES_DIR/$src.jsonl ]] || exit 0
-		mv "$IMAGES_DIR/$src.jsonl" "$MANIFEST"
-		mv "$IMAGES_DIR/$src.owner" "$OWNER_FILE"
-		[[ -f $IMAGES_DIR/$src.ownerpid ]] && mv "$IMAGES_DIR/$src.ownerpid" "$OWNERPID_FILE"
-		rm -f "$IMAGES_DIR/$src.lock"
-	)
+	cp -p "$IMAGES_DIR/$src.jsonl" "$MANIFEST"
+	cp -p "$IMAGES_DIR/$src.owner" "$OWNER_FILE"
+	[[ -f $IMAGES_DIR/$src.ownerpid ]] && cp -p "$IMAGES_DIR/$src.ownerpid" "$OWNERPID_FILE"
 	return 0
 }
 

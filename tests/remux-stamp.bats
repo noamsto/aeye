@@ -148,3 +148,19 @@ viewer_pane() { "${T[@]}" list-panes -t main -F '#{pane_id} #{@claude_img_src}' 
 	[ "$(opt "$PANE" @remux_relaunch)" = "" ]
 	[ "$(opt "$PANE" @remux_relaunch_pinned)" = "" ]
 }
+
+@test "--attach waits for the new server's key and runs the viewer on it, not the old one" {
+	seed 111-5 sess-A
+	TMUX_PANE="$PANE" AEYE_ATTACH_WAIT=5 bash "$APP" --attach sess-A --bin "$STUB/aeye" --dir "$AEYE_DIR" &
+	pid=$!
+	sleep 1
+	[ ! -s "$VIEWER_OUT" ]
+	seed "$SRV-${PANE#%}" sess-A
+	for _ in $(seq 50); do
+		[ -s "$VIEWER_OUT" ] && break
+		sleep 0.1
+	done
+	grep -qx "argv=$SRV-${PANE#%}" "$VIEWER_OUT"
+	touch "$VIEWER_STOP"
+	wait "$pid"
+}

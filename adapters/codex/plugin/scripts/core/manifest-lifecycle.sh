@@ -121,6 +121,40 @@ owner_claim() {
 	return 0
 }
 
+# owner_adopt PANE_FILE SESSION_ID -> after a tmux server restore the pane key
+# changes (new server pid, new pane id) while the agent session id does not, so
+# a pane with no manifest copies the freshest one another key holds for the same
+# session — unless that key's agent is still alive (a nested agent's parent,
+# #234). Copied, not moved: a viewer already attached to the old key (the
+# --attach fallback) keeps its manifest, and the 7-day TTL reaps it. Covers a
+# resumed session (same session id) whose transcript backfill produced no
+# manifest.
+owner_adopt() {
+	local pane_file="$1" session_id="$2"
+	local o base src="" best=-1 mtime pid
+	manifest_paths "$pane_file"
+	[[ -f $MANIFEST ]] && return 0
+	for o in "$IMAGES_DIR"/*.owner; do
+		[[ -e $o ]] || continue
+		base="$(basename "$o" .owner)"
+		[[ -f $IMAGES_DIR/$base.jsonl && $(<"$o") == "$session_id" ]] || continue
+		if [[ -f $IMAGES_DIR/$base.ownerpid ]]; then
+			pid="$(<"$IMAGES_DIR/$base.ownerpid")"
+			# A pid recorded under a dead server may have been recycled since: trust
+			# it only while the key's own server is alive too.
+			[[ $pid =~ ^[0-9]+$ && ${base%%-*} =~ ^[0-9]+$ ]] &&
+				kill -0 "${base%%-*}" 2>/dev/null && kill -0 "$pid" 2>/dev/null && continue
+		fi
+		mtime="$(_mtime "$IMAGES_DIR/$base.jsonl")"
+		((mtime > best)) && best=$mtime src=$base
+	done
+	[[ -n $src ]] || return 0
+	cp -p "$IMAGES_DIR/$src.jsonl" "$MANIFEST"
+	cp -p "$IMAGES_DIR/$src.owner" "$OWNER_FILE"
+	[[ -f $IMAGES_DIR/$src.ownerpid ]] && cp -p "$IMAGES_DIR/$src.ownerpid" "$OWNERPID_FILE"
+	return 0
+}
+
 # owner_selfheal PANE_FILE SESSION_ID -> self-heal against tmux pane-id reuse:
 # a manifest last written by a different session belongs to a pane that's
 # since been recycled — drop it so this session's carousel never blends in a
@@ -135,6 +169,7 @@ owner_selfheal() {
 		if owner_live "$pane_file" "$session_id"; then
 			return 0
 		fi
+		owner_adopt "$pane_file" "$session_id"
 		if [[ -f $OWNER_FILE && $(<"$OWNER_FILE") != "$session_id" ]]; then
 			rm -f "$MANIFEST"
 		fi
@@ -231,10 +266,12 @@ _gc_expired() {
 # PANE_FILE itself (the caller just stamped it).
 #
 # A tmux key is "<server pid>-<pane>". LIVE_PANES only covers OUR server, so a
-# foreign server's panes are judged by whether that pid is still alive — plus the
-# TTL, since a dead server's pid can be recycled and liveness alone would then
-# never bound the dir. Session-keyed files, and legacy bare-pane files written
-# before the key carried a server id, have no liveness signal at all.
+# foreign server's keys age out by the TTL alone. A dead server's key is NOT
+# pruned on sight: after a tmux server restore its manifest is exactly what the
+# restored session reclaims (owner_adopt, tmux-claude-images --attach), and the
+# restored agent only claims it once it runs again. Session-keyed files, and
+# legacy bare-pane files written before the key carried a server id, age out the
+# same way.
 gc_sweep() {
 	local pane_file="$1" live="$2"
 	local ttl=$((7 * 86400))
@@ -265,7 +302,7 @@ gc_sweep() {
 				# pane is not in it.
 				[[ -n $live ]] || continue
 				grep -qxF "$base_pane" <<<"$live" || _gc_rm "$base"
-			elif ! kill -0 "$base_srv" 2>/dev/null || _gc_expired "$base" "$now" "$ttl"; then
+			elif _gc_expired "$base" "$now" "$ttl"; then
 				_gc_rm "$base"
 			fi
 		elif _gc_expired "$base" "$now" "$ttl"; then

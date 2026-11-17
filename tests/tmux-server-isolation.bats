@@ -57,7 +57,7 @@ start_session() {
 	[ "$(find "$IMAGES" -maxdepth 1 -name '*.jsonl' | wc -l)" -eq 2 ]
 }
 
-@test "the GC sweep reaps a manifest whose tmux server is gone" {
+@test "the GC sweep keeps a dead tmux server's manifest until the TTL, then reaps it" {
 	sleep 60 &
 	local dead=$!
 	kill "$dead"
@@ -67,6 +67,9 @@ start_session() {
 	stale="$(ls "$IMAGES"/*.jsonl)"
 
 	start_session 4242
+	[ -f "$stale" ] # a restore may still claim it
 
+	touch -d '8 days ago' "$IMAGES"/*
+	start_session 4242
 	[ ! -f "$stale" ]
 }

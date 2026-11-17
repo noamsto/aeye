@@ -235,6 +235,16 @@ launch_tmux() {
 	env_args+=(-e AEYE_HOST_PANE="$PANE")
 	local cmd
 	printf -v cmd '%q %q' "$VIEWER_BIN" "$KEY"
+	# Stamp from inside the pane, before the viewer runs, so the exit-time clear can
+	# never precede the stamp. $TMUX_PANE must expand in the viewer pane's shell.
+	if [[ -n $SESSION ]]; then
+		local relaunch
+		printf -v relaunch '%q' "$(relaunch_cmd "$SESSION")"
+		# shellcheck disable=SC2016
+		cmd="tmux set-option -p -t \"\$TMUX_PANE\" @remux_relaunch $relaunch; tmux set-option -p -t \"\$TMUX_PANE\" @remux_relaunch_pinned 1; $cmd"
+		# shellcheck disable=SC2016
+		cmd+='; tmux set-option -p -u -t "$TMUX_PANE" @remux_relaunch; tmux set-option -p -u -t "$TMUX_PANE" @remux_relaunch_pinned'
+	fi
 	# Split along the host window's longer axis (overridable via AEYE_SPLIT); record
 	# the choice as a pane option so the viewer's `s` toggle knows the current state.
 	local w h axis
@@ -278,6 +288,92 @@ launch_tmux() {
 	fi
 	tmux set-option -p -t "$viewer" @claude_img_src "$KEY"
 	tmux set-option -p -t "$viewer" @claude_img_axis "$axis"
+	return 0
+}
+
+# relaunch_cmd SESSION -> the command tmux-remux's @remux_relaunch pane option
+# holds to reattach a restored viewer pane to SESSION's manifest (the pane key
+# itself changes on restore). No leading `env`, for the same shell-wrapper reason
+# as launch_tmux's -e flags: --attach exports AEYE_BIN/AEYE_DIR itself.
+relaunch_cmd() {
+	local self
+	self="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/$(basename "${BASH_SOURCE[0]}")"
+	printf '%q --attach %q --bin %q --dir %q' "$self" "$1" "$VIEWER_BIN" "$STATE_DIR"
+}
+
+# stamp_relaunch PANE SESSION -> set @remux_relaunch and its _pinned companion,
+# which keeps remux's own agent hooks from overwriting it. Inert without
+# tmux-remux.
+stamp_relaunch() {
+	tmux set-option -p -t "$1" @remux_relaunch "$(relaunch_cmd "$2")"
+	tmux set-option -p -t "$1" @remux_relaunch_pinned 1
+}
+
+clear_relaunch() {
+	tmux set-option -p -u -t "$1" @remux_relaunch 2>/dev/null || true
+	tmux set-option -p -u -t "$1" @remux_relaunch_pinned 2>/dev/null || true
+}
+
+# attach_key SESSION SRV -> the manifest key holding SESSION's images: the
+# freshest one on the current server (SRV) when there is one, else the freshest
+# key any server left behind.
+attach_key() {
+	local session=$1 srv=$2 o base mtime key="" cur="" best=-1 best_cur=-1
+	for o in "$IMAGES_DIR"/*.owner; do
+		[[ -e $o ]] || continue
+		base="$(basename "$o" .owner)"
+		[[ -s $IMAGES_DIR/$base.jsonl && $(<"$o") == "$session" ]] || continue
+		mtime="$(stat -c %Y "$IMAGES_DIR/$base.jsonl" 2>/dev/null || stat -f %m "$IMAGES_DIR/$base.jsonl")"
+		((mtime > best)) && best=$mtime key=$base
+		[[ -n $srv && $base == "$srv"-* ]] && ((mtime > best_cur)) && best_cur=$mtime cur=$base
+	done
+	printf '%s' "${cur:-$key}"
+}
+
+# attach_viewer SESSION [--bin PATH] [--dir PATH] -> the @remux_relaunch target:
+# rebind a viewer pane to SESSION's manifest under the (new) tmux server, run it,
+# and drop the relaunch stamp when it exits.
+attach_viewer() {
+	local session=$1 bin=${AEYE_BIN:-aeye} srv key="" pid="" t=0 rc=0
+	shift
+	while (($#)); do
+		case $1 in
+		--bin) bin=${2:-} ;;
+		--dir) STATE_DIR=${2:-} ;;
+		esac
+		shift 2 || break
+	done
+	IMAGES_DIR="$STATE_DIR/images"
+	export AEYE_BIN="$bin" AEYE_DIR="$STATE_DIR"
+	IFS=, read -r _ srv _ <<<"${TMUX:-}"
+	[[ $srv =~ ^[0-9]+$ ]] || srv=""
+	# The restored agent claims its new key only once it runs again.
+	while
+		key="$(attach_key "$session" "$srv")"
+		[[ -n $srv && $key != "$srv"-* ]]
+	do
+		((t >= ${AEYE_ATTACH_WAIT:-60})) && break
+		sleep 1
+		t=$((t + 1))
+	done
+	if [[ -z $key ]]; then
+		[[ -n ${TMUX_PANE:-} ]] && clear_relaunch "$TMUX_PANE"
+		return 0
+	fi
+	unset AEYE_OWNER_PID AEYE_HOST_PANE
+	if [[ -n $srv && $key == "$srv"-* ]]; then
+		export AEYE_HOST_PANE="%${key#*-}"
+		[[ -f $IMAGES_DIR/$key.ownerpid ]] && pid="$(<"$IMAGES_DIR/$key.ownerpid")"
+		[[ $pid =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null && export AEYE_OWNER_PID="$pid"
+	fi
+	if [[ -n ${TMUX_PANE:-} ]]; then
+		VIEWER_BIN="$bin"
+		tmux set-option -p -t "$TMUX_PANE" @claude_img_src "$key"
+		stamp_relaunch "$TMUX_PANE" "$session"
+	fi
+	AEYE_OWNER="$session" "$bin" "$key" || rc=$?
+	[[ -n ${TMUX_PANE:-} ]] && clear_relaunch "$TMUX_PANE"
+	return "$rc"
 }
 
 # Echo (NUL-separated) the `kitty @ launch` placement args for a split beside
@@ -673,6 +769,10 @@ main() {
 	fi
 	if [[ ${1:-} == --float-geom ]]; then # test seam: float geometry for axis+dims
 		float_geom "${2:-}" "${3:-}" "${4:-}"
+		return
+	fi
+	if [[ ${1:-} == --attach ]]; then
+		attach_viewer "${2:?--attach needs a session id}" "${@:3}"
 		return
 	fi
 	resolve_target

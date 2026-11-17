@@ -140,7 +140,10 @@ owner_adopt() {
 		[[ -f $IMAGES_DIR/$base.jsonl && $(<"$o") == "$session_id" ]] || continue
 		if [[ -f $IMAGES_DIR/$base.ownerpid ]]; then
 			pid="$(<"$IMAGES_DIR/$base.ownerpid")"
-			[[ $pid =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null && continue
+			# A pid recorded under a dead server may have been recycled since: trust
+			# it only while the key's own server is alive too.
+			[[ $pid =~ ^[0-9]+$ && ${base%%-*} =~ ^[0-9]+$ ]] &&
+				kill -0 "${base%%-*}" 2>/dev/null && kill -0 "$pid" 2>/dev/null && continue
 		fi
 		mtime="$(_mtime "$IMAGES_DIR/$base.jsonl")"
 		((mtime > best)) && best=$mtime src=$base

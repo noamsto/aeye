@@ -5,6 +5,7 @@
 # previous server left behind (#402).
 
 setup() {
+	unset TMUX TMUX_PANE
 	CORE="$(dirname "$BATS_TEST_DIRNAME")/adapters/core"
 	export AEYE_DIR="$BATS_TEST_TMPDIR/state"
 	IMAGES="$AEYE_DIR/images"
@@ -44,10 +45,10 @@ seed() {
 }
 
 @test "a manifest of a still-running owner is not adopted" {
-	seed 111-5 sess-A "$$"
+	seed "$$-5" sess-A "$$"
 	owner_selfheal 222-9 sess-A
 	[ ! -e "$IMAGES/222-9.jsonl" ]
-	[ -s "$IMAGES/111-5.jsonl" ]
+	[ -s "$IMAGES/$$-5.jsonl" ]
 }
 
 @test "another session's manifest is not adopted" {
@@ -96,4 +97,10 @@ seed() {
 	gc_sweep 222-9 "9"
 	[ ! -e "$IMAGES/111-5.jsonl" ]
 	[ ! -e "$IMAGES/111-5.owner" ]
+}
+
+@test "a recycled owner pid under a dead server does not block adoption" {
+	seed 111-5 sess-A "$$"
+	owner_selfheal 222-9 sess-A
+	[ -s "$IMAGES/222-9.jsonl" ]
 }

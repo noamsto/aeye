@@ -26,7 +26,7 @@ setup() {
 	printf 'ownerpid=%s\n' "${AEYE_OWNER_PID-unset}"
 	printf 'hostpane=%s\n' "${AEYE_HOST_PANE-unset}"
 } >"${VIEWER_OUT:-/dev/null}"
-while [[ ! -e ${VIEWER_STOP:-/nonexistent} ]]; do sleep 0.1; done
+for _ in $(seq 1200); do [[ -e ${VIEWER_STOP:-/nonexistent} ]] && break; sleep 0.1; done
 V
 	chmod +x "$STUB/aeye"
 	export VIEWER_OUT="$BATS_TEST_TMPDIR/viewer.out" VIEWER_STOP="$BATS_TEST_TMPDIR/stop"
@@ -60,6 +60,11 @@ viewer_pane() { "${T[@]}" list-panes -t main -F '#{pane_id} #{@claude_img_src}' 
 	[ "$status" -eq 0 ]
 	v="$(viewer_pane "$SRV-${PANE#%}")"
 	[ -n "$v" ]
+	# The pane command stamps itself, so wait for it to run.
+	for _ in $(seq 50); do
+		[ -n "$(opt "$v" @remux_relaunch)" ] && break
+		sleep 0.1
+	done
 	stamp="$(opt "$v" @remux_relaunch)"
 	[[ $stamp == *"--attach sess-A"* ]]
 	[[ $stamp == *"--bin $STUB/aeye"* ]]
@@ -93,16 +98,15 @@ viewer_pane() { "${T[@]}" list-panes -t main -F '#{pane_id} #{@claude_img_src}' 
 }
 
 @test "--attach resolves the new server's key by session, re-stamps, runs the viewer, then clears" {
-	sleep 60 &
+	true 3>&- &
 	dead=$!
-	kill "$dead"
 	wait "$dead" 2>/dev/null || true
 	seed 111-5 sess-A
 	seed "$SRV-${PANE#%}" sess-A
 	printf '%s' "$$" >"$IMAGES/$SRV-${PANE#%}.ownerpid"
 	touch -d '1 hour ago' "$IMAGES/111-5.jsonl"
 
-	TMUX_PANE="$PANE" AEYE_ATTACH_WAIT=0 bash "$APP" --attach sess-A --bin "$STUB/aeye" --dir "$AEYE_DIR" &
+	TMUX_PANE="$PANE" AEYE_ATTACH_WAIT=0 bash "$APP" --attach sess-A --bin "$STUB/aeye" --dir "$AEYE_DIR" 3>&- &
 	pid=$!
 	for _ in $(seq 50); do
 		[ -s "$VIEWER_OUT" ] && break
@@ -124,9 +128,8 @@ viewer_pane() { "${T[@]}" list-panes -t main -F '#{pane_id} #{@claude_img_src}' 
 }
 
 @test "--attach falling back to a dead-server key does not export a dead owner pid" {
-	sleep 60 &
+	true 3>&- &
 	dead=$!
-	kill "$dead"
 	wait "$dead" 2>/dev/null || true
 	seed 111-5 sess-A
 	printf '%s' "$dead" >"$IMAGES/111-5.ownerpid"
@@ -151,7 +154,7 @@ viewer_pane() { "${T[@]}" list-panes -t main -F '#{pane_id} #{@claude_img_src}' 
 
 @test "--attach waits for the new server's key and runs the viewer on it, not the old one" {
 	seed 111-5 sess-A
-	TMUX_PANE="$PANE" AEYE_ATTACH_WAIT=5 bash "$APP" --attach sess-A --bin "$STUB/aeye" --dir "$AEYE_DIR" &
+	TMUX_PANE="$PANE" AEYE_ATTACH_WAIT=5 bash "$APP" --attach sess-A --bin "$STUB/aeye" --dir "$AEYE_DIR" 3>&- &
 	pid=$!
 	sleep 1
 	[ ! -s "$VIEWER_OUT" ]

@@ -12,9 +12,8 @@ setup() {
 	# shellcheck source=/dev/null
 	source "$CORE/manifest-lifecycle.sh"
 	resolve_state_dirs
-	sleep 60 &
+	true 3>&- &
 	DEAD=$!
-	kill "$DEAD"
 	wait "$DEAD" 2>/dev/null || true
 }
 

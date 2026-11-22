@@ -33,6 +33,15 @@ jobs:
           # The devshell hook prints to stdout; go env's value is the last line.
           echo "gocache=$(nix develop -c go env GOCACHE | tail -n 1)" >> "$GITHUB_OUTPUT"
           echo "gomodcache=$(nix develop -c go env GOMODCACHE | tail -n 1)" >> "$GITHUB_OUTPUT"
+      - name: Require resolved Go cache paths
+        env:
+          GOCACHE_PATH: ${{ steps.go-paths.outputs.gocache }}
+          GOMODCACHE_PATH: ${{ steps.go-paths.outputs.gomodcache }}
+        run: |
+          if [ -z "$GOCACHE_PATH" ] || [ -z "$GOMODCACHE_PATH" ]; then
+            echo "::error::go env returned an empty cache path; the devshell likely failed to build"
+            exit 1
+          fi
       - uses: actions/cache@v6
         with:
           path: |

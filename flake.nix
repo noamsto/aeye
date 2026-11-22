@@ -42,6 +42,19 @@
         # hook + the live sharp re-render); chafa paints the raster backend on
         # non-kitty terminals.
         aeyeRuntimeDeps = [pkgs.resvg pkgs.chafa pkgs.jq];
+        # nixpkgs' nilaway (2025-03-07) vendors an x/tools whose go/ssa panics
+        # under Go 1.27. Track upstream main until nixpkgs ships a Go 1.27-ready
+        # build, then drop this override.
+        nilaway = pkgs.nilaway.overrideAttrs (_: {
+          version = "0-unstable-2026-11-22";
+          src = pkgs.fetchFromGitHub {
+            owner = "uber-go";
+            repo = "nilaway";
+            rev = "7f797c9f2b67a10d81b207ea8c29241af77f85d7";
+            hash = "sha256-H9Ex0dNdDTm5gHUeUMBVL8/02qW1IuHzTRLAgeh9/AU=";
+          };
+          vendorHash = "sha256-qVmvDneq6V/q5UHZ/Cjjqd5/XPPNfvVGoxwg9nz4/Ds=";
+        });
       in {
         pre-commit.settings.package = pkgs.prek;
 
@@ -70,7 +83,7 @@
             # and a stub can't show it: tmux, script (util-linux), and ncurses for
             # the xterm-kitty terminfo entry it synthesizes — a bare CI runner has
             # none, and tmux refuses to attach a client whose TERM it can't find.
-            ++ [pkgs.go pkgs.gopls pkgs.gotools pkgs.golangci-lint pkgs.nilaway pkgs.chafa pkgs.bats pkgs.goreleaser pkgs.gh pkgs.d2 pkgs.resvg pkgs.source-sans pkgs.source-code-pro pkgs.just pkgs.tmux pkgs.util-linux pkgs.ncurses];
+            ++ [pkgs.go pkgs.gopls pkgs.gotools pkgs.golangci-lint nilaway pkgs.chafa pkgs.bats pkgs.goreleaser pkgs.gh pkgs.d2 pkgs.resvg pkgs.source-sans pkgs.source-code-pro pkgs.just pkgs.tmux pkgs.util-linux pkgs.ncurses];
         };
 
         # `nix develop .#verify` — the real terminal hosts for manually checking the
@@ -138,7 +151,7 @@
         checks.go-gate = self'.packages.default.overrideAttrs (old: {
           pname = "aeye-go-gate";
           doCheck = true;
-          nativeBuildInputs = old.nativeBuildInputs ++ [pkgs.golangci-lint pkgs.nilaway];
+          nativeBuildInputs = old.nativeBuildInputs ++ [pkgs.golangci-lint nilaway];
           postConfigure = ''
             export HOME=$TMPDIR
             export GOLANGCI_LINT_CACHE=$TMPDIR/golangci-lint-cache

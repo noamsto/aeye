@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/noamsto/aeye/compare/v1.11.4...v1.12.0) (2026-11-22)
+
+
+### Features
+
+* **carousel:** restore images after a tmux server restore ([#403](https://github.com/noamsto/aeye/issues/403)) ([628a87a](https://github.com/noamsto/aeye/commit/628a87a612246c6cf78284321337d00734278fe6))
+
 ## [1.11.4](https://github.com/noamsto/aeye/compare/v1.11.3...v1.11.4) (2026-11-13)
 
 

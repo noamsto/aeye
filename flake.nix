@@ -105,7 +105,7 @@
             pname = "aeye";
             version = releaseVersion;
             src = ./.;
-            vendorHash = "sha256-z2jBIC1wegtB7SkvBdkoc4tiiKZGwnbiCHksj/IBEoA=";
+            vendorHash = "sha256-4Y+2Tx/b9vey8KQ2TjmrPBM79DohIfxmZvgM9jTtWqU=";
             # Tests run once, under -race, in checks.go-gate.
             doCheck = false;
             ldflags = ["-X main.buildSuffix=${rev}"];

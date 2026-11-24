@@ -469,3 +469,20 @@ func TestKickVectorSameFramingKept(t *testing.T) {
 		t.Error("a finished render still counts as in flight")
 	}
 }
+
+// TestKickVectorNothingToSharpenCancelsInFlight: a reload that lands on a
+// selection with nothing to sharpen must not leave the previous render running.
+func TestKickVectorNothingToSharpenCancelsInFlight(t *testing.T) {
+	st := newBlockingStub(t)
+	m, _ := newAnimModel(t, 1, st.svg, animOff)
+	first := vectorKick(m.kickVector())
+	st.waitStarts(t, 1)
+
+	m.backend = backendSymbols
+	if cmd := m.kickVector(); cmd != nil {
+		t.Fatal("kick with nothing to sharpen returned a render")
+	}
+	if msg := recv(t, first); msg != nil {
+		t.Fatalf("in-flight render delivered %#v after cancel", msg)
+	}
+}

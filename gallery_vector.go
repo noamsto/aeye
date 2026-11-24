@@ -249,7 +249,8 @@ func renderVectorCtx(ctx context.Context, vector string, crop cropFrac, targetW 
 		return ""
 	}
 	// runResvg picks randomly when a slot and ctx.Done are both ready, so a
-	// cancelled render must stop here, before it evicts cached framings.
+	// cancelled render must stop here (skipping the rewrite) and again after it,
+	// before it evicts cached framings.
 	if ctx.Err() != nil {
 		return ""
 	}
@@ -272,6 +273,9 @@ func renderVectorCtx(ctx context.Context, vector string, crop cropFrac, targetW 
 				return ""
 			}
 		}
+	}
+	if ctx.Err() != nil {
+		return ""
 	}
 	// Evict stale framings for this svg before rendering the new one.
 	olds, _ := filepath.Glob(filepath.Join(os.TempDir(), stem+"-*.png"))
@@ -415,6 +419,7 @@ func (m *galleryModel) scheduleVector() tea.Cmd {
 func (m *galleryModel) kickVector() tea.Cmd {
 	v := m.curVector()
 	if v == "" || m.backend != backendKitty {
+		m.cancelVector()
 		return nil
 	}
 	key := m.vectorKey()

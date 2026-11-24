@@ -258,8 +258,8 @@ type galleryModel struct {
 	regionIdx    int                // focused sibling index at the current level; -1 = not in region mode
 	vecGen       uint64             // debounce generation: only the latest scheduled vector kick fires
 	vecCancel    context.CancelFunc // cancels the in-flight sharp render
-	vecCtx       context.Context    // the in-flight render's ctx; nil when none
-	vecInflight  vecKey             // framing the in-flight render is for
+	vecCtx       context.Context    // ctx of the last kicked render, cancelled once it finishes or is superseded; nil before any kick
+	vecInflight  vecKey             // framing key of vecCtx's render; in flight only while vecCtx is live
 	rasterGen    uint64             // debounce generation for the post-render sixel repaint
 	animMode     animMode           // kitty frame playback for animated diagrams; animOff elsewhere
 	anim         animState

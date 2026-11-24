@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.1](https://github.com/noamsto/aeye/compare/v1.12.0...v1.12.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* **hooks:** copy legend sidecar beside hook-rendered diagrams ([#411](https://github.com/noamsto/aeye/issues/411)) ([3a8b12d](https://github.com/noamsto/aeye/commit/3a8b12d8264fa0fc23cd7ef317836e5ca28f8c43))
+
 ## [1.12.0](https://github.com/noamsto/aeye/compare/v1.11.4...v1.12.0) (2026-11-22)
 
 

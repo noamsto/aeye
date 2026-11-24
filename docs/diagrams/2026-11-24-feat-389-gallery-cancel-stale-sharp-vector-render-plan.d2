@@ -1,0 +1,21 @@
+direction: right
+
+key: "gallery.go Update\nkey / pan / zoom"
+sched: "scheduleVector()\ncancels render if framing differs"
+kick: "kickVector()\nsame key in flight: nil\nelse cancel + new ctx" {style.stroke: green}
+cmd: "renderVectorCmd(ctx, …)" {style.stroke: green}
+rv: "renderVectorCtx(ctx, …)\nearly ctx check, no eviction" {style.stroke: green}
+slots: "resvgSlots (4)\nselect on ctx.Done()"
+resvg: "resvg subprocess\nkilled on cancel" {style.stroke: green}
+state: "galleryModel\nvecCancel / vecCtx / vecInflight" {style.stroke: green}
+
+key -> sched
+sched -> kick: "latest gen only"
+key -> kick: "reload / settle / focus"
+kick -> state: "record key"
+sched -> state: "cancel stale"
+kick -> cmd
+cmd -> rv
+rv -> slots
+slots -> resvg
+state -> resvg: "ctx cancel" {style.stroke: green}

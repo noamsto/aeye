@@ -259,7 +259,7 @@ pi_edit() { run_handler edit "$(jq -nc --arg p "$1" '{path:$p,edits:[{oldText:"a
 }
 
 @test "pi overwrite of an adopted .d2 replaces its entry and prunes the old png" {
-	run pi_write "$DOTD2"
+	run_app "$DOTD2"
 	old="$(jq -r '.path' "$MANIFEST")"
 	printf 'a -> b -> c\n' >"$DOTD2"
 	run pi_write "$DOTD2" "a -> b -> c"
@@ -273,7 +273,7 @@ pi_edit() { run_handler edit "$(jq -nc --arg p "$1" '{path:$p,edits:[{oldText:"a
 }
 
 @test "pi edit (tool_input.path + edits) of an adopted .d2 re-renders it" {
-	run pi_write "$DOTD2"
+	run_app "$DOTD2"
 	old="$(jq -r '.path' "$MANIFEST")"
 	printf 'z -> b\n' >"$DOTD2"
 	run pi_edit "$DOTD2"
@@ -302,8 +302,25 @@ pi_edit() { run_handler edit "$(jq -nc --arg p "$1" '{path:$p,edits:[{oldText:"a
 	[[ $output == *"no tmux client attached"* ]]
 }
 
+@test "an ensure-open that exits 0 but writes stderr is still logged" {
+	# shellcheck disable=SC2030,SC2031
+	export TOGGLE_FAIL=0
+	# shellcheck disable=SC2030,SC2031
+	export TOGGLE_FAIL_MSG="image carousel needs tmux"
+	run pi_write "$DOTD2"
+	[ "$status" -eq 0 ]
+	run grep -F 'ensure-open' "$DIAGRAMS/render-errors.log"
+	[ "$status" -eq 0 ]
+	[[ $output == *"exit=0"* ]]
+	[[ $output == *"image carousel needs tmux"* ]]
+}
+
 @test "a succeeding ensure-open writes nothing to render-errors.log" {
 	run pi_write "$DOTD2"
 	[ "$status" -eq 0 ]
+	run grep -c -- '--ensure-open' "$TOGGLE_LOG"
+	[ "$output" -eq 1 ]
+	run wc -l <"$MANIFEST"
+	[ "$output" -eq 1 ]
 	[ ! -s "$DIAGRAMS/render-errors.log" ]
 }

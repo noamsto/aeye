@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # pi-specific path-extraction + session-id helpers for the extension's capture,
 # diagram, session-reset and resume-backfill scripts, layered on the
-# agent-agnostic core. pi's tool names are lowercase (read/write/edit/bash), but
-# the payload the TypeScript extension feeds these scripts is normalized to the
-# Claude shape (tool_input.file_path / .path / .command, tool_response), so the
-# extraction mirrors the Claude adapter's. Pure: no manifest writes, no keying,
+# agent-agnostic core. pi's tool names are lowercase (read/write/edit/bash). In
+# the payload the TypeScript extension feeds these scripts, tool_input is pi's
+# own input verbatim (pi names the target `path`), while tool_response is
+# normalized to the Claude shape. Pure: no manifest writes, no keying,
 # no toggle. Each function echoes a result (or nothing) and returns 0 so callers
 # under `set -euo pipefail` are never aborted by a "not found" outcome.
 

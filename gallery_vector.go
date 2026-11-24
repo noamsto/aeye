@@ -226,6 +226,12 @@ const maxVectorHeight = 2 * maxRasterSide
 // path, or "" if resvg is absent or the render fails (caller falls back to the
 // bitmap crop). When zoomed, only the crop region is rendered (see cropViewBox).
 func renderVector(vector string, crop cropFrac, targetW int) string {
+	return renderVectorCtx(context.Background(), vector, crop, targetW)
+}
+
+// renderVectorCtx is renderVector under ctx: a cancelled ctx kills a running
+// resvg, drops the render before it takes a slot, and returns "".
+func renderVectorCtx(ctx context.Context, vector string, crop cropFrac, targetW int) string {
 	fi, err := os.Stat(vector)
 	if err != nil {
 		return ""
@@ -240,6 +246,11 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 		return out
 	}
 	if !resvgAvailable() {
+		return ""
+	}
+	// runResvg picks randomly when a slot and ctx.Done are both ready, so a
+	// cancelled render must stop here, before it evicts cached framings.
+	if ctx.Err() != nil {
 		return ""
 	}
 	// A zoomed render needs the crop applied to the root viewBox; without it resvg
@@ -288,7 +299,7 @@ func renderVector(vector string, crop cropFrac, targetW int) string {
 		// The rewritten copy lives in tmp: keep the original's relative hrefs resolving.
 		args = append(args, "--resources-dir", filepath.Dir(vector))
 	}
-	if _, err := runResvg(context.Background(), nil, append(args, src, out)...); err != nil {
+	if _, err := runResvg(ctx, nil, append(args, src, out)...); err != nil {
 		if errors.Is(err, errDiagramTooLarge) {
 			tracef("vector render: %v", err)
 		}
@@ -309,11 +320,12 @@ type vectorReadyMsg struct {
 }
 
 // renderVectorCmd rasterizes off the event loop (resvg subprocess) and decodes
-// the result, so the TUI never blocks on a render. Returns nil on any failure.
-func renderVectorCmd(vector string, crop cropFrac, targetW int) tea.Cmd {
+// the result, so the TUI never blocks on a render. Returns nil on any failure
+// and when ctx is cancelled.
+func renderVectorCmd(ctx context.Context, vector string, crop cropFrac, targetW int) tea.Cmd {
 	return func() tea.Msg {
-		out := renderVector(vector, crop, targetW)
-		if out == "" {
+		out := renderVectorCtx(ctx, vector, crop, targetW)
+		if out == "" || ctx.Err() != nil {
 			return nil
 		}
 		f, err := os.Open(out) //nolint:gosec // path is the user's own image/manifest file
@@ -346,11 +358,48 @@ func (m *galleryModel) curVector() string {
 	return m.images[m.cursor].Vector
 }
 
+// vecKey is the inputs of renderVector's cache name: two kicks with equal keys
+// render the same PNG.
+type vecKey struct {
+	vector  string
+	mtime   int64
+	crop    cropFrac
+	targetW int
+}
+
+// vectorKey returns the key of the framing the preview shows, or the zero key
+// when there is no vector or its mtime can't be read.
+func (m *galleryModel) vectorKey() vecKey {
+	v := m.curVector()
+	if v == "" {
+		return vecKey{}
+	}
+	fi, err := os.Stat(v)
+	if err != nil {
+		return vecKey{}
+	}
+	return vecKey{vector: v, mtime: fi.ModTime().UnixNano(), crop: m.crop, targetW: m.l.previewW * m.cellWpx()}
+}
+
+func (m *galleryModel) cancelVector() {
+	if m.vecCancel != nil {
+		m.vecCancel()
+		m.vecCancel = nil
+	}
+	m.vecCtx = nil
+	m.vecInflight = vecKey{}
+}
+
 // scheduleVector arms a debounced sharp re-render: it bumps the generation and
 // fires a tick carrying it. A later keystroke bumps again, so an earlier tick
-// arrives stale and is dropped — only the final framing reaches resvg. Returns
-// nil when there's nothing to sharpen (no vector / not kitty).
+// arrives stale and is dropped — only the final framing reaches resvg. A render
+// already running for a framing the preview has left is cancelled at once, not
+// when the debounce fires. Returns nil when there's nothing to sharpen (no
+// vector / not kitty).
 func (m *galleryModel) scheduleVector() tea.Cmd {
+	if m.vectorKey() != m.vecInflight {
+		m.cancelVector()
+	}
 	if m.curVector() == "" || m.backend != backendKitty {
 		return nil
 	}
@@ -360,13 +409,28 @@ func (m *galleryModel) scheduleVector() tea.Cmd {
 }
 
 // kickVector returns the async render cmd for the current d2 selection at the
-// current crop, or nil when there is nothing to sharpen (no vector / not kitty).
+// current crop, superseding any render for another framing. It returns nil when
+// there is nothing to sharpen (no vector / not kitty) or the same framing is
+// already rendering.
 func (m *galleryModel) kickVector() tea.Cmd {
 	v := m.curVector()
 	if v == "" || m.backend != backendKitty {
 		return nil
 	}
-	return renderVectorCmd(v, m.crop, m.l.previewW*m.cellWpx())
+	key := m.vectorKey()
+	if key != (vecKey{}) && key == m.vecInflight && m.vecCtx != nil && m.vecCtx.Err() == nil {
+		return nil
+	}
+	m.cancelVector()
+	ctx, cancel := context.WithCancel(context.Background())
+	m.vecCancel = cancel
+	m.vecCtx = ctx
+	m.vecInflight = key
+	render := renderVectorCmd(ctx, v, m.crop, m.l.previewW*m.cellWpx())
+	return func() tea.Msg {
+		defer cancel()
+		return render()
+	}
 }
 
 // fitToBox scales src to fit tw×th preserving aspect, upscaling if smaller — the

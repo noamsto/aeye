@@ -64,6 +64,26 @@ setup() {
 	[ "$output" = "$D2" ]
 }
 
+@test "extract_d2_path: pi write/edit .path is echoed" {
+	D2="$BATS_TEST_TMPDIR/flow.d2"
+	printf 'a -> b\n' >"$D2"
+	payload="$(jq -nc --arg p "$D2" '{tool_name:"write",tool_input:{path:$p,content:"a -> b"},cwd:"/repo"}')"
+	run extract_d2_path "$payload"
+	[ "$status" -eq 0 ]
+	[ "$output" = "$D2" ]
+}
+
+@test "extract_d2_path: file_path wins over path when both are present" {
+	D2="$BATS_TEST_TMPDIR/flow.d2"
+	OTHER="$BATS_TEST_TMPDIR/other.d2"
+	printf 'a -> b\n' >"$D2"
+	printf 'x -> y\n' >"$OTHER"
+	payload="$(jq -nc --arg f "$D2" --arg p "$OTHER" '{tool_name:"write",tool_input:{file_path:$f,path:$p},cwd:"/repo"}')"
+	run extract_d2_path "$payload"
+	[ "$status" -eq 0 ]
+	[ "$output" = "$D2" ]
+}
+
 @test "extract_d2_path: a .d2 token in a bash command is echoed" {
 	D2="$BATS_TEST_TMPDIR/flow.d2"
 	printf 'a -> b\n' >"$D2"

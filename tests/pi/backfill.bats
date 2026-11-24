@@ -80,6 +80,21 @@ write_calls() {
 	[ -f "$(jq -r '.path' "$MANIFEST")" ]
 }
 
+@test "renders a historical pi .d2 write whose input names it by .path" {
+	D2="$AEYE_DIR/images/diagrams/src/flow.d2"
+	mkdir -p "$(dirname "$D2")"
+	printf 'a -> b\n' >"$D2"
+	d2_call="$(jq -nc --arg p "$D2" '{tool_name:"write",tool_input:{path:$p,content:"a -> b"},tool_response:{content:[""]},cwd:"/repo"}')"
+	calls="$BATS_TEST_TMPDIR/calls.jsonl"
+	write_calls "$calls" "$d2_call"
+
+	payload="$(jq -nc --arg sid sess-A --arg f "$calls" '{session_id:$sid,cwd:"/repo",calls_file:$f}')"
+	printf '%s' "$payload" | bash "$APP"
+	[ -f "$MANIFEST" ]
+	run jq -r '.source' "$MANIFEST"
+	[ "$output" = "d2" ]
+}
+
 @test "dedups a repeated path within the replay" {
 	IMG="$FIXTURES/bar.png"
 	read_call="$(jq -nc --arg p "$IMG" '{tool_name:"read",tool_input:{path:$p},tool_response:{content:[""]},cwd:"/repo"}')"

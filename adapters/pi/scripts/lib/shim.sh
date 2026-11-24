@@ -57,7 +57,8 @@ extract_image_path() {
 }
 
 # extract_d2_path PAYLOAD [SRC_DIR] -> echoes a resolved, existing .d2 path or
-# nothing. Three phases: an explicit tool_input.file_path, a scan of
+# nothing. Three phases: an explicit tool_input.file_path or .path (pi's own
+# write/edit name the target `path`), a scan of
 # tool_input.command — a .d2 written by a heredoc, `sed -i`, or a generator
 # script has a path only there (#200) — and, given SRC_DIR, the newest .d2 just
 # written there when the command's path was built from a shell variable.
@@ -86,8 +87,8 @@ extract_d2_path() {
 		printf '%s' "$q"
 	}
 
-	# Phase 1: an explicit Write/Edit file_path.
-	candidate="$(jq -r '.tool_input.file_path // empty' <<<"$payload" 2>/dev/null)"
+	# Phase 1: an explicit Write/Edit file_path, or pi's `path`.
+	candidate="$(jq -r '.tool_input.file_path // .tool_input.path // empty' <<<"$payload" 2>/dev/null)"
 	if [[ -n $candidate ]]; then
 		candidate="$(resolve "$candidate")"
 		if [[ ${candidate,,} == *.d2 && -f $candidate ]]; then

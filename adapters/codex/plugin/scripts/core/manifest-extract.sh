@@ -165,6 +165,38 @@ d2_render() {
 		rm -f "$err"
 	done
 
-	printf '%s' "$(d2_png_for "$src" "$dir" dark)"
+	png="$(d2_png_for "$src" "$dir" dark)"
+	# Only an adoptable source owns the legend: a scratch copy hashes to the same
+	# render names as the real diagram and would clobber its legend.
+	if d2_source_adoptable "$src" "$dir/src"; then
+		d2_sync_legend "$src" "$png" || # a legend copy failure must not drop the diagram
+			printf '%(%FT%T%z)T\t%s\tlegend copy failed\n' -1 "$(basename "${png%.png}")" \
+				>>"$dir/render-errors.log"
+	fi
+	printf '%s' "$png"
 	return 0
+}
+
+# d2_sync_legend SRC DARK_PNG -> mirror publish-diagram: a sidecar legend
+# (<stem>-<theme>.legend.svg, else <stem>.legend.svg) rides beside each theme
+# render as <hash>-<theme>.legend.svg, where the carousel looks for it. No
+# sidecar clears any earlier copy: the render hash covers the source only, so
+# the legend can change under it.
+d2_sync_legend() {
+	local src="$1" png="$2" theme dest legend tmp
+	for theme in dark light; do
+		dest="${png%-dark.png}-$theme.legend.svg"
+		legend="${src%.*}-$theme.legend.svg"
+		[[ -f $legend ]] || legend="${src%.*}.legend.svg"
+		if [[ -f $legend ]]; then
+			# Copy atomically: the carousel may read the legend mid-render.
+			tmp="$(mktemp "$dest.XXXXXX")"
+			{ cp "$legend" "$tmp" && mv -f "$tmp" "$dest"; } || {
+				rm -f "$tmp"
+				return 1
+			}
+		else
+			rm -f "$dest"
+		fi
+	done
 }

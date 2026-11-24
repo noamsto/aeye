@@ -283,6 +283,39 @@ STUB
 	[ -f "${output/-dark.png/-light.png}" ]
 }
 
+@test "d2_render: copies the sidecar legend beside each theme render, variant first" {
+	STUB="$BATS_TEST_TMPDIR/bin"
+	mkdir -p "$STUB" "$BATS_TEST_TMPDIR/diagrams/src"
+	cat >"$STUB/aeye" <<'STUB'
+#!/usr/bin/env bash
+[[ ${1:-} == render-diagram ]] || exit 0
+printf '<svg/>' >"${3%.png}.svg"
+printf 'PNG' >"$3"
+STUB
+	chmod +x "$STUB/aeye"
+	src="$BATS_TEST_TMPDIR/diagrams/src"
+	d2="$src/flow.d2"
+	printf 'a -> b\n' >"$d2"
+	printf '<svg id="shared"/>' >"$src/flow.legend.svg"
+	printf '<svg id="light"/>' >"$src/flow-light.legend.svg"
+	AEYE_BIN="$STUB/aeye" run d2_render "$d2" "$BATS_TEST_TMPDIR/diagrams"
+	[ "$status" -eq 0 ]
+	base="${output%-dark.png}"
+	[ "$(cat "$base-dark.legend.svg")" = '<svg id="shared"/>' ]
+	[ "$(cat "$base-light.legend.svg")" = '<svg id="light"/>' ]
+	# A scratch copy shares the render hash but must not clobber the legend.
+	mkdir -p "$BATS_TEST_TMPDIR/scratch"
+	cp "$d2" "$BATS_TEST_TMPDIR/scratch/flow-check.d2"
+	AEYE_BIN="$STUB/aeye" run d2_render "$BATS_TEST_TMPDIR/scratch/flow-check.d2" "$BATS_TEST_TMPDIR/diagrams"
+	[ "$(cat "$base-dark.legend.svg")" = '<svg id="shared"/>' ]
+	# A re-render over cached pngs keeps the legend in step, dropping it with its sidecar.
+	rm "$src/flow.legend.svg" "$src/flow-light.legend.svg"
+	AEYE_BIN="$STUB/aeye" run d2_render "$d2" "$BATS_TEST_TMPDIR/diagrams"
+	[ "$status" -eq 0 ]
+	[ ! -e "$base-dark.legend.svg" ]
+	[ ! -e "$base-light.legend.svg" ]
+}
+
 @test "extract_d2_path: extraction is independent of adoption (returns an outside path)" {
 	SRC="$BATS_TEST_TMPDIR/diagrams/src"
 	mkdir -p "$SRC"

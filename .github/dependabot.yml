@@ -4,6 +4,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      go-modules:
+        patterns:
+          - "*"
   - package-ecosystem: "nix"
     directory: "/"
     schedule:

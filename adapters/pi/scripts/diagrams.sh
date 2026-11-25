@@ -103,4 +103,13 @@ diagram_replace_entry "$manifest" "$png" "$svg" "$name" "$now"
 # when one was adopted above (the dedup guard exits early for ones already in the
 # manifest), so this re-opens after a manual close but never re-fires for an
 # unchanged redraw. --ensure-open is idempotent and never kills.
-"${AEYE_TOGGLE:-tmux-claude-images}" --ensure-open >/dev/null 2>&1 || true
+# Never fail the hook. The toggle exits 0 on its "cannot open" paths (no tmux or
+# kitty, no session id), so any stderr is logged, not just a non-zero status.
+rc=0
+err="$("${AEYE_TOGGLE:-tmux-claude-images}" --ensure-open 2>&1 >/dev/null)" || rc=$?
+if [[ $rc -ne 0 || -n $err ]]; then
+	err="${err//$'\n'/ }"
+	printf -v now '%(%FT%T%z)T' -1
+	printf '%s\t%s\tWARN ensure-open exit=%s: %s\n' "$now" "$name" "$rc" "$err" \
+		>>"$DIAGRAMS_DIR/render-errors.log"
+fi

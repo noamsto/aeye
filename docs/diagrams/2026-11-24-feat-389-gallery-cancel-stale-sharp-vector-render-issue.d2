@@ -1,0 +1,17 @@
+direction: right
+
+key: "gallery.go Update\nkey / pan / zoom"
+sched: "scheduleVector()\nbump vecGen, 70ms debounce"
+kick: "kickVector()\nrenderVectorCmd(vector, crop, w)"
+rv: "renderVector()\nruns runResvg(context.Background())"
+slots: "resvgSlots (4)\nwaits only on Background ctx"
+resvg: "resvg subprocess\nup to 4 x memory bound"
+ready: "vectorReadyMsg\nstale result dropped on arrival"
+
+key -> sched
+sched -> kick: "latest gen only"
+key -> kick: "reload / delete / resize\n(immediate kicks)"
+kick -> rv
+rv -> slots
+slots -> resvg: "never cancelled"
+resvg -> ready: "work already wasted" {style.stroke: red}

@@ -2,11 +2,19 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 // graphvizSVG is shaped like Graphviz output: the root carries width and height
@@ -267,5 +275,214 @@ func TestRenderVectorTallSVGRealResvg(t *testing.T) {
 	}
 	if size, ok := pngSize(out); !ok || max(size.X, size.Y) > maxVectorHeight {
 		t.Fatalf("rendered at %v (ok=%v), want long side <= %d", size, ok, maxVectorHeight)
+	}
+}
+
+// blockingStub is an AEYE_RESVG stand-in that logs "<pid> <args>" per call and
+// then blocks, polling in short sleeps (an orphaned long sleep would hold the
+// output pipe open past the kill), until its block file is removed; it then
+// copies a real PNG to its output so the caller can decode it.
+type blockingStub struct {
+	svg, log, block string
+}
+
+func newBlockingStub(t *testing.T) blockingStub {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("AEYE_D2_FONT_DIR", "")
+	st := blockingStub{
+		svg:   filepath.Join(dir, "d.svg"),
+		log:   filepath.Join(dir, "calls.log"),
+		block: filepath.Join(dir, "block"),
+	}
+	body := fmt.Sprintf("#!/bin/sh\nfor a; do out=$a; done\necho \"$$ $*\" >> %q\n"+
+		"while [ -e %q ]; do sleep 0.05; done\ncp %q \"$out\"\n", st.log, st.block, writeTestPNG(t))
+	script := filepath.Join(dir, "resvg")
+	for path, content := range map[string]string{
+		script:   body,
+		st.svg:   staticFixtureSVG,
+		st.block: "",
+	} {
+		if err := os.WriteFile(path, []byte(content), 0o755); err != nil { //nolint:gosec // test stub must be executable
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { os.Remove(st.block) }) //nolint:errcheck,gosec // a red run must not leave a stub holding a resvg slot
+	t.Setenv("AEYE_RESVG", script)
+	return st
+}
+
+func (st blockingStub) unblock(t *testing.T) {
+	t.Helper()
+	if err := os.Remove(st.block); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+}
+
+// waitStarts waits until the stub has been launched n times and returns the pid
+// of the latest launch.
+func (st blockingStub) waitStarts(t *testing.T, n int) int {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if data, err := os.ReadFile(st.log); err == nil { //nolint:gosec // temp-dir path
+			if lines := strings.Split(strings.TrimSpace(string(data)), "\n"); len(lines) >= n {
+				pid, err := strconv.Atoi(strings.Fields(lines[n-1])[0])
+				if err != nil {
+					t.Fatal(err)
+				}
+				return pid
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("stub started fewer than %d times", n)
+	return 0
+}
+
+// recv returns what ch delivers, failing if nothing arrives in time.
+func recv[T any](t *testing.T, ch <-chan T) T {
+	t.Helper()
+	select {
+	case v := <-ch:
+		return v
+	case <-time.After(5 * time.Second):
+		t.Fatal("render did not return after cancel")
+		panic("unreachable")
+	}
+}
+
+func processDead(pid int) bool {
+	p, err := os.FindProcess(pid)
+	return err != nil || p.Signal(syscall.Signal(0)) != nil
+}
+
+func TestRenderVectorCtxCancelKillsInFlight(t *testing.T) {
+	st := newBlockingStub(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan string, 1)
+	go func() { done <- renderVectorCtx(ctx, st.svg, fullCrop(), 800) }()
+	pid := st.waitStarts(t, 1)
+
+	cancel()
+	if got := recv(t, done); got != "" {
+		t.Fatalf("cancelled render returned %q, want empty", got)
+	}
+	left, _ := filepath.Glob(filepath.Join(os.TempDir(), "aeye-vec-*.png"))
+	if len(left) != 0 {
+		t.Errorf("cancelled render left output behind: %v", left)
+	}
+	for deadline := time.Now().Add(2 * time.Second); !processDead(pid) && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !processDead(pid) {
+		t.Errorf("resvg pid %d still running after cancel", pid)
+	}
+}
+
+func TestRenderVectorCtxCancelledBeforeStartKeepsCache(t *testing.T) {
+	st := newBlockingStub(t)
+	st.unblock(t)
+	cropA, cropB := cropFrac{0, 0, 0.5, 0.5}, cropFrac{0.5, 0.5, 1, 1}
+	cached := renderVectorCtx(context.Background(), st.svg, cropA, 800)
+	if cached == "" {
+		t.Fatal("seed render failed")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := renderVectorCtx(ctx, st.svg, cropB, 800); got != "" {
+		t.Fatalf("cancelled render returned %q, want empty", got)
+	}
+	if n := logLines(t, st.log); n != 1 {
+		t.Errorf("resvg ran %d times, want only the seed render", n)
+	}
+	if !exists(cached) {
+		t.Error("a cancelled render evicted the cached framing")
+	}
+}
+
+// vectorKick runs the model's render cmd off the test goroutine.
+func vectorKick(cmd tea.Cmd) <-chan tea.Msg {
+	ch := make(chan tea.Msg, 1)
+	go func() { ch <- cmd() }()
+	return ch
+}
+
+func TestKickVectorSupersededFramingCancelled(t *testing.T) {
+	// Each move leaves the latest framing's render to the test (nil: kick it).
+	moves := map[string]func(m *galleryModel) tea.Cmd{
+		"scheduleVector": func(m *galleryModel) tea.Cmd { m.scheduleVector(); return nil },
+		"kickVector":     func(m *galleryModel) tea.Cmd { return m.kickVector() },
+	}
+	for name, supersede := range moves {
+		t.Run(name, func(t *testing.T) {
+			st := newBlockingStub(t)
+			m, _ := newAnimModel(t, 1, st.svg, animOff)
+			first := vectorKick(m.kickVector())
+			st.waitStarts(t, 1)
+
+			m.crop = cropFrac{0, 0, 0.5, 0.5}
+			cmd := supersede(m)
+			if msg := recv(t, first); msg != nil {
+				t.Fatalf("superseded render delivered %#v", msg)
+			}
+
+			st.unblock(t)
+			if cmd == nil {
+				cmd = m.kickVector()
+			}
+			if cmd == nil {
+				t.Fatal("latest framing was not kicked")
+			}
+			msg, ok := cmd().(vectorReadyMsg)
+			if !ok || msg.crop != m.crop {
+				t.Fatalf("latest framing result = %#v, want a vectorReadyMsg for %v", msg, m.crop)
+			}
+		})
+	}
+}
+
+// TestKickVectorSameFramingKept: a repeat kick or schedule for the framing
+// already rendering keeps it, so settle, focus and cache-fill kicks don't
+// restart a slow render.
+func TestKickVectorSameFramingKept(t *testing.T) {
+	st := newBlockingStub(t)
+	m, _ := newAnimModel(t, 1, st.svg, animOff)
+	first := vectorKick(m.kickVector())
+	st.waitStarts(t, 1)
+
+	if again := m.kickVector(); again != nil {
+		t.Fatal("same-framing kick restarted the render")
+	}
+	m.scheduleVector()
+	st.unblock(t)
+	if _, ok := recv(t, first).(vectorReadyMsg); !ok {
+		t.Fatal("the in-flight render was cancelled")
+	}
+	if n := logLines(t, st.log); n != 1 {
+		t.Errorf("resvg ran %d times, want 1", n)
+	}
+	if m.kickVector() == nil {
+		t.Error("a finished render still counts as in flight")
+	}
+}
+
+// TestKickVectorNothingToSharpenCancelsInFlight: a reload that lands on a
+// selection with nothing to sharpen must not leave the previous render running.
+func TestKickVectorNothingToSharpenCancelsInFlight(t *testing.T) {
+	st := newBlockingStub(t)
+	m, _ := newAnimModel(t, 1, st.svg, animOff)
+	first := vectorKick(m.kickVector())
+	st.waitStarts(t, 1)
+
+	m.backend = backendSymbols
+	if cmd := m.kickVector(); cmd != nil {
+		t.Fatal("kick with nothing to sharpen returned a render")
+	}
+	if msg := recv(t, first); msg != nil {
+		t.Fatalf("in-flight render delivered %#v after cancel", msg)
 	}
 }

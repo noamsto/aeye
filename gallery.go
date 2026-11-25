@@ -253,12 +253,15 @@ type galleryModel struct {
 	// estimates assume a 1:2 cell, so a real 10x22 cell skews every crop shaped
 	// against them — measured here at 2.2, not 2.0.
 	cellW, cellH int
-	regions      *regionTree // parsed lazily for the current d2 entry; nil when none
-	regionPath   []string    // current drill level (container path components); empty = root
-	regionIdx    int         // focused sibling index at the current level; -1 = not in region mode
-	vecGen       uint64      // debounce generation: only the latest scheduled vector kick fires
-	rasterGen    uint64      // debounce generation for the post-render sixel repaint
-	animMode     animMode    // kitty frame playback for animated diagrams; animOff elsewhere
+	regions      *regionTree        // parsed lazily for the current d2 entry; nil when none
+	regionPath   []string           // current drill level (container path components); empty = root
+	regionIdx    int                // focused sibling index at the current level; -1 = not in region mode
+	vecGen       uint64             // debounce generation: only the latest scheduled vector kick fires
+	vecCancel    context.CancelFunc // cancels the in-flight sharp render
+	vecCtx       context.Context    // ctx of the last kicked render, cancelled once it finishes or is superseded; nil before any kick and after a cancel with no new kick
+	vecInflight  vecKey             // framing key of vecCtx's render; in flight only while vecCtx is live
+	rasterGen    uint64             // debounce generation for the post-render sixel repaint
+	animMode     animMode           // kitty frame playback for animated diagrams; animOff elsewhere
 	anim         animState
 
 	// Transient one-line feedback (e.g. copy result), cleared on the next key.

@@ -317,7 +317,7 @@ func handleMsg(m *galleryModel, msg tea.Msg) tea.Cmd {
 // kickVector would.
 func vectorReady(t *testing.T, m *galleryModel) vectorReadyMsg {
 	t.Helper()
-	msg, ok := renderVectorCmd(m.curVector(), m.crop, m.l.previewW*m.cellWpx())().(vectorReadyMsg)
+	msg, ok := renderVectorCmd(context.Background(), m.curVector(), m.crop, m.l.previewW*m.cellWpx())().(vectorReadyMsg)
 	if !ok {
 		t.Fatal("renderVectorCmd produced no vectorReadyMsg")
 	}

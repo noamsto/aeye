@@ -1,0 +1,23 @@
+name: Cascade notify
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main'
+    uses: noamsto/.github/.github/workflows/cascade-notify.yml@v1
+    with:
+      rev: ${{ github.event.workflow_run.head_sha }}
+    secrets:
+      CASCADE_APP_PRIVATE_KEY: ${{ secrets.CASCADE_APP_PRIVATE_KEY }}
+      CASCADE_CONSUMERS: ${{ secrets.CASCADE_CONSUMERS }} # optional
